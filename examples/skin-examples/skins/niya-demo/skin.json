@@ -1,0 +1,28 @@
+{
+  "$schema": "../../schema/skin.schema.json",
+  "schemaVersion": 1,
+  "id": "niya-demo",
+  "name": "Niya Demo",
+  "version": "0.1.0",
+  "author": "Metasequoia IME contributors",
+  "description": "天元突破·妮娅 演示候选框外部图片、右侧对齐和后置层级的皮肤。",
+  "base": "fluent",
+  "stylesheet": "skin.css",
+  "preview": "assets/character.png",
+  "supports": {
+    "layouts": ["horizontal", "vertical"],
+    "themes": ["dark"]
+  },
+  "candidateWindow": {
+    "minWidthDip": 176,
+    "decoration": {
+      "topInsetDip": 88,
+      "widthDip": 136
+    }
+  },
+  "license": {
+    "code": "MIT",
+    "assets": "UNVERIFIED-DEMO-ONLY",
+    "source": "Replace this value with the asset source and permission before publishing."
+  }
+}
