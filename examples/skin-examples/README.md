@@ -7,7 +7,7 @@
 1. 用自己的透明 PNG 替换 `skins/niya-demo/assets/character.png`。
 2. 打开 `preview.html`，同时检查横向和纵向候选框。
 3. 修改 `skins/niya-demo/skin.json` 中的名称、作者和装饰尺寸。
-4. 将整个皮肤文件夹复制到 `%LOCALAPPDATA%\metasequoiaime\skins\`，打开设置的“皮肤”页面并点击“刷新皮肤”。也可以运行 `./install.ps1` 自动复制和启用。
+4. 将整个皮肤文件夹复制到 `%LOCALAPPDATA%\metasequoiaime\skins\`，打开设置的“皮肤”页面（会自动扫描目录），也可以点击“刷新皮肤”或运行 `./install.ps1`。
 
 安装脚本会将皮肤复制到：
 
@@ -26,7 +26,8 @@ metasequoia-ime-skin-example/
 ├─ skins/
 │  └─ niya-demo/             # 一个皮肤一个文件夹
 │     ├─ skin.json           # 名称、继承关系、能力和宿主几何
-│     ├─ skin.css            # 仅负责视觉，不放业务 JavaScript
+│     ├─ cand.css            # 候选框视觉，不放业务 JavaScript
+│     ├─ toolbar.css         # 可选：悬浮工具栏视觉
 │     └─ assets/
 │        └─ character.png    # 本地静态资源
 ├─ schema/                   # 皮肤 manifest Schema
@@ -36,7 +37,7 @@ metasequoia-ime-skin-example/
 
 仓库中的 `preview.html`、`schema/` 和安装脚本是制作工具，不会复制进已安装的皮肤目录。
 
-`skin.json` 中可选的 `preview` 字段用于设置页缩略图，例如 `"preview": "assets/character.png"`。设置页只读取这张图片，不会加载第三方皮肤 CSS，因此不会污染设置界面。
+`skin.json` 中可选的 `preview` 字段用于设置页缩略图，例如 `"preview": "assets/character.png"`。可选的 `toolbarStylesheet` 指向悬浮工具栏 CSS，设置页会把它叠在内置工具栏预览上。
 
 ## 最常修改的参数
 
@@ -56,7 +57,7 @@ metasequoia-ime-skin-example/
 - `widthDip`：原生窗口顶部允许绘制和接收命中的右侧装饰宽度。
 - `minWidthDip`：候选框最小宽度，通常不应小于 `widthDip`。
 
-`skin.css` 中的图片显示尺寸应与 manifest 协调。示例图片高 `118px`，其中下方 `30px` 被候选框遮住，所以只露出头部。
+`cand.css` 中的图片显示尺寸应与 manifest 协调。示例图片高 `118px`，其中下方 `30px` 被候选框遮住，所以只露出头部。
 
 ## 制作约束
 
@@ -69,11 +70,13 @@ metasequoia-ime-skin-example/
 
 ## 明暗模式
 
-这个示例只声明支持 `dark`。如果皮肤同时支持浅色，请在 `skin.json` 的 `supports.themes` 中加入 `light`，并在 CSS 中使用：
+这个示例同时声明 `dark` 和 `light`。设置页始终可以预览另一种配色；实际输入法窗口会按当前主题选用对应覆盖。CSS 中请同时写宿主属性和设置页 class：
 
 ```css
 html[data-candidate-theme="light"] { /* 浅色覆盖 */ }
 html[data-candidate-theme="dark"]  { /* 深色覆盖 */ }
+.theme-light { /* 设置页预览 */ }
+.theme-dark  { /* 设置页预览 */ }
 ```
 
 ## 授权提示
@@ -82,4 +85,4 @@ html[data-candidate-theme="dark"]  { /* 深色覆盖 */ }
 
 ## 与候选框模板的关系
 
-皮肤不携带候选框 HTML。输入法内部只维护横向和纵向两份共享模板，`base` 选择一套内置基础 CSS，当前皮肤的 `skin.css` 最后加载并覆盖它。这样替换皮肤不会复制或分叉候选生成、测量、点击和翻页脚本。
+皮肤不携带候选框或工具栏 HTML。输入法内部维护共享模板，`base` 选择一套内置基础 CSS，当前皮肤的 `cand.css` / 可选 `toolbar.css` 最后加载并覆盖它。这样替换皮肤不会复制或分叉候选生成、测量、点击和翻页脚本。

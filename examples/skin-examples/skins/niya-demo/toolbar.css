@@ -1,0 +1,36 @@
+/* Layered on the built-in floating-toolbar HTML (Fluent / default template). */
+.status-bar,
+.ftb-preview-host .status-bar {
+  border-color: rgba(224, 138, 168, 0.38);
+}
+
+.drag-handle,
+.ftb-preview-host .drag-handle {
+  background: #e08aa8;
+}
+
+html[data-candidate-theme="light"] .status-bar,
+.theme-light .status-bar,
+.ftb-preview-host.theme-light .status-bar {
+  background-color: #fff7fa;
+  border-color: rgba(176, 80, 110, 0.22);
+  box-shadow: 4px 4px 8px rgba(80, 40, 50, 0.12);
+}
+
+html[data-candidate-theme="light"] .drag-handle,
+.theme-light .drag-handle,
+.ftb-preview-host.theme-light .drag-handle {
+  background: #c45c7a;
+}
+
+html[data-candidate-theme="light"] .divider,
+.theme-light .divider,
+.ftb-preview-host.theme-light .divider {
+  background-color: rgba(176, 80, 110, 0.22);
+}
+
+html[data-candidate-theme="light"] .icon,
+.theme-light .icon,
+.ftb-preview-host.theme-light .icon {
+  color: #3a2a30;
+}

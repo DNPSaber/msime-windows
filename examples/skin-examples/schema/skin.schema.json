@@ -33,6 +33,10 @@
       "type": "string",
       "pattern": "^[A-Za-z0-9_.-]+\\.css$"
     },
+    "toolbarStylesheet": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9_.-]+\\.css$"
+    },
     "preview": {
       "type": "string",
       "maxLength": 256,

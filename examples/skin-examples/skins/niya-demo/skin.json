@@ -3,15 +3,16 @@
   "schemaVersion": 1,
   "id": "niya-demo",
   "name": "Niya Demo",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "author": "Metasequoia IME contributors",
-  "description": "天元突破·妮娅 演示候选框外部图片、右侧对齐和后置层级的皮肤。",
+  "description": "天元突破·妮娅 演示候选框外部图片、右侧对齐、后置层级，以及悬浮工具栏配色。",
   "base": "fluent",
-  "stylesheet": "skin.css",
+  "stylesheet": "cand.css",
+  "toolbarStylesheet": "toolbar.css",
   "preview": "assets/character.png",
   "supports": {
     "layouts": ["horizontal", "vertical"],
-    "themes": ["dark"]
+    "themes": ["dark", "light"]
   },
   "candidateWindow": {
     "minWidthDip": 176,

@@ -10,7 +10,11 @@ $destination = Join-Path (Join-Path $imeRoot 'skins') $skinId
 
 New-Item -ItemType Directory -Force -Path $destination | Out-Null
 Copy-Item -Force -LiteralPath (Join-Path $source 'skin.json') -Destination $destination
-Copy-Item -Force -LiteralPath (Join-Path $source 'skin.css') -Destination $destination
+Copy-Item -Force -LiteralPath (Join-Path $source 'cand.css') -Destination $destination
+$toolbarCss = Join-Path $source 'toolbar.css'
+if (Test-Path -LiteralPath $toolbarCss) {
+  Copy-Item -Force -LiteralPath $toolbarCss -Destination $destination
+}
 $assets = Join-Path $source 'assets'
 if (Test-Path -LiteralPath $assets) {
   Copy-Item -Recurse -Force -LiteralPath $assets -Destination $destination
