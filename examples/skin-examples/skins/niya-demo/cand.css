@@ -4,6 +4,7 @@
   --accent-strong: #e08aa8;
   --niya-accent: #e08aa8;
   --niya-selected: rgba(224, 138, 168, 0.28);
+  --niya-row: rgba(224, 138, 168, 0.16);
 }
 
 .containerParent {
@@ -89,6 +90,7 @@ html[data-candidate-theme="light"],
   --accent-strong: #c45c7a;
   --niya-accent: #c45c7a;
   --niya-selected: rgba(196, 92, 122, 0.18);
+  --niya-row: rgba(196, 92, 122, 0.10);
 }
 
 html[data-candidate-theme="light"] .container,
@@ -118,4 +120,16 @@ html[data-candidate-theme="light"] .cand.first,
 .wnd-h.theme-light .first,
 .wnd-v.theme-light .first {
   background-color: var(--niya-selected);
+}
+
+/* Settings preview has no `.hover-active` and uses `.wnd-v .cand:hover`.
+   Real candidate window does. Cover both, and beat Fluent grey with !important. */
+.cand.first:hover,
+.hover-active .cand.first:hover {
+  background-color: var(--niya-selected) !important;
+}
+
+.cand:not(.first):hover,
+.hover-active .cand:not(.first):hover {
+  background-color: var(--niya-row) !important;
 }
