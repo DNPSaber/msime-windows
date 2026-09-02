@@ -1,0 +1,37 @@
+schema_version = 1
+id = "niya-demo"
+name = "Niya Demo"
+version = "0.1.1"
+author = "Metasequoia IME contributors"
+description = "天元突破·妮娅 演示候选框外部图片、右侧对齐、后置层级，以及悬浮工具栏配色。"
+base = "fluent"
+toolbar_stylesheet = "toolbar.css"
+preview = "assets/character.png"
+
+[supports]
+layouts = ["horizontal", "vertical"]
+themes = ["dark", "light"]
+
+[candidate_window]
+min_width_dip = 176
+
+[candidate_window.decoration]
+top_inset_dip = 88
+width_dip = 136
+
+[candidate.dark]
+accent = "#e08aa8"
+selected = "rgba(224, 138, 168, 0.28)"
+hover = "rgba(224, 138, 168, 0.16)"
+
+[candidate.light]
+accent = "#c45c7a"
+selected = "rgba(196, 92, 122, 0.18)"
+hover = "rgba(196, 92, 122, 0.10)"
+surface = "#fff7fa"
+border = "rgba(176, 80, 110, 0.22)"
+
+[license]
+code = "MIT"
+assets = "UNVERIFIED-DEMO-ONLY"
+source = "Replace this value with the asset source and permission before publishing."
