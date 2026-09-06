@@ -1,5 +1,12 @@
 # Metasequoia IME skin example
 
+<!-- badges:start -->
+[![CI](https://img.shields.io/github/actions/workflow/status/metasequoiaime/metasequoia-ime-skin-example/ci.yml?branch=main&label=CI)](https://github.com/metasequoiaime/metasequoia-ime-skin-example/actions/workflows/ci.yml)
+[![CodeQL](https://img.shields.io/github/actions/workflow/status/metasequoiaime/metasequoia-ime-skin-example/codeql.yml?branch=main&label=CodeQL)](https://github.com/metasequoiaime/metasequoia-ime-skin-example/actions/workflows/codeql.yml)
+[![License](https://img.shields.io/github/license/metasequoiaime/metasequoia-ime-skin-example)](LICENSE)
+[![Stars](https://img.shields.io/github/stars/metasequoiaime/metasequoia-ime-skin-example?style=flat)](https://github.com/metasequoiaime/metasequoia-ime-skin-example/stargazers)
+<!-- badges:end -->
+
 这是 Metasequoia IME 外部候选框皮肤的最小示例。候选框由 D2D 绘制，皮肤用 `skin.toml` 声明名称、装饰几何和配色；悬浮工具栏仍可用可选 CSS。
 
 字段说明见 [manifest 文档](schema/README.md)，预览入口为 [preview.html](preview.html)。
@@ -70,4 +77,14 @@ hover = "rgba(224, 138, 168, 0.16)"
 
 ## 授权提示
 
-皮肤代码和图片资源可以使用不同的许可。发布前请在 `skin.toml` 的 `[license]` 中分别写明 `code` 与 `assets`。
+**本仓库是 MIT 授权的**（见 [LICENSE](LICENSE)）。这个仓库存在的意义就是被复制——直接 fork、或者把 `skins/niya-demo/` 整个拷走改成自己的皮肤，都不需要额外授权。选 MIT 而不是产品仓的 GPL-3.0，正是为了让做出来的皮肤可以按作者自己的意愿授权，不被传染。
+
+皮肤代码和图片资源可以使用不同的许可。发布前请在 `skin.toml` 的 `[license]` 中分别写明 `code` 与 `assets`。示例里的 `assets` 标为 `UNVERIFIED-DEMO-ONLY`，意思是那些图只用于演示、来源未经核实，**不要直接拿去发布**，换成你自己有权使用的图片。
+
+<!-- star-history:start -->
+## Star History
+
+<a href="https://star-history.com/#metasequoiaime/metasequoia-ime-skin-example&Date">
+  <img src="https://api.star-history.com/svg?repos=metasequoiaime/metasequoia-ime-skin-example&type=Date" alt="Star History Chart" width="600">
+</a>
+<!-- star-history:end -->
