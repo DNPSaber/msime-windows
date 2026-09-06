@@ -2,6 +2,8 @@
 
 这是 Metasequoia IME 外部候选框皮肤的最小示例。候选框由 D2D 绘制，皮肤用 `skin.toml` 声明名称、装饰几何和配色；悬浮工具栏仍可用可选 CSS。
 
+字段说明见 [manifest 文档](schema/README.md)，预览入口为 [preview.html](preview.html)。
+
 ## 快速开始
 
 1. 用自己的透明 PNG 替换 `skins/niya-demo/assets/character.png`。
