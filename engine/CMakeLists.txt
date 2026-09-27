@@ -251,6 +251,10 @@ if(BUILD_TESTING)
     target_link_libraries(test_local_modes PRIVATE MetasequoiaIme::Engine)
     add_test(NAME local_modes COMMAND test_local_modes)
 
+    # Per-keystroke latency against the real dictionaries; run by hand, not by ctest.
+    add_executable(bench_input_session tests/src/bench_input_session.cpp)
+    target_link_libraries(bench_input_session PRIVATE MetasequoiaIme::Engine)
+
     add_executable(test_online_input_session tests/src/test_online_input_session.cpp)
     target_link_libraries(test_online_input_session PRIVATE MetasequoiaIme::Engine)
     add_test(NAME online_input_session COMMAND test_online_input_session)
