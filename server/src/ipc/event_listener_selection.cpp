@@ -423,8 +423,10 @@ void ProcessSelectionKey(UINT keycode, uint64_t client_id, uint64_t activation_e
 
         if (isNeedUpdateWeight)
         {
-            // Runs after this reply, before the next key (the queue is FIFO), so the next lookup
-            // already sees the new order.
+            // Written on the dictionary writer thread, off the keystroke path. Once the write
+            // changes the order, the worker drops its candidate cache and the next lookup sees
+            // the new order; a lookup that lands before the write finishes still shows the old
+            // one.
             EnqueueAdjustCandidateRankingTask(/*english=*/false, ranking_context_key, ranking_entry_key, curWord,
                                               client_id, activation_epoch);
         }

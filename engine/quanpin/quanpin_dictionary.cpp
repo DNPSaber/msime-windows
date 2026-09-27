@@ -252,6 +252,13 @@ QuanpinDictionary::QuanpinDictionary(std::string db_path, metasequoia::RuntimePa
     {
         (void)0;
     }
+    else
+    {
+        // A learning write (or the settings app) holds the write lock for a few
+        // milliseconds at commit; without a busy timeout a query landing in that
+        // window fails with SQLITE_BUSY and the page comes back empty.
+        sqlite3_busy_timeout(db_, quanpin::kDictionaryBusyTimeoutMs);
+    }
 
     quanpin::warm_up(db_, statement_cache_);
     reset_cache_if_database_changed();

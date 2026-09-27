@@ -218,6 +218,7 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance, _In_ HINSTANCE /*hPrevInstance*/,
     pipe_running = false;
     pipe_queueCv.notify_one();
     pipe_worker.join();
+    FanyNamedPipe::ShutdownDictionaryWriter();
     pipe_listener.join();
     // To Tsf Pipe
     to_tsf_pipe_listener.join();

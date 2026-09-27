@@ -69,4 +69,7 @@ void EnqueueApplyCandidatePageSizeTask();
 void EnqueueRefreshCandidatePageTask();
 void EnqueueResetInputSessionCacheTask();
 void EnqueueExitEnglishInputModeTask();
+// Finishes the learning writes still queued (frequency adjustments, entered English words) and
+// stops their thread. Call after the worker thread has been joined, so nothing posts new writes.
+void ShutdownDictionaryWriter();
 } // namespace FanyNamedPipe

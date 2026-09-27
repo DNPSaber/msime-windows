@@ -126,8 +126,6 @@ enum class TaskType
     ApplyEmojiCandidates,
     ApplyKaomojiCandidates,
     StoreUserPhrase,
-    AdjustCandidateRanking,
-    LearnEnteredEnglishWord,
     PinCandidate,
     ClientActivated,
     ClientDeactivated,

@@ -51,6 +51,10 @@ std::string join_segments(const Segments &segments, const std::string &delimiter
 std::string build_table_name(const Segments &segments);
 std::string segments_to_jianpin(const Segments &segments);
 std::string get_default_db_path();
+// Busy timeout for every read connection to the pinyin dictionary. Writes hold
+// the lock only for a commit, so a short wait is enough; failing instead would
+// return an empty candidate page.
+constexpr int kDictionaryBusyTimeoutMs = 250;
 void warm_up(sqlite3 *db, std::unordered_map<std::string, sqlite3_stmt *> &statement_cache);
 std::vector<KeyedQueryItem> query_initial(sqlite3 *db, const std::string &prefix, int limit);
 QueryResult query_words(const std::string &pinyin, const std::string &db_path, const std::string &mode = "greedy",

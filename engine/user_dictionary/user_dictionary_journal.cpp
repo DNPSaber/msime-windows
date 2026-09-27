@@ -4,7 +4,9 @@
 #include <metasequoia/personal_dictionary.h>
 
 #include <sqlite3.h>
+#include <atomic>
 #include <cctype>
+#include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <memory>
@@ -15,6 +17,7 @@
 #include <numeric>
 #include "../core/data_path.h"
 #include "../english/english_dictionary.h"
+#include "../local_modes/local_database.h"
 
 namespace user_dictionary
 {
@@ -357,23 +360,31 @@ namespace
 // busy disk, that open dominated the candidate build -- 90% of its time, with
 // single calls reaching 737 ms -- which stalled the IME server's task thread long
 // enough for the client's in-edit-session reply wait to time out and drop the
-// commit key. Keep one connection per path alive instead; sqlite3 connections are
-// opened with SQLITE_OPEN_FULLMUTEX, so sharing one across threads is safe.
+// commit key. Keep the connection alive instead -- one per thread. FULLMUTEX makes
+// a shared handle safe for single calls, but not for transactions: a connection
+// has one transaction state, so a thread writing BEGIN IMMEDIATE..COMMIT on it
+// would have another thread's reads land inside that transaction, and the other
+// thread's UserDatabase destructor would roll it back. Separate connections keep
+// the transactions apart and leave the concurrency to SQLite's file locking and
+// the busy timeout.
 struct CachedDatabase
 {
     std::string path;
+    std::uint64_t generation = 0;
     std::shared_ptr<sqlite3> connection;
 };
 
-std::mutex &database_cache_mutex()
+// Bumped by close_default_user_database(); every thread drops its cached
+// connection the next time it sees a newer generation.
+std::atomic<std::uint64_t> &database_cache_generation()
 {
-    static std::mutex mutex;
-    return mutex;
+    static std::atomic<std::uint64_t> generation{0};
+    return generation;
 }
 
 CachedDatabase &default_database_cache()
 {
-    static CachedDatabase cache;
+    thread_local CachedDatabase cache;
     return cache;
 }
 
@@ -398,16 +409,18 @@ std::shared_ptr<sqlite3> acquire_database(const std::string &path)
     if (path != default_user_db_path())
         return open_shared_database(path);
 
-    const std::lock_guard<std::mutex> guard(database_cache_mutex());
     auto &cache = default_database_cache();
-    if (cache.connection && cache.path == path)
+    const std::uint64_t generation = database_cache_generation().load(std::memory_order_acquire);
+    if (cache.connection && cache.path == path && cache.generation == generation)
         return cache.connection;
+    // Release a connection cached for an earlier data directory or generation
+    // before opening, so a thread never holds two journal files open.
+    cache = {};
     auto connection = open_shared_database(path);
     if (!connection)
         return {};
-    // Assigning also releases a connection cached for an earlier data directory,
-    // so at most one journal file is ever held open.
     cache.path = path;
+    cache.generation = generation;
     cache.connection = connection;
     return connection;
 }
@@ -449,9 +462,14 @@ class UserDatabase
 void close_default_user_database()
 {
     // Callers use this to let go of the journal before deleting or replacing the
-    // data directory; a connection left open would block that on Windows.
-    const std::lock_guard<std::mutex> guard(database_cache_mutex());
+    // data directory; a connection left open would block that on Windows. The
+    // calling thread's connection closes now (once no operation still holds it);
+    // other threads' connections close on their next journal access.
+    database_cache_generation().fetch_add(1, std::memory_order_acq_rel);
     default_database_cache() = {};
+    // The local-mode queries share connections to the dictionaries in the same
+    // data directory; they have to let go too.
+    metasequoia::local_modes::close_cached_local_databases();
 }
 
 bool ensure_user_database(const std::string &user_db_path)

@@ -222,6 +222,8 @@ set(SRC_FILES
     "./src/utils/ime_paths.cpp"
     "./src/utils/ime_utils.cpp"
     "./src/utils/ime_utils.h"
+    "./src/utils/serial_task_runner.cpp"
+    "./src/utils/serial_task_runner.h"
     "./src/utils/webview_utils.cpp"
     "./src/utils/webview_utils.h"
     "./src/utils/window_utils.cpp"

@@ -71,6 +71,8 @@ ShuangpinDictionary::ShuangpinDictionary(const ShuangpinProfile &profile, metase
     }
     else
     {
+        // See QuanpinDictionary's constructor: a query must wait out a commit, not fail.
+        sqlite3_busy_timeout(quanpin_db_, quanpin::kDictionaryBusyTimeoutMs);
         quanpin::warm_up(quanpin_db_, quanpin_statement_cache_);
         reset_cache_if_database_changed();
     }
