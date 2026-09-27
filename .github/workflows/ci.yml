@@ -201,6 +201,48 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: ./scripts/ci/test-server.ps1 -ServerRoot server -StagingRoot "$env:RUNNER_TEMP/product-data" -BuildDir build-release
 
+  # The Server job builds the engine as a library with BUILD_TESTING off, so the engine's own suite
+  # only ever ran on developer machines. It covers behaviour server/tests cannot reach, such as the
+  # user journal's per-thread connections and the rule that closing it releases every cached
+  # handle into the data directory. Built standalone from engine/vcpkg.json, tested against the
+  # same locked dictionaries as the Server.
+  engine:
+    name: Engine
+    needs: lock
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Restore dependency binaries
+        id: vcpkg-cache
+        uses: ./.github/actions/vcpkg-cache
+        with:
+          scope: engine-x64-windows
+      - name: Configure
+        shell: pwsh
+        run: >
+          cmake -S engine -B engine/build -A x64
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows
+          -DBUILD_TESTING=ON
+      - name: Save dependency binaries before compiling
+        if: steps.vcpkg-cache.outputs.matched-key != format('{0}-complete', steps.vcpkg-cache.outputs.key)
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ steps.vcpkg-cache.outputs.path }}
+          key: ${{ steps.vcpkg-cache.outputs.key }}-complete
+      - name: Build
+        shell: pwsh
+        run: cmake --build engine/build --config Release --parallel
+      - name: Test with the product's exact data
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: ./scripts/ci/test-engine.ps1 -BuildDir engine/build -StagingRoot "$env:RUNNER_TEMP/product-data"
+
   gui:
     name: GUI framework
     runs-on: windows-2025

@@ -62,9 +62,9 @@ find_package(ZLIB REQUIRED)
 # Which is also why BUILD_TESTING has to be off across that add_subdirectory: the engine registers
 # eleven add_test() entries behind that flag, and EXCLUDE_FROM_ALL then never builds the
 # executables they point at, so ctest reports eleven "Unable to find executable" failures. The
-# engine's own suite is exercised through this repository's server/tests, which cover the same
-# surface against the shipped dictionaries. Restored immediately afterwards so this repository's
-# own tests/ still register.
+# engine's own suite runs in the separate Engine job of ci.yml (scripts/ci/test-engine.ps1), which
+# builds the engine standalone. Restored immediately afterwards so this repository's own tests/
+# still register.
 set(_metasequoia_saved_build_testing "${BUILD_TESTING}")
 set(BUILD_TESTING OFF)
 set(METASEQUOIA_IME_BUILD_VOICE ON CACHE BOOL "" FORCE)
