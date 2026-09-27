@@ -1,5 +1,6 @@
 #include "window/caret_state_indicator.h"
 #include "config/ime_config.h"
+#include "defines/globals.h"
 #include "skin/candidate_skin_catalog.h"
 #include "utils/common_utils.h"
 #include "utils/window_utils.h"
@@ -102,7 +103,15 @@ bool PositionWindow(HWND hwnd, POINT caret, bool topmost, bool show)
     const int preferredX = FanyImeUi::CaretStateIndicatorX(position, caret.x, width, gap);
     const int x = (std::max)(static_cast<int>(work.left), (std::min)(preferredX, static_cast<int>(work.right) - width));
     const UINT flags = SWP_NOACTIVATE | (show ? SWP_SHOWWINDOW : 0);
-    return SetWindowPos(hwnd, topmost ? HWND_TOPMOST : HWND_TOP, x, *y, width, height, flags) != FALSE;
+    // Slot the badge directly beneath the candidate host so an overlapping
+    // candidate window always stays on top. Only when both share a z-band:
+    // inserting after a window in the other band would move the badge across it.
+    HWND insertAfter = topmost ? HWND_TOPMOST : HWND_TOP;
+    const HWND candidate = ::global_hwnd;
+    if (candidate && candidate != hwnd && IsWindow(candidate) &&
+        ((GetWindowLongPtrW(candidate, GWL_EXSTYLE) & WS_EX_TOPMOST) != 0) == topmost)
+        insertAfter = candidate;
+    return SetWindowPos(hwnd, insertAfter, x, *y, width, height, flags) != FALSE;
 }
 
 void DrawSlot(HDC dc, const wchar_t *text, int length, RECT rect)
