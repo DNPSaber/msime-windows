@@ -33,8 +33,9 @@
   → TSF UI element 与 Server 候选窗同步
 ```
 
-查问题时先沿这条链路定位。按键判定主要看 `src/Key/KeyEventSink.cpp`（延迟按键队列与回放在
-`KeyEventSink_DeferredKeys.cpp`，输入模式热键在 `KeyEventSink_Hotkeys.cpp`），编辑行为看
+查问题时先沿这条链路定位。按键判定主要看 `src/Key/KeyEventSink.cpp`（延迟按键队列与失败处理在
+`KeyEventSink_DeferredKeys.cpp`，失败分类在 `DeferredKeyFailurePolicy.h`，输入模式热键在
+`KeyEventSink_Hotkeys.cpp`），编辑行为看
 `src/Key/KeyHandler.cpp` 与 `src/Key/KeyStateCategory.cpp`，协议与连接状态看 `src/IPC/Ipc.*`，
 激活、焦点和工作线程生命周期看 `src/IME/MetasequoiaIME*`（Worker Pipe 读线程在
 `MetasequoiaIME_IpcWorker.cpp`，消息窗口与主题监听在 `MetasequoiaIME_WindowProc.cpp`，
@@ -52,7 +53,7 @@
   线程；同步 fallback 只能沿用已有且已验证的路径。
 - **异步回调必须验证所属会话**：延迟按键和 Server 回复可能晚于失焦、composition 结束或 DLL
   停用。应用前核对现有的 focus token / generation、composition epoch、local reset token、
-  deferred replay token；过期结果应丢弃，不能作用到新会话。
+  延迟按键的派发 token（代码里仍叫 `deferredReplayToken`）；过期结果应丢弃，不能作用到新会话。
 - **引用与 teardown 成对**：新增 COM 接口、sink、HANDLE、线程、窗口或 presenter 时，在所有失败
   分支与停用路径补齐 `Release`、Unadvise、关闭和 join。不要在析构/停用后留下会访问 `this` 的
   posted message 或 watcher。
@@ -73,12 +74,32 @@
 - `request_id == 0` 表示 unsolicited，`UINT64_MAX` 表示本地无请求；不得当成普通请求回复配对。
 - `PipeReady` 是反向管道握手帧，只在注册阶段消费；Worker handle 在握手完成前不能发布，Main pipe
   也不能抢先进入可用状态。
-- Server 是候选选择、翻页与配置化导航的权威。TSF 本地影子状态用于预判和流畅回放，不能在回复
+- Server 是候选选择、翻页与配置化导航的权威。TSF 本地影子状态只用于预判，不能在回复
   到达后反向覆盖 Server 已更新的候选状态。
-- 区分 `DefinitelyNotSent` 与 `DeliveryAmbiguous`：后者可能已被 Server 接收，不能无条件本地重放，
-  否则会双写。`TransportUnavailable` 是本地控制结果，绝不能当候选文本提交。
+- `DefinitelyNotSent` 与 `DeliveryAmbiguous` 都不重发：后者可能已被 Server 接收，重发会双写；
+  前者也没有回放可走，按传输失败丢键。`TransportUnavailable` 是本地控制结果，绝不能当候选文本提交。
 - 改协议后至少构建 TSF 的 x64/x86，并运行 Server 侧的 IPC 协议测试
   `tests/src/test_ipc_protocol_constants.cpp` 所属测试目标。
+
+## 按键失败：不回放
+
+被吃掉的键要么被处理，要么被有意吞掉；绝不交还宿主，也绝不处理两次。会话在组合中途出错时
+清掉组合、从空开始，失败那一刻已排队的键一并吞掉（它们是按即将丢弃的组合分类的）。不要
+重新引入按键回放或恢复前缀：回放带来过闪烁、双上屏和重试循环（#259、#404、#427）。
+
+失败经 `_FailDeferredKey`（有在飞的键）或 `_ResetSessionAfterFailure`（没有）处理，由
+`DeferredKeyFailurePolicy.h` 决定代价。新增失败点时选对原因走这两个入口，不要单独调用
+`MarkNamedpipeSessionDirty*`——那会漏掉清队列，也会把管道没坏的问题升级成完整重置：
+
+| 类别 | 原因 | 动作 |
+|---|---|---|
+| Stale | focus token、组合纪元、reset token 或焦点代已被取代 | 只丢这颗键，不再发起重置 |
+| Resync | 宿主拒绝 edit session（S_FALSE、E_NOTIMPL 等）、RequestEditSession 失败、异步投递失败，以及 OnEndEdit 组合属性检查、文档不匹配等非传输问题 | 丢键、吞队列、本地取消组合；不轮换 token、不关管道，闸门重开时在同一 token 上发 HideCandidateWnd 清 Server 组合 |
+| Transport | 写失败、回复读失败/坏帧、`TransportUnavailable`、`DefinitelyNotSent`、`DeliveryAmbiguous`、提交回复 300 ms 超时、worker 断开 | 丢键、吞队列、完整重置（新 focus token、重开回复管道） |
+| Offline | 离线原始通道里的宿主失败 | 丢键、吞队列，保留本地组合（此时它是唯一权威） |
+
+翻页与高亮移动键（PageUp/PageDown/Up/Down/Tab）的回复只是确认，缺失是软错过，不拆管道、不清
+队列；其余候选键可能上屏，保留 300 ms 提交预算与「歧义即丢键 + 传输重置」。
 
 ## 焦点、候选与离线回退
 
