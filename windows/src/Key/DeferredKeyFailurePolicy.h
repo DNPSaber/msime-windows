@@ -80,3 +80,20 @@ inline DeferredKeyFailureReason ClassifyEditSessionFailure(bool superseded, bool
     }
     return DeferredKeyFailureReason::HostEditRejected;
 }
+
+// Server candidate keys whose reply is an acknowledgement only: they page or
+// move the highlight and can never commit text (the Server commits only for
+// selection keys, Ctrl+Enter, word-to-character -/= and the punctuation it
+// lists by character). A reply missing past the ordinary wait is then a soft
+// miss, not a lost commit: no teardown, no queue clear.
+// The values are the Win32 virtual-key codes.
+inline bool IsCandidateNavigationOnlyKey(unsigned int virtualKey)
+{
+    constexpr unsigned int kTab = 0x09;      // VK_TAB; Shift+Tab pages back
+    constexpr unsigned int kPageUp = 0x21;   // VK_PRIOR
+    constexpr unsigned int kPageDown = 0x22; // VK_NEXT
+    constexpr unsigned int kUp = 0x26;       // VK_UP
+    constexpr unsigned int kDown = 0x28;     // VK_DOWN
+    return virtualKey == kTab || virtualKey == kPageUp || virtualKey == kPageDown || virtualKey == kUp ||
+           virtualKey == kDown;
+}

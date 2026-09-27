@@ -723,9 +723,15 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
         }
         const UINT code = request.code;
         const WCHAR wch = request.wch;
-        // This key may commit the highlighted candidate, so it gets the commit
-        // reply budget and is never replayed once delivered.
-        FanyImeNamedpipeDataToTsf *receivedData = TryReadCommitReplyFromServerPipe(request.requestId);
+        // Paging and highlight moves only need an acknowledgement: wait the
+        // ordinary budget and treat a missing reply as a soft miss, with no
+        // teardown and no queue clear (a late reply is cached by request id).
+        // Every other candidate key may commit the highlighted candidate, so
+        // it gets the commit reply budget and is never resent once delivered.
+        const bool navigationOnly = IsCandidateNavigationOnlyKey(code);
+        FanyImeNamedpipeDataToTsf *receivedData =
+            navigationOnly ? TryReadDataFromServerPipeWithTimeout(request.requestId, /*abortTransportOnTimeout=*/false)
+                           : TryReadCommitReplyFromServerPipe(request.requestId);
         if (receivedData->msg_type == Global::DataFromServerMsgType::TransportUnavailable)
         {
             // A transport failure is not text and must never be committed to
@@ -742,6 +748,13 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
             {
                 pIME->_ResetSessionAfterFailure(DeferredKeyFailureKind::Transport);
             }
+            break;
+        }
+        if (navigationOnly)
+        {
+            // The Server never commits for these keys, so the reply (or the
+            // soft miss standing in for it) carries nothing to apply.
+            pIME->_CompleteDeferredKeyReplay(request.deferredReplayToken);
             break;
         }
 

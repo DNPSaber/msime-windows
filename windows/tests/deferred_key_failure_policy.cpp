@@ -56,5 +56,26 @@ int main()
     if (ClassifyEditSessionFailure(false, false, false) != Reason::HostEditRejected)
         return 16;
 
+    // Paging and highlight moves are acknowledgement-only.
+    const unsigned int navigationKeys[] = {0x09 /*Tab*/, 0x21 /*PageUp*/, 0x22 /*PageDown*/, 0x26 /*Up*/,
+                                           0x28 /*Down*/};
+    for (const unsigned int key : navigationKeys)
+    {
+        if (!IsCandidateNavigationOnlyKey(key))
+            return 17;
+    }
+    // Keys the Server may turn into a commit keep the ambiguous-commit rule:
+    // configurable paging punctuation (, . [ ] - =), Enter (Ctrl+Enter
+    // translation), Space and the selection digits. Composition edit keys are
+    // not candidate keys at all.
+    const unsigned int commitCapableKeys[] = {0xBC /*,*/,    0xBE /*.*/,     0xDB /*[*/,     0xDD /*]*/, 0xBD /*-*/,
+                                              0xBB /*=*/,    0x0D /*Enter*/, 0x20 /*Space*/, '1',        '9',
+                                              0x24 /*Home*/, 0x23 /*End*/,   0x25 /*Left*/,  0x27 /*Right*/};
+    for (const unsigned int key : commitCapableKeys)
+    {
+        if (IsCandidateNavigationOnlyKey(key))
+            return 18;
+    }
+
     return 0;
 }
