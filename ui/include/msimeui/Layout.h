@@ -368,6 +368,9 @@ class Card : public Panel
     void Render(DeviceResources &deviceResources) override;
 
   private:
+    void RenderShadow(ID2D1RenderTarget *target);
+    bool RenderCachedShadow(ID2D1RenderTarget *target, const ShadowPass *passes, size_t count);
+
     Brush brush_;
     float padding_ = 0.0f;
     float shadowScale_ = 1.0f;
@@ -375,6 +378,21 @@ class Card : public Panel
     std::vector<ShadowPass> shadowPasses_;
     bool shadowEnabled_ = true;
     SizeF childSize_ = {};
+
+    // All blur passes composed into one bitmap. Rebuilding the blur inputs and
+    // effects on every frame dominated repaints that do not change the card's
+    // size (selection moves, late candidate enrichment); the bitmap is reused
+    // while the key below matches and belongs to cachedShadowTarget_.
+    Microsoft::WRL::ComPtr<ID2D1RenderTarget> cachedShadowTarget_;
+    Microsoft::WRL::ComPtr<ID2D1Bitmap> cachedShadowBitmap_;
+    SizeF cachedShadowSize_ = {};
+    float cachedShadowRadius_ = 0.0f;
+    float cachedShadowScale_ = 0.0f;
+    float cachedShadowOpacity_ = 0.0f;
+    float cachedShadowDpiX_ = 0.0f;
+    float cachedShadowDpiY_ = 0.0f;
+    float cachedShadowPad_ = 0.0f;
+    std::vector<ShadowPass> cachedShadowPasses_;
 };
 
 class TextBlock : public Visual
@@ -399,6 +417,7 @@ class TextBlock : public Visual
 
   private:
     void InvalidateTextLayoutCache();
+    void InvalidateTextFormatCache();
 
     std::wstring text_;
     float fontSize_ = 16.0f;
@@ -417,6 +436,11 @@ class TextBlock : public Visual
     std::wstring cachedFontFamily_;
     float cachedLayoutWidth_ = -1.0f;
     Microsoft::WRL::ComPtr<IDWriteTextLayout> cachedTextLayout_;
+    // The format (family, size, weight, alignment, fallback) outlives text and
+    // caret changes; building it, and a custom fallback chain in particular,
+    // cost more than the layout itself on every keystroke.
+    std::wstring cachedFormatFamily_;
+    Microsoft::WRL::ComPtr<IDWriteTextFormat> cachedTextFormat_;
 };
 
 class Spacer : public Visual

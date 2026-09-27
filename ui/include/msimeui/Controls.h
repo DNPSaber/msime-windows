@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <vector>
 #include <wrl/client.h>
 
@@ -630,10 +631,20 @@ class CandidateList : public Visual
     size_t HitTestItem(const PointF &point) const;
     float EstimateTextWidth(const std::wstring &text, float fontSize) const;
     RectF ItemRect(size_t index) const;
+    const std::wstring &ResolvedFontFamily() const;
+    // Results of EstimateTextWidth / MeasureTextHeight. A frame measures the
+    // list several times (natural size, sticky size, arrange at the final
+    // width) and each measurement used to build a fresh DirectWrite layout per
+    // string; the metrics depend only on the text, size, width and font, so
+    // they are memoized until the font changes.
+    bool LookupTextMetric(wchar_t kind, const std::wstring &text, float fontSize, float width, float &value) const;
+    void StoreTextMetric(wchar_t kind, const std::wstring &text, float fontSize, float width, float value) const;
 
     std::vector<Item> items_;
     std::vector<ItemLayoutCache> layoutCache_;
     std::vector<ItemGeometry> itemGeometry_;
+    mutable std::unordered_map<std::wstring, float> textMetricCache_;
+    mutable std::wstring textMetricFamily_;
     float layoutWidth_ = 0.0f;
     Appearance appearance_{};
     Orientation orientation_ = Orientation::Vertical;
