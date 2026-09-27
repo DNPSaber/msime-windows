@@ -36,6 +36,9 @@ class CandidatePresenter
     // unset (scale == 0) value makes PlaceAndShow resolve it itself.
     void PlaceAndShow(POINT caret, float widthDip, float heightDip, float cardLeftDip, float cardTopDip,
                       const ResolvedCandidateScale &scale = {});
+    // Hide leaves the host cloaked; clearing it keeps the next uncloak from
+    // briefly showing the previous card.
+    void PresentEmptyFrame();
     void ArmHoverIfPointerMoved();
     void CommitItem(size_t pageIndex);
     void ShowItemContextMenu(size_t pageIndex, POINT clientPoint);

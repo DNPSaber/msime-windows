@@ -1016,11 +1016,13 @@ void CandidatePresenter::PlaceAndShow(POINT caret, float widthDip, float heightD
     // Acceptance trace for the RDP candidate-scale fix: which scale authority
     // won, and the system's own (potentially diverging) DPI values. Coordinates
     // and DPI only — never user input, per the diagnostic logging red lines.
-    CAND_DIAG_LOGF(L"candidate-d2d place source={} scale={:.3f} hwnd_dpi={} system_dpi={} remote={} caret=({},{}) "
-                   L"size_px=({},{})",
-                   scaleSource == CandidateScaleSource::RdpForeground ? L"rdp-foreground" : L"monitor", scale,
-                   GetDpiForWindow(hwnd_), GetDpiForSystem(), GetSystemMetrics(SM_REMOTESESSION) ? 1 : 0, caret.x,
-                   caret.y, widthPx, heightPx);
+    CAND_DIAG_LOGF(
+        L"candidate-d2d place source={} scale={:.3f} hwnd_dpi={} system_dpi={} remote={} caret=({},{}) "
+        L"size_px=({},{}) host=({},{}) first=({},{}) on_screen={} card_px=({},{} {}w) monitor=({},{})-({},{})",
+        scaleSource == CandidateScaleSource::RdpForeground ? L"rdp-foreground" : L"monitor", scale,
+        GetDpiForWindow(hwnd_), GetDpiForSystem(), GetSystemMetrics(SM_REMOTESESSION) ? 1 : 0, caret.x, caret.y,
+        widthPx, heightPx, x, y, firstX, firstY, onScreen, x + cardLeftPx, y + cardTopPx, cardWidthPx, monitor.left,
+        monitor.top, monitor.right, monitor.bottom);
 }
 
 void CandidatePresenter::ShowFromGlobalState()
@@ -1158,6 +1160,13 @@ void CandidatePresenter::Hide()
     {
         impl_->list->SetHoverEnabled(false);
     }
+    // Cloaking keeps the swap chain's last frame. The next show presents and
+    // then uncloaks, but DWM may compose the uncloaked host before it latches
+    // that present: one frame of the previous card at the new origin. After a
+    // wide card, a narrower one clamped to the right screen edge sits further
+    // right, so the stale card spilled onto the next monitor. Leave nothing
+    // behind to show.
+    PresentEmptyFrame();
     SetCandidateHostCloaked(true);
     lastHostWidthPx_ = 0;
     lastHostHeightPx_ = 0;
@@ -1207,6 +1216,27 @@ void CandidatePresenter::Present()
     }
     const HRESULT hr = target->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET)
+    {
+        impl_->resources.DiscardTarget();
+        return;
+    }
+    impl_->resources.Present();
+}
+
+void CandidatePresenter::PresentEmptyFrame()
+{
+    if (!bound_ || !impl_)
+    {
+        return;
+    }
+    ID2D1RenderTarget *target = impl_->resources.GetRenderTarget();
+    if (!target)
+    {
+        return;
+    }
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(0, 0.0f));
+    if (target->EndDraw() == D2DERR_RECREATE_TARGET)
     {
         impl_->resources.DiscardTarget();
         return;
