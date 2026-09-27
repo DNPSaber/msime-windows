@@ -2492,7 +2492,16 @@ LRESULT CALLBACK WndProcCandWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
         {
             CAND_DIAG_LOGF(L"show folded into in-flight fine-tune caret=({},{})", Global::Point[0], Global::Point[1]);
             CAND_DIAG_LOGF(L"candidate-frame path=folded-inflight content_gen={}", contentGeneration);
-            InflateCandWnd(str);
+            // The in-flight FineTune echoes only the page it captured, which may predate this one. Without
+            // an echo here a digit/space selection right after a fast burst waits out the full render-sync
+            // timeout, felt as a stall on commit.
+            InflateCandWnd(str, [contentGeneration, pageGeneration = candidatePage->generation]() {
+                if (!::is_global_wnd_cand_shown || contentGeneration != g_candidate_content_generation.load())
+                {
+                    return;
+                }
+                Global::PublishRenderedCandidatePageGeneration(pageGeneration);
+            });
             KillTimer(hwnd, TIMER_ID_CANDIDATE_MOVE_SETTLE);
             SetTimer(hwnd, TIMER_ID_CANDIDATE_MOVE_SETTLE, kCandidateMoveSettleMs, nullptr);
             return 0;

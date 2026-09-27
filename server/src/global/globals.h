@@ -12,6 +12,7 @@
 #include <vector>
 #include <windows.h>
 #include "engine/core/word_item.h"
+#include "ipc/candidate_render_sync.h"
 #include "window/candidate_view_model.h"
 
 namespace GlobalIme
@@ -256,7 +257,10 @@ inline void PublishRenderedCandidatePageGeneration(std::uint64_t generation)
 {
     {
         std::lock_guard lock(candidate_render_mutex);
-        rendered_candidate_page_generation.store(generation, std::memory_order_release);
+        rendered_candidate_page_generation.store(
+            FanyImeIpc::AdvanceRenderedCandidateGeneration(
+                rendered_candidate_page_generation.load(std::memory_order_relaxed), generation),
+            std::memory_order_release);
     }
     candidate_render_cv.notify_all();
 }
