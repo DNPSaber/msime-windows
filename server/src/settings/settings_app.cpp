@@ -86,7 +86,7 @@ bool g_lingering = false;
 bool g_reload_pending = false;
 bool g_settings_light = false;
 // appearance.settings_window_linger 的 UI 线程副本，由 ConfigCompletion 更新。
-std::string g_settings_window_linger = "10m";
+std::string g_settings_window_linger = "off";
 std::wstring g_last_config_message;
 bool g_worker_com_initialized = false; // worker-only
 void CloseSettings(HWND hwnd);
