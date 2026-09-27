@@ -100,11 +100,11 @@ bool g_english_candidates_enabled = false;
 bool g_candidate_translations_enabled = true;
 int g_english_mixed_input_min_chars = kEnglishMixedInputMinCharsDefault;
 bool g_cloud_candidates_enabled = true;
-// 整句候选来源与去重补位开关，默认全关。
-bool g_assoc_sentence_wordlattice = false;
-bool g_assoc_sentence_google = false;
+// 整句候选来源与去重补位开关：词格、Google 和神经速度档默认开，神经效果档与去重补位默认关。
+bool g_assoc_sentence_wordlattice = true;
+bool g_assoc_sentence_google = true;
 bool g_assoc_sentence_neural_desktop = false;
-bool g_assoc_sentence_neural_keyboard = false;
+bool g_assoc_sentence_neural_keyboard = true;
 bool g_assoc_sentence_show_next_on_duplicate = false;
 bool g_emoji_mixed_input_enabled = false;
 bool g_kaomoji_mixed_input_enabled = false;
@@ -449,10 +449,10 @@ bool LoadImeConfig()
                     : kEnglishMixedInputMinCharsDefault;
         }
         g_cloud_candidates_enabled = tbl["general"]["cloud_candidates"].value_or(true);
-        g_assoc_sentence_wordlattice = tbl["association"]["sentence_wordlattice"].value_or(false);
-        g_assoc_sentence_google = tbl["association"]["sentence_google"].value_or(false);
+        g_assoc_sentence_wordlattice = tbl["association"]["sentence_wordlattice"].value_or(true);
+        g_assoc_sentence_google = tbl["association"]["sentence_google"].value_or(true);
         g_assoc_sentence_neural_desktop = tbl["association"]["sentence_neural_desktop"].value_or(false);
-        g_assoc_sentence_neural_keyboard = tbl["association"]["sentence_neural_keyboard"].value_or(false);
+        g_assoc_sentence_neural_keyboard = tbl["association"]["sentence_neural_keyboard"].value_or(true);
         g_assoc_sentence_show_next_on_duplicate = tbl["association"]["sentence_show_next_on_duplicate"].value_or(false);
         g_emoji_mixed_input_enabled = tbl["general"]["emoji_mixed_input"].value_or(false);
         g_kaomoji_mixed_input_enabled = tbl["general"]["kaomoji_mixed_input"].value_or(false);

@@ -61,19 +61,20 @@ cloud_candidates = true
 clean_mode = false
 
 #
-# 整句联想：多音节输入时把整串拼音解码成一句，四个来源各一个开关，另有去重补位开关，默认全关，
-# 打开后才会在候选里出现对应整句。词格/Google 是传统 ngram 来源；神经两档是
+# 整句联想：多音节输入时把整串拼音解码成一句，四个来源各一个开关，另有去重补位开关。
+# 默认开启词格、Google 和神经速度档，神经效果档与去重补位默认关闭。
+# 词格/Google 是传统 ngram 来源；神经两档是
 # chinese-ime-lm 的 Transformer，还需模型文件在数据目录里，desktop 更准也更慢。
 #
 [association]
 # 词格整句联想（kenlm 三元模型打分）
-sentence_wordlattice = false
+sentence_wordlattice = true
 # Google 解码器整句联想
-sentence_google = false
+sentence_google = true
 # 神经网络模型整句（效果优先 / desktop）：内部生成最多 12 条 Trigram 备选并挑选，不依赖 sentence_wordlattice 开关
 sentence_neural_desktop = false
 # 神经网络模型整句（速度优先 / keyboard）：同上；与 desktop 同时开启时各自独立给出结果
-sentence_neural_keyboard = false
+sentence_neural_keyboard = true
 # 某个模型的首选与已有候选重复时，改为显示该模型排名最高的下一条不同结果
 sentence_show_next_on_duplicate = false
 
