@@ -779,6 +779,15 @@ class CMetasequoiaIME : public ITfTextInputProcessorEx,
     std::atomic<HANDLE> _hToTsfWorkerThreadPipe;
     std::atomic<UINT> _workerPipeGeneration;
     HANDLE _ipcStopEvent;
+    // Auto-reset wake-ups that replace polling (see BindNamedpipeWakeEvents): the
+    // worker signals _workerAckEvent after recording the focus acknowledgement,
+    // and the UI thread signals _workerPipePublishedEvent when it publishes a
+    // worker pipe. Created before the IPC thread starts, closed after it joins.
+    HANDLE _workerAckEvent;
+    HANDLE _workerPipePublishedEvent;
+    // Closes both wake-up events. Only after the IPC thread has joined and the
+    // TLS bindings no longer point at them.
+    void _CloseIpcWakeEvents();
     std::atomic<bool> _shouldStopIpcThread;
     UINT _ipcReconnectDelayMs;
     UINT _ipcConsecutiveFailures;

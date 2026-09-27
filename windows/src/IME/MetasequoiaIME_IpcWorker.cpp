@@ -281,7 +281,12 @@ void CMetasequoiaIME::IpcWorkerThread(CMetasequoiaIME *pIME)
         const UINT workerGeneration = pIME->_workerPipeGeneration.load(std::memory_order_acquire);
         if (!workerPipe || workerPipe == INVALID_HANDLE_VALUE)
         {
-            if (pIME->_ipcStopEvent && WaitForSingleObject(pIME->_ipcStopEvent, 50) == WAIT_OBJECT_0)
+            // Wake as soon as the UI thread publishes a pipe instead of on the
+            // next 50 ms tick; the timeout stays as a fallback. Stop is index 0
+            // so it wins when both are signalled.
+            HANDLE waitHandles[] = {pIME->_ipcStopEvent, pIME->_workerPipePublishedEvent};
+            const DWORD waitCount = pIME->_workerPipePublishedEvent ? 2 : 1;
+            if (pIME->_ipcStopEvent && WaitForMultipleObjects(waitCount, waitHandles, FALSE, 50) == WAIT_OBJECT_0)
             {
                 return;
             }
@@ -515,6 +520,11 @@ void CMetasequoiaIME::IpcWorkerThread(CMetasequoiaIME *pIME)
             {
                 pIME->_acknowledgedWorkerFocusToken.store(focusToken, std::memory_order_release);
                 pIME->_workerCommitReady.store(true, std::memory_order_release);
+                // Wake the UI thread waiting in EnsureNamedpipeFocusSessionActivated.
+                if (pIME->_workerAckEvent)
+                {
+                    SetEvent(pIME->_workerAckEvent);
+                }
             }
         }
         else if (buf.msg_type == Global::DataToTsfWorkerThreadMsgType::CommitCurCandidate)
