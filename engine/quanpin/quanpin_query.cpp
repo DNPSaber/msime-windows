@@ -398,6 +398,8 @@ class SqliteDb
             }
             throw std::runtime_error(message);
         }
+        // See QuanpinDictionary's constructor: a query must wait out a commit, not fail.
+        sqlite3_busy_timeout(db_, kDictionaryBusyTimeoutMs);
     }
 
     ~SqliteDb()
