@@ -33,15 +33,18 @@ const setupLoaders: Record<string, () => Promise<void>> = {
   },
   skin: async () => {
     await (await import('./skin')).setupSkin();
+    (await import('./theme')).reapplyThemeConfig();
   },
   voice: async () => {
     (await import('./voice')).setupVoiceInput();
   },
   'screenkb-settings': async () => {
     (await import('./screenkb-settings')).setupScreenKeyboardSettings();
+    (await import('./theme')).reapplyThemeConfig();
   },
   'handwriting-settings': async () => {
     (await import('./handwriting-settings')).setupHandwritingSettings();
+    (await import('./theme')).reapplyThemeConfig();
   },
   'tools-settings': async () => {
     (await import('./tools-settings')).setupToolsSettings();
