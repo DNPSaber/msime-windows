@@ -54,6 +54,8 @@ class CandidatePresenter
     bool bound_ = false;
     bool hoverArmed_ = false;
     bool ignoreSelectionCallback_ = false;
+    // Set while PlaceAndShow resizes the host; it presents right afterwards.
+    bool placingHost_ = false;
     POINT hoverBaseline_{};
     float decorationTopDip_ = 0.0f;
     float decorationWidthDip_ = 0.0f;
