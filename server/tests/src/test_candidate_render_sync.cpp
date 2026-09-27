@@ -22,6 +22,23 @@ TEST_CASE(candidate_render_sync_waits_only_when_a_painted_page_lags_the_publishe
     REQUIRE(!ShouldWaitForCandidateRender(8, 7, false, true));
 }
 
+TEST_CASE(candidate_render_echo_never_moves_backwards)
+{
+    using FanyImeIpc::AdvanceRenderedCandidateGeneration;
+    using FanyImeIpc::ShouldWaitForCandidateRender;
+
+    // WebView2: a dedup echoes 332 synchronously, then the content-only DOM callback for the same
+    // content lands and echoes 331. The stale echo must not pull rendered back behind published.
+    std::uint64_t rendered = 330;
+    rendered = AdvanceRenderedCandidateGeneration(rendered, 332);
+    rendered = AdvanceRenderedCandidateGeneration(rendered, 331);
+    REQUIRE_EQ(rendered, 332u);
+    REQUIRE(!ShouldWaitForCandidateRender(rendered, 332, false, true));
+
+    // A newer echo still advances.
+    REQUIRE_EQ(AdvanceRenderedCandidateGeneration(332, 333), 333u);
+}
+
 TEST_CASE(candidate_render_sync_wait_is_bounded_to_a_visible_stall)
 {
     // The bound is a UX contract and a transport constraint: a wedged UI thread may delay a

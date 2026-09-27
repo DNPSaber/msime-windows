@@ -36,4 +36,13 @@ constexpr bool ShouldWaitForCandidateRender(std::uint64_t rendered, std::uint64_
     }
     return rendered < current;
 }
+
+// The render echo only moves forward. WebView2 echoes from async DOM callbacks, so a content-only
+// update's callback can land after a dedup of the same content already echoed the newer generation;
+// storing the older one left rendered one behind published and every selection waited out the full
+// bound.
+constexpr std::uint64_t AdvanceRenderedCandidateGeneration(std::uint64_t rendered, std::uint64_t echoed) noexcept
+{
+    return echoed > rendered ? echoed : rendered;
+}
 } // namespace FanyImeIpc
