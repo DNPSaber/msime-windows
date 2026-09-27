@@ -49,7 +49,7 @@ void ClearState();
 void RegisterStatusSnapshotWindow(HWND toolbar_window);
 void EnqueueCloudCandidate(const std::string &candidate, const std::string &pinyin, uint64_t generation);
 void EnqueueAiCandidate(const std::string &candidate, const std::string &identity, uint64_t generation);
-// 神经整句重排的后台线程算完一批后调这个；见 event_listener.cpp 的 ApplyRescoredOrder。
+// 神经整句重排的后台线程算完一批后调这个；见 event_listener_async_candidates.cpp 的 ApplyRescoredOrder。
 void EnqueueRescoredCandidates();
 void CancelCloudCandidateRequest();
 void EnqueueEnglishCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation);
