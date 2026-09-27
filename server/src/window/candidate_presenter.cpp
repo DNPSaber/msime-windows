@@ -26,6 +26,7 @@
 #include "engine/core/word_item.h"
 
 #include <d2d1.h>
+#include <dwmapi.h>
 #include <windowsx.h>
 
 #include <algorithm>
@@ -155,6 +156,16 @@ constexpr float kShadowPadRight = 32.0f;
 constexpr float kShadowPadBottom = 40.0f;
 constexpr float kCandidateMinWidthDip = 160.0f;
 constexpr float kDecorationCardOverlap = 5.0f;
+// Below this fraction of the kept extent, the page really got smaller (fewer or
+// shorter candidates) and the card follows it; above it, the difference is a
+// late addition coming or going and the card keeps its size. Mirrors
+// kStickyShrinkRatio in the WebView2 candidate script.
+constexpr float kStickyCardShrinkRatio = 0.7f;
+
+float StickyCardExtent(float kept, float natural)
+{
+    return natural >= kept || natural < kept * kStickyCardShrinkRatio ? natural : kept;
+}
 
 } // namespace
 
@@ -972,25 +983,52 @@ void CandidatePresenter::PlaceAndShow(POINT caret, float widthDip, float heightD
     {
         y = monitor.top + 2 - cardTopPx;
     }
-    SetWindowPos(hwnd_, HWND_TOPMOST, x, y, widthPx, heightPx, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    // Rendering must use the same scale the window was just sized with: the ui
+    // Rendering must use the same scale the window is sized with: the ui
     // override replaces GetDpiForWindow (144 inside RDP) so DIPs map exactly
     // onto the pixels computed above. Must land before EnsureForComposition —
-    // a freshly created target reads it through DpiForHwnd().
+    // a freshly created target reads it through DpiForHwnd() — and before the
+    // resize below, whose WM_SIZE already presents.
     const FLOAT dpiOverride = scale * 96.0f;
     impl_->window->SetDpiOverride(dpiOverride);
     impl_->resources.SetDpiOverride(dpiOverride);
+    // The card is clamped to the work area, but the host around it carries the
+    // shadow padding and the 64px bucket slack, so near the right or bottom edge
+    // it reached onto the neighbouring monitor. DWM applies a window move and a
+    // swap-chain present independently and in no guaranteed order, so a frame
+    // can pair either card with either host origin; whatever it put past the
+    // card then flashed on the next screen. Cut the host at the work-area edge:
+    // nothing can be drawn outside the caret's monitor, whatever DWM pairs up.
+    // The card still fits (it was clamped above); only its shadow is trimmed.
+    const int hostWidthPx = (std::max)(1, (std::min)(widthPx, monitor.right - x));
+    const int hostHeightPx = (std::max)(1, (std::min)(heightPx, monitor.bottom - y));
+    // Submission order still decides which stale pairing is likelier. Moving a
+    // host left/up before the present, and right/down after it, keeps the
+    // stale frame on the side of the card that is already on screen.
+    RECT current{};
+    DWORD cloaked = 0;
+    const bool onScreen =
+        IsWindowVisible(hwnd_) && GetWindowRect(hwnd_, &current) && current.top != Global::INVALID_Y &&
+        SUCCEEDED(DwmGetWindowAttribute(hwnd_, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) && cloaked == 0;
+    const int firstX = onScreen && x > current.left ? current.left : x;
+    const int firstY = onScreen && y > current.top ? current.top : y;
+    SetWindowPos(hwnd_, HWND_TOPMOST, firstX, firstY, hostWidthPx, hostHeightPx, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     impl_->resources.EnsureForComposition(hwnd_);
     Present();
+    if (firstX != x || firstY != y)
+    {
+        SetWindowPos(hwnd_, nullptr, x, y, 0, 0, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
+    }
     SetCandidateHostCloaked(false);
     // Acceptance trace for the RDP candidate-scale fix: which scale authority
     // won, and the system's own (potentially diverging) DPI values. Coordinates
     // and DPI only — never user input, per the diagnostic logging red lines.
-    CAND_DIAG_LOGF(L"candidate-d2d place source={} scale={:.3f} hwnd_dpi={} system_dpi={} remote={} caret=({},{}) "
-                   L"size_px=({},{})",
-                   scaleSource == CandidateScaleSource::RdpForeground ? L"rdp-foreground" : L"monitor", scale,
-                   GetDpiForWindow(hwnd_), GetDpiForSystem(), GetSystemMetrics(SM_REMOTESESSION) ? 1 : 0, caret.x,
-                   caret.y, widthPx, heightPx);
+    CAND_DIAG_LOGF(
+        L"candidate-d2d place source={} scale={:.3f} hwnd_dpi={} system_dpi={} remote={} caret=({},{}) "
+        L"size_px=({},{}) host=({},{}) first=({},{}) on_screen={} card_px=({},{} {}w) monitor=({},{})-({},{})",
+        scaleSource == CandidateScaleSource::RdpForeground ? L"rdp-foreground" : L"monitor", scale,
+        GetDpiForWindow(hwnd_), GetDpiForSystem(), GetSystemMetrics(SM_REMOTESESSION) ? 1 : 0, caret.x, caret.y,
+        hostWidthPx, hostHeightPx, x, y, firstX, firstY, onScreen, x + cardLeftPx, y + cardTopPx, cardWidthPx,
+        monitor.left, monitor.top, monitor.right, monitor.bottom);
 }
 
 void CandidatePresenter::ShowFromGlobalState()
@@ -1056,12 +1094,41 @@ void CandidatePresenter::ShowFromGlobalState(POINT caret)
     const HalfScreenDipLimits limits = ApplyScaleToHalfScreenLimits(caret, scale.scale);
     const float maxW = limits.maxWidthDip > 1.0 ? static_cast<float>(limits.maxWidthDip) : 480.0f;
     const float maxH = limits.maxHeightDip > 1.0 ? static_cast<float>(limits.maxHeightDip) : 640.0f;
-    impl_->root->InvalidateMeasure();
-    const msimeui::SizeF measured = impl_->root->MeasureInLayout({maxW, maxH});
-    float widthDip = (std::max)(measured.width, kCandidateMinWidthDip + kShadowPadLeft + kShadowPadRight);
-    float heightDip = (std::max)(measured.height, 36.0f);
-    impl_->root->InvalidateArrange();
-    impl_->root->ArrangeInLayout({0.0f, 0.0f, widthDip, heightDip});
+    float widthDip = 0.0f;
+    float heightDip = 0.0f;
+    auto layoutRoot = [&]() {
+        impl_->root->InvalidateMeasure();
+        const msimeui::SizeF measured = impl_->root->MeasureInLayout({maxW, maxH});
+        widthDip = (std::max)(measured.width, kCandidateMinWidthDip + kShadowPadLeft + kShadowPadRight);
+        heightDip = (std::max)(measured.height, 36.0f);
+        impl_->root->InvalidateArrange();
+        impl_->root->ArrangeInLayout({0.0f, 0.0f, widthDip, heightDip});
+    };
+    // Late additions to the page (translations, cloud/AI/English merges) change
+    // the card's size between two frames of the same composition, and the eye
+    // reads that as flicker even though every frame is complete. Within one
+    // composition the card therefore only grows; it shrinks back only when the
+    // natural size falls well below the kept one (a page that really got
+    // smaller). Hide() starts the next composition from the natural size.
+    if (impl_->card)
+    {
+        impl_->card->SetMinWidth(kCandidateMinWidthDip);
+        impl_->card->ClearMinHeight();
+    }
+    layoutRoot();
+    if (impl_->card)
+    {
+        const msimeui::RectF natural = impl_->card->GetBounds();
+        const float maxCardWidthDip = (std::max)(kCandidateMinWidthDip, maxW - kShadowPadLeft - kShadowPadRight);
+        stickyCardWidthDip_ = (std::min)(StickyCardExtent(stickyCardWidthDip_, natural.width), maxCardWidthDip);
+        stickyCardHeightDip_ = StickyCardExtent(stickyCardHeightDip_, natural.height);
+        if (stickyCardWidthDip_ > natural.width + 0.5f || stickyCardHeightDip_ > natural.height + 0.5f)
+        {
+            impl_->card->SetMinWidth((std::max)(kCandidateMinWidthDip, stickyCardWidthDip_));
+            impl_->card->SetMinHeight(stickyCardHeightDip_);
+            layoutRoot();
+        }
+    }
     hoverArmed_ = false;
     if (!GetCursorPos(&hoverBaseline_))
     {
@@ -1099,9 +1166,18 @@ void CandidatePresenter::Hide()
     {
         impl_->list->SetHoverEnabled(false);
     }
+    // Cloaking keeps the swap chain's last frame. The next show presents and
+    // then uncloaks, but DWM may compose the uncloaked host before it latches
+    // that present: one frame of the previous card at the new origin. After a
+    // wide card, a narrower one clamped to the right screen edge sits further
+    // right, so the stale card spilled onto the next monitor. Leave nothing
+    // behind to show.
+    PresentEmptyFrame();
     SetCandidateHostCloaked(true);
     lastHostWidthPx_ = 0;
     lastHostHeightPx_ = 0;
+    stickyCardWidthDip_ = 0.0f;
+    stickyCardHeightDip_ = 0.0f;
     SetWindowPos(hwnd_, nullptr, 0, Global::INVALID_Y, 0, 0,
                  SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
 }
@@ -1146,6 +1222,27 @@ void CandidatePresenter::Present()
     }
     const HRESULT hr = target->EndDraw();
     if (hr == D2DERR_RECREATE_TARGET)
+    {
+        impl_->resources.DiscardTarget();
+        return;
+    }
+    impl_->resources.Present();
+}
+
+void CandidatePresenter::PresentEmptyFrame()
+{
+    if (!bound_ || !impl_)
+    {
+        return;
+    }
+    ID2D1RenderTarget *target = impl_->resources.GetRenderTarget();
+    if (!target)
+    {
+        return;
+    }
+    target->BeginDraw();
+    target->Clear(D2D1::ColorF(0, 0.0f));
+    if (target->EndDraw() == D2DERR_RECREATE_TARGET)
     {
         impl_->resources.DiscardTarget();
         return;
