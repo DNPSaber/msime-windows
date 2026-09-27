@@ -156,6 +156,16 @@ constexpr float kShadowPadRight = 32.0f;
 constexpr float kShadowPadBottom = 40.0f;
 constexpr float kCandidateMinWidthDip = 160.0f;
 constexpr float kDecorationCardOverlap = 5.0f;
+// Below this fraction of the kept extent, the page really got smaller (fewer or
+// shorter candidates) and the card follows it; above it, the difference is a
+// late addition coming or going and the card keeps its size. Mirrors
+// kStickyShrinkRatio in the WebView2 candidate script.
+constexpr float kStickyCardShrinkRatio = 0.7f;
+
+float StickyCardExtent(float kept, float natural)
+{
+    return natural >= kept || natural < kept * kStickyCardShrinkRatio ? natural : kept;
+}
 
 } // namespace
 
@@ -1076,12 +1086,41 @@ void CandidatePresenter::ShowFromGlobalState(POINT caret)
     const HalfScreenDipLimits limits = ApplyScaleToHalfScreenLimits(caret, scale.scale);
     const float maxW = limits.maxWidthDip > 1.0 ? static_cast<float>(limits.maxWidthDip) : 480.0f;
     const float maxH = limits.maxHeightDip > 1.0 ? static_cast<float>(limits.maxHeightDip) : 640.0f;
-    impl_->root->InvalidateMeasure();
-    const msimeui::SizeF measured = impl_->root->MeasureInLayout({maxW, maxH});
-    float widthDip = (std::max)(measured.width, kCandidateMinWidthDip + kShadowPadLeft + kShadowPadRight);
-    float heightDip = (std::max)(measured.height, 36.0f);
-    impl_->root->InvalidateArrange();
-    impl_->root->ArrangeInLayout({0.0f, 0.0f, widthDip, heightDip});
+    float widthDip = 0.0f;
+    float heightDip = 0.0f;
+    auto layoutRoot = [&]() {
+        impl_->root->InvalidateMeasure();
+        const msimeui::SizeF measured = impl_->root->MeasureInLayout({maxW, maxH});
+        widthDip = (std::max)(measured.width, kCandidateMinWidthDip + kShadowPadLeft + kShadowPadRight);
+        heightDip = (std::max)(measured.height, 36.0f);
+        impl_->root->InvalidateArrange();
+        impl_->root->ArrangeInLayout({0.0f, 0.0f, widthDip, heightDip});
+    };
+    // Late additions to the page (translations, cloud/AI/English merges) change
+    // the card's size between two frames of the same composition, and the eye
+    // reads that as flicker even though every frame is complete. Within one
+    // composition the card therefore only grows; it shrinks back only when the
+    // natural size falls well below the kept one (a page that really got
+    // smaller). Hide() starts the next composition from the natural size.
+    if (impl_->card)
+    {
+        impl_->card->SetMinWidth(kCandidateMinWidthDip);
+        impl_->card->ClearMinHeight();
+    }
+    layoutRoot();
+    if (impl_->card)
+    {
+        const msimeui::RectF natural = impl_->card->GetBounds();
+        const float maxCardWidthDip = (std::max)(kCandidateMinWidthDip, maxW - kShadowPadLeft - kShadowPadRight);
+        stickyCardWidthDip_ = (std::min)(StickyCardExtent(stickyCardWidthDip_, natural.width), maxCardWidthDip);
+        stickyCardHeightDip_ = StickyCardExtent(stickyCardHeightDip_, natural.height);
+        if (stickyCardWidthDip_ > natural.width + 0.5f || stickyCardHeightDip_ > natural.height + 0.5f)
+        {
+            impl_->card->SetMinWidth((std::max)(kCandidateMinWidthDip, stickyCardWidthDip_));
+            impl_->card->SetMinHeight(stickyCardHeightDip_);
+            layoutRoot();
+        }
+    }
     hoverArmed_ = false;
     if (!GetCursorPos(&hoverBaseline_))
     {
@@ -1122,6 +1161,8 @@ void CandidatePresenter::Hide()
     SetCandidateHostCloaked(true);
     lastHostWidthPx_ = 0;
     lastHostHeightPx_ = 0;
+    stickyCardWidthDip_ = 0.0f;
+    stickyCardHeightDip_ = 0.0f;
     SetWindowPos(hwnd_, nullptr, 0, Global::INVALID_Y, 0, 0,
                  SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
 }

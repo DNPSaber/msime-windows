@@ -1825,6 +1825,43 @@ html:not(.msime-hover-armed) #realContainer.hover-active .cand:not(.first):hover
 })();
 )";
 
+// Late additions to the page (translations, cloud/AI/English merges) resize the
+// card between two frames of one composition, which reads as flicker even
+// though each frame is complete. Within a composition the card only grows, and
+// shrinks back only when its natural size drops below kStickyShrinkRatio of the
+// kept one (the page really got smaller). Runs in the same task as the content
+// update, so the frame is laid out once with the final size; the native region
+// measures the same box and follows. An empty update (hide) ends the
+// composition. Mirrors kStickyCardShrinkRatio in the D2D candidate presenter.
+constexpr wchar_t kStickyCandidateCardScript[] = LR"(
+window.MsimeStickyCandidateCard = function (reset) {
+  const kStickyShrinkRatio = 0.7;
+  const box = document.getElementById('realContainer');
+  if (!box) return;
+  const measure = document.getElementById('measureContainer');
+  const boxes = measure ? [box, measure] : [box];
+  boxes.forEach(function (b) { b.style.minWidth = ''; b.style.minHeight = ''; });
+  if (reset) { window.__msimeStickyCard = null; return; }
+  box.style.boxSizing = 'border-box';
+  const rect = box.getBoundingClientRect();
+  const kept = window.__msimeStickyCard || {width: 0, height: 0};
+  const follow = function (keptValue, natural) {
+    return natural >= keptValue || natural < keptValue * kStickyShrinkRatio ? natural : keptValue;
+  };
+  let width = follow(kept.width, rect.width);
+  const maxWidth = Number.parseFloat(box.style.maxWidth);
+  if (maxWidth > 0) width = Math.min(width, maxWidth);
+  const height = follow(kept.height, rect.height);
+  window.__msimeStickyCard = {width: width, height: height};
+  if (width > rect.width + 0.5 || height > rect.height + 0.5) {
+    boxes.forEach(function (b) {
+      b.style.minWidth = width + 'px';
+      b.style.minHeight = height + 'px';
+    });
+  }
+};
+)";
+
 VOID CALLBACK CandidateHoverArmTimerProc(HWND, UINT, UINT_PTR, DWORD)
 {
     MaybeArmCandidatePointerHover();
@@ -2163,6 +2200,9 @@ void UpdateHtmlContentWithJavaScript(ComPtr<ICoreWebView2> webview, const std::w
     script.append(GetConfiguredCandidateWindowPreeditStyle() == "empty" ? L"false" : L"true");
     script.append(L"); }\n");
     script.append(L"if (window.SetPreeditCaret) { window.SetPreeditCaret(); }\n");
+    script.append(kStickyCandidateCardScript);
+    script.append(newContent.empty() ? L"window.MsimeStickyCandidateCard(true);\n"
+                                     : L"window.MsimeStickyCandidateCard(false);\n");
     script.append(L"if (window.CheckContentTruncation) { window.CheckContentTruncation(); }\n");
     if (diagnosticsEnabled)
     {
