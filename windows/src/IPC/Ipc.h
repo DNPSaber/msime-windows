@@ -25,6 +25,14 @@ void BindNamedpipeFocusState(
     _In_opt_ std::atomic<UINT> *localSessionResetToken, _In_opt_ std::atomic<bool> *workerCommitReady,
     _In_opt_ std::atomic<uint64_t> *acknowledgedWorkerFocusToken, _In_opt_ std::atomic<HANDLE> *workerPipeHandle,
     _In_opt_ std::atomic<UINT> *workerPipeGeneration);
+// Wake-up events owned by the bound service, so the UI thread and the IPC worker
+// thread block instead of polling. workerAckEvent is signalled by the worker when
+// it records the expected focus token; workerPipePublishedEvent is signalled when
+// a worker pipe handle is published. Either may be null, which falls back to the
+// original polling. Only the current owner may bind; UnbindNamedpipeFocusState
+// clears them, and the owner must rebind null before closing the handles.
+void BindNamedpipeWakeEvents(_In_ const void *owner, _In_opt_ HANDLE workerAckEvent,
+                             _In_opt_ HANDLE workerPipePublishedEvent);
 void UnbindNamedpipeFocusState(_In_ const void *owner);
 bool IsNamedpipeFocusStateOwner(_In_ const void *owner);
 UINT BeginNamedpipeLocalSessionReset();

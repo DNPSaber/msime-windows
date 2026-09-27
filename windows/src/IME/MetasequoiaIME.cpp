@@ -263,6 +263,8 @@ CMetasequoiaIME::CMetasequoiaIME()
     _hToTsfWorkerThreadPipe.store(nullptr);
     _workerPipeGeneration.store(0);
     _ipcStopEvent = nullptr;
+    _workerAckEvent = nullptr;
+    _workerPipePublishedEvent = nullptr;
     _shouldStopIpcThread = false;
     _ipcReconnectDelayMs = CONNECT_NAMEDPIPE_RETRY_INTERVAL_MS;
     _ipcConsecutiveFailures = 0;
@@ -369,6 +371,8 @@ CMetasequoiaIME::~CMetasequoiaIME()
         CloseHandle(_ipcStopEvent);
         _ipcStopEvent = nullptr;
     }
+    // The owner-aware unbind above already cleared the TLS copies.
+    _CloseIpcWakeEvents();
 }
 
 uint64_t CMetasequoiaIME::_CaptureFocusSessionToken() const
@@ -796,6 +800,10 @@ STDAPI CMetasequoiaIME::ActivateEx(ITfThreadMgr *pThreadMgr, TfClientId tfClient
     {
         goto ExitError;
     }
+    // Optional: if either fails the waits fall back to the original polling.
+    _workerAckEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    _workerPipePublishedEvent = CreateEventW(nullptr, FALSE, FALSE, nullptr);
+    BindNamedpipeWakeEvents(this, _workerAckEvent, _workerPipePublishedEvent);
     _shouldStopIpcThread.store(false);
     _pIpcThread = new std::thread(IpcWorkerThread, this);
 
@@ -927,6 +935,11 @@ STDAPI CMetasequoiaIME::Deactivate()
         CloseHandle(_ipcStopEvent);
         _ipcStopEvent = nullptr;
     }
+    // _EndComposition below can still reach the focus-activation wait on this
+    // thread; unbind first so it falls back to polling instead of waiting on a
+    // closed (or recycled) handle.
+    BindNamedpipeWakeEvents(this, nullptr, nullptr);
+    _CloseIpcWakeEvents();
     // Stop callbacks from the previously focused top context before tearing
     // down the engine and thread manager. Context stack changes can otherwise
     // re-enter a half-deactivated service.
@@ -1026,6 +1039,20 @@ STDAPI CMetasequoiaIME::Deactivate()
     _focusLossDeferPending = false;
 
     return S_OK;
+}
+
+void CMetasequoiaIME::_CloseIpcWakeEvents()
+{
+    if (_workerAckEvent)
+    {
+        CloseHandle(_workerAckEvent);
+        _workerAckEvent = nullptr;
+    }
+    if (_workerPipePublishedEvent)
+    {
+        CloseHandle(_workerPipePublishedEvent);
+        _workerPipePublishedEvent = nullptr;
+    }
 }
 
 //+---------------------------------------------------------------------------

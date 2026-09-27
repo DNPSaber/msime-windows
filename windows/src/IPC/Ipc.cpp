@@ -45,6 +45,8 @@ static thread_local std::atomic<bool> *boundWorkerCommitReady = nullptr;
 static thread_local std::atomic<uint64_t> *boundAcknowledgedWorkerFocusToken = nullptr;
 static thread_local std::atomic<HANDLE> *boundWorkerPipeHandle = nullptr;
 static thread_local std::atomic<UINT> *boundWorkerPipeGeneration = nullptr;
+static thread_local HANDLE boundWorkerAckEvent = nullptr;
+static thread_local HANDLE boundWorkerPipePublishedEvent = nullptr;
 
 /* Data size transfered from Server process */
 static const int ServerDtPipeDataSize = 512;
@@ -243,6 +245,13 @@ void PublishWorkerPipeHandleIfChanged(HANDLE workerPipe)
         boundWorkerPipeGeneration->store(NextAtomicNonzeroToken(nextWorkerPipeGeneration), std::memory_order_release);
     }
     boundWorkerPipeHandle->store(workerPipe, std::memory_order_release);
+    // The IPC worker thread sleeps while it has no pipe; without this it only
+    // noticed the new handle on its next 50 ms timeout, and the FocusSessionReady
+    // echo the first key waits for sat unread in the pipe until then.
+    if (workerPipe && boundWorkerPipePublishedEvent)
+    {
+        SetEvent(boundWorkerPipePublishedEvent);
+    }
 }
 
 inline bool IsValidPipeHandle(HANDLE hPipeHandle)
@@ -620,6 +629,16 @@ void BindNamedpipeFocusState(const void *owner, bool *focusResetPending, bool *a
     boundWorkerPipeGeneration = workerPipeGeneration;
 }
 
+void BindNamedpipeWakeEvents(const void *owner, HANDLE workerAckEvent, HANDLE workerPipePublishedEvent)
+{
+    if (owner == nullptr || boundFocusStateOwner != owner)
+    {
+        return;
+    }
+    boundWorkerAckEvent = workerAckEvent;
+    boundWorkerPipePublishedEvent = workerPipePublishedEvent;
+}
+
 void UnbindNamedpipeFocusState(const void *owner)
 {
     if (owner == nullptr || boundFocusStateOwner != owner)
@@ -636,6 +655,8 @@ void UnbindNamedpipeFocusState(const void *owner)
     boundAcknowledgedWorkerFocusToken = nullptr;
     boundWorkerPipeHandle = nullptr;
     boundWorkerPipeGeneration = nullptr;
+    boundWorkerAckEvent = nullptr;
+    boundWorkerPipePublishedEvent = nullptr;
 }
 
 bool IsNamedpipeFocusStateOwner(const void *owner)
@@ -1771,7 +1792,7 @@ bool EnsureNamedpipeFocusSessionActivated()
     if (boundWorkerCommitReady)
     {
         const ULONGLONG deadline = GetTickCount64() + 150;
-        while (GetTickCount64() < deadline)
+        for (;;)
         {
             if (IsLocalSessionResetPending())
             {
@@ -1781,7 +1802,23 @@ bool EnsureNamedpipeFocusSessionActivated()
             {
                 return true;
             }
-            Sleep(1);
+            const ULONGLONG now = GetTickCount64();
+            if (now >= deadline)
+            {
+                break;
+            }
+            // Block until the IPC worker records the acknowledgement. Sleep(1)
+            // rounds up to a timer tick (~15.6 ms by default), so every focus
+            // change paid a tick even though the echo arrives in well under a
+            // millisecond. The check above runs after every wake-up and the
+            // worker signals after its release stores, so a wake-up cannot be
+            // lost; a stale signal only costs one more pass. Like Sleep, this
+            // wait does not pump messages, so no TSF callback can re-enter here.
+            if (!boundWorkerAckEvent ||
+                WaitForSingleObject(boundWorkerAckEvent, static_cast<DWORD>(deadline - now)) == WAIT_FAILED)
+            {
+                Sleep(1);
+            }
         }
         MarkNamedpipeSessionDirty();
     }
