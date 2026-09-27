@@ -128,8 +128,12 @@ add_library(${PROJECT_NAME} SHARED
     "./src/IME/MetasequoiaIME.def"
     "./src/IME/MetasequoiaIME.h"
     "./src/IME/MetasequoiaIME.rc"
+    "./src/IME/MetasequoiaIME_AsyncRequests.cpp"
+    "./src/IME/MetasequoiaIME_IpcWorker.cpp"
+    "./src/IME/MetasequoiaIME_WindowProc.cpp"
     "./src/IME/MetasequoiaIMEBaseStructure.cpp"
     "./src/IME/MetasequoiaIMEBaseStructure.h"
+    "./src/IME/MetasequoiaIMEInternal.h"
     "./src/IME/MetasequoiaIMEStructureArray.h"
     # IPC
     "./src/IPC/Ipc.cpp"

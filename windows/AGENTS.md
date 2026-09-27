@@ -36,7 +36,9 @@
 查问题时先沿这条链路定位。按键判定主要看 `src/Key/KeyEventSink.cpp`（延迟按键队列与回放在
 `KeyEventSink_DeferredKeys.cpp`，输入模式热键在 `KeyEventSink_Hotkeys.cpp`），编辑行为看
 `src/Key/KeyHandler.cpp` 与 `src/Key/KeyStateCategory.cpp`，协议与连接状态看 `src/IPC/Ipc.*`，
-激活、焦点和工作线程生命周期看 `src/IME/MetasequoiaIME.*` 与 `src/Thread/`。
+激活、焦点和工作线程生命周期看 `src/IME/MetasequoiaIME*`（Worker Pipe 读线程在
+`MetasequoiaIME_IpcWorker.cpp`，消息窗口与主题监听在 `MetasequoiaIME_WindowProc.cpp`，
+按键路径发起的 edit session 与异步按键请求表在 `MetasequoiaIME_AsyncRequests.cpp`）与 `src/Thread/`。
 
 ## TSF / COM 硬约定
 
