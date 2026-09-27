@@ -544,9 +544,10 @@ std::vector<WordItem> QuanpinDictionary::query_series(const std::string &raw_inp
                     // update_creating_word_progress 依赖 canonical_pinyin 才能拼出完整读音。
                     // segmentation 为空时保持为空，交由既有逻辑判定为不可落库。
                     const size_t insert_at = quanpin::generated_sentence_insert_position(result, segments);
-                    result.insert(result.begin() + static_cast<std::ptrdiff_t>(insert_at),
-                                  WordItem(segmentation.empty() ? raw_input : segmentation, google_sentence, 1,
-                                           CandidateSource::Fallback, segmentation));
+                    WordItem sentence(segmentation.empty() ? raw_input : segmentation, google_sentence, 1,
+                                      CandidateSource::Fallback, segmentation);
+                    sentence.sentence_association = true;
+                    result.insert(result.begin() + static_cast<std::ptrdiff_t>(insert_at), std::move(sentence));
                 }
             }
         }
@@ -819,6 +820,7 @@ std::vector<WordItem> QuanpinDictionary::append_ime_fallback(const std::string &
         // 同上，整句 fallback 需要 canonical quanpin 才能参与造词落库。
         result.emplace_back(segmentation.empty() ? raw_input : segmentation, sentence, 1, CandidateSource::Fallback,
                             segmentation);
+        result.back().sentence_association = true;
     }
     return result;
 }
