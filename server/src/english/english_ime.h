@@ -33,6 +33,9 @@ using TranslationCallback = std::function<void(std::vector<TranslationResult> re
 
 void Start(const std::string &db_path, ApplyCallback apply_callback, TranslationCallback translation_callback = {});
 void Stop();
+// While running, every non-empty dedicated-mode input is answered through the
+// apply callback, even when the dictionary has no match.
+bool IsRunning();
 void OnInputChanged(const std::string &input, bool dedicated_mode = false, size_t mixed_min_prefix = 2);
 void Clear();
 bool IsCurrent(const std::string &input, uint64_t generation, bool dedicated_mode = false);

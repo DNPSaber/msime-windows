@@ -231,11 +231,29 @@ void ApplyUiLessFromPacket(const FanyImeNamedpipeData &pipe_data)
 // task thread.
 constexpr ULONGLONG kCandidateHideBacklogMs = 24;
 
+// Dedicated English mode publishes an empty page while its dictionary query is
+// in flight (see PrepareCandidateList). Painting that page shrank the card to
+// the bare preedit, and ApplyEnglishCandidates grew it back a moment later — a
+// collapse-and-expand flash on every keystroke. The English worker answers every
+// non-empty input (no match becomes the raw fallback), and that answer requests
+// its own show, so the empty in-between page is never worth painting.
+bool IsEnglishQueryPendingOnEmptyPage()
+{
+    return g_english_input_mode && Global::candidate_ui.items.empty() && g_inputSession &&
+           !g_inputSession->get_pinyin_sequence_with_cases().empty() && EnglishIme::IsRunning();
+}
+
 void RequestShowCandidateWindow()
 {
     if (IsUiLessMode() || !::global_hwnd)
     {
         CAND_DIAG_LOGF(L"show request skipped uiless={} hwnd_present={}", IsUiLessMode(), ::global_hwnd != nullptr);
+        return;
+    }
+    if (IsEnglishQueryPendingOnEmptyPage())
+    {
+        CAND_DIAG_LOGF(L"show request deferred to english query raw_units={}",
+                       GlobalIme::composition.raw_input_with_cases.size());
         return;
     }
     bool expected = false;

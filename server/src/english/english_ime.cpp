@@ -171,6 +171,11 @@ void Stop()
     g_translation_callback = {};
 }
 
+bool IsRunning()
+{
+    return g_running;
+}
+
 void OnInputChanged(const std::string &input, bool dedicated_mode, size_t mixed_min_prefix)
 {
     {
