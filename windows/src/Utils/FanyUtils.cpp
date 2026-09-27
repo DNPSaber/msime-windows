@@ -322,15 +322,11 @@ BOOL ReadConfiguredJapaneseInputMode()
     return FALSE;
 }
 
-SwitchLanguageHotkeys ReadConfiguredSwitchLanguageHotkeys()
+namespace
+{
+SwitchLanguageHotkeys ParseSwitchLanguageHotkeys(const std::filesystem::path &configPath)
 {
     SwitchLanguageHotkeys result;
-    const std::filesystem::path configPath = SharedConfigPath();
-    if (configPath.empty())
-    {
-        return result;
-    }
-
     std::ifstream input(configPath);
     if (!input)
     {
@@ -398,6 +394,87 @@ SwitchLanguageHotkeys ReadConfiguredSwitchLanguageHotkeys()
         }
     }
     (void)sawCtrl;
+    return result;
+}
+
+// The key sink asks for these hotkeys on every key down and key up, on the host's UI thread.
+// Resolving the path (environment + registry) and parsing the whole config.toml each time cost
+// up to four file reads per keystroke. The path cannot change for the life of the host process
+// (the environment is fixed and DataDir only changes on reinstall), so it is resolved once; the
+// file is re-parsed only when its timestamp or size changes, checked at most once per interval
+// so a settings change still lands within a second. Everything here is constant-initialized:
+// this DLL avoids global constructors and is built with /Zc:threadSafeInit-.
+constexpr ULONGLONG kHotkeyConfigRecheckMs = 1000;
+
+struct HotkeyConfigCache
+{
+    bool pathResolved = false;
+    bool haveStamp = false;
+    ULONGLONG checkedTick = 0;
+    FILETIME lastWrite = {};
+    DWORD sizeLow = 0;
+    DWORD sizeHigh = 0;
+    SwitchLanguageHotkeys value;
+};
+
+SRWLOCK g_hotkeyConfigLock = SRWLOCK_INIT;
+HotkeyConfigCache g_hotkeyConfig;
+// Heap-allocated on first use and intentionally never freed, so it needs no global destructor.
+std::filesystem::path *g_hotkeyConfigPath = nullptr;
+} // namespace
+
+SwitchLanguageHotkeys ReadConfiguredSwitchLanguageHotkeys()
+{
+    AcquireSRWLockExclusive(&g_hotkeyConfigLock);
+    SwitchLanguageHotkeys result = g_hotkeyConfig.value;
+    try
+    {
+        if (!g_hotkeyConfig.pathResolved)
+        {
+            g_hotkeyConfig.pathResolved = true;
+            const std::filesystem::path configPath = SharedConfigPath();
+            if (!configPath.empty())
+            {
+                g_hotkeyConfigPath = new std::filesystem::path(configPath);
+            }
+        }
+
+        const ULONGLONG now = GetTickCount64();
+        const bool due = !g_hotkeyConfig.haveStamp || now - g_hotkeyConfig.checkedTick >= kHotkeyConfigRecheckMs;
+        if (g_hotkeyConfigPath != nullptr && due)
+        {
+            g_hotkeyConfig.checkedTick = now;
+            WIN32_FILE_ATTRIBUTE_DATA attributes{};
+            if (GetFileAttributesExW(g_hotkeyConfigPath->c_str(), GetFileExInfoStandard, &attributes))
+            {
+                const bool changed = !g_hotkeyConfig.haveStamp ||
+                                     CompareFileTime(&attributes.ftLastWriteTime, &g_hotkeyConfig.lastWrite) != 0 ||
+                                     attributes.nFileSizeLow != g_hotkeyConfig.sizeLow ||
+                                     attributes.nFileSizeHigh != g_hotkeyConfig.sizeHigh;
+                if (changed)
+                {
+                    g_hotkeyConfig.value = ParseSwitchLanguageHotkeys(*g_hotkeyConfigPath);
+                    g_hotkeyConfig.lastWrite = attributes.ftLastWriteTime;
+                    g_hotkeyConfig.sizeLow = attributes.nFileSizeLow;
+                    g_hotkeyConfig.sizeHigh = attributes.nFileSizeHigh;
+                    g_hotkeyConfig.haveStamp = true;
+                }
+            }
+            else
+            {
+                // A missing config means defaults, as the uncached read returned; the stamp
+                // stays unset so the file is picked up as soon as the Server writes it.
+                g_hotkeyConfig.value = SwitchLanguageHotkeys{};
+                g_hotkeyConfig.haveStamp = false;
+            }
+        }
+        result = g_hotkeyConfig.value;
+    }
+    catch (...)
+    {
+        // Keep the last known hotkeys; a read failure must not take the key path down.
+    }
+    ReleaseSRWLockExclusive(&g_hotkeyConfigLock);
     return result;
 }
 
