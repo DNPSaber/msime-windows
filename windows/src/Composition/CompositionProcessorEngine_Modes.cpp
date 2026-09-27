@@ -55,6 +55,16 @@ class CCaretStateSwitchEditSession : public CEditSessionBase
     bool capsLockEnabled_;
     bool imeOpen_;
 };
+
+// Ctrl+Space is the system's Chinese IME toggle, not one of our preserved
+// keys: Windows writes OPENCLOSE directly and we only see the compartment
+// edge. The chord still being held is what tells it apart from Server,
+// host or language-bar writes.
+bool IsSystemCtrlSpaceToggleHeld()
+{
+    return (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0 && (GetAsyncKeyState(VK_SPACE) & 0x8000) != 0 &&
+           (GetAsyncKeyState(VK_MENU) & 0x8000) == 0;
+}
 } // namespace
 
 //+---------------------------------------------------------------------------
@@ -501,8 +511,9 @@ void CCompositionProcessorEngine::InitializeMetasequoiaIMECompartment(_In_ ITfTh
 void CCompositionProcessorEngine::SendCaretStateSwitchEvent(UINT eventType, bool enabled, UINT trigger,
                                                             bool capsLockEnabled)
 {
-    // Only explicit user actions call this: shortcuts, Caps Lock, and moving
-    // focus into another text field. Compartment writes from the Server, the
+    // Only explicit user actions call this: shortcuts (including the system
+    // Ctrl+Space toggle), Caps Lock, and moving focus into another text
+    // field. Compartment writes from the Server, the
     // host's conversion mode or activation never do, so none of those can
     // surface a badge the user did not ask for.
     if (!_pOwnerThreadMgr || !_pTextService || !Global::g_connected || !SupportsCaretStateIndicator())
@@ -631,6 +642,10 @@ HRESULT CCompositionProcessorEngine::CompartmentCallback(_In_ void *pv, REFGUID 
         if (externallyClosed)
         {
             fakeThis->CommitCompositionOnExternalKeyboardClose();
+        }
+        if (keyboardStateChanged && !fakeThis->_suppressKeyboardCloseCommit && IsSystemCtrlSpaceToggleHeld())
+        {
+            fakeThis->SendCaretStateSwitchEvent(FanyImePipeEventType::IMESwitch, isOpen != FALSE);
         }
     }
 
