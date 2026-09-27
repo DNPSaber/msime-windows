@@ -291,7 +291,7 @@ TEST_CASE(quanpin_autocorrect_keys_persist_and_legacy_key_stays_ignored)
 
 namespace
 {
-// 与 ime_config.cpp 的 kFuzzyPinyinRuleKeys 同一映射；这里是钉住它的测试副本。
+// 与 ime_config_internal.h 的 kFuzzyPinyinRuleKeys 同一映射；这里是钉住它的测试副本。
 struct FuzzyRuleKeyFixture
 {
     const char *key;
