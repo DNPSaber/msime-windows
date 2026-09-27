@@ -991,13 +991,19 @@ void CandidatePresenter::PlaceAndShow(POINT caret, float widthDip, float heightD
     const FLOAT dpiOverride = scale * 96.0f;
     impl_->window->SetDpiOverride(dpiOverride);
     impl_->resources.SetDpiOverride(dpiOverride);
-    // DWM applies the window move and the swap-chain present independently, so
-    // on a visible host one frame always shows one of them stale. Moving first
-    // put the previous card at the new origin: at the right screen edge a card
-    // that narrowed moves right, and the previous, wider picture spilled past
-    // the edge onto the next monitor before snapping back. Per axis, the stale
-    // frame stays inside the old and new cards when a host moving left/up moves before
-    // the present and one moving right/down moves after it.
+    // The card is clamped to the work area, but the host around it carries the
+    // shadow padding and the 64px bucket slack, so near the right or bottom edge
+    // it reached onto the neighbouring monitor. DWM applies a window move and a
+    // swap-chain present independently and in no guaranteed order, so a frame
+    // can pair either card with either host origin; whatever it put past the
+    // card then flashed on the next screen. Cut the host at the work-area edge:
+    // nothing can be drawn outside the caret's monitor, whatever DWM pairs up.
+    // The card still fits (it was clamped above); only its shadow is trimmed.
+    const int hostWidthPx = (std::max)(1, (std::min)(widthPx, monitor.right - x));
+    const int hostHeightPx = (std::max)(1, (std::min)(heightPx, monitor.bottom - y));
+    // Submission order still decides which stale pairing is likelier. Moving a
+    // host left/up before the present, and right/down after it, keeps the
+    // stale frame on the side of the card that is already on screen.
     RECT current{};
     DWORD cloaked = 0;
     const bool onScreen =
@@ -1005,7 +1011,7 @@ void CandidatePresenter::PlaceAndShow(POINT caret, float widthDip, float heightD
         SUCCEEDED(DwmGetWindowAttribute(hwnd_, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) && cloaked == 0;
     const int firstX = onScreen && x > current.left ? current.left : x;
     const int firstY = onScreen && y > current.top ? current.top : y;
-    SetWindowPos(hwnd_, HWND_TOPMOST, firstX, firstY, widthPx, heightPx, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    SetWindowPos(hwnd_, HWND_TOPMOST, firstX, firstY, hostWidthPx, hostHeightPx, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     impl_->resources.EnsureForComposition(hwnd_);
     Present();
     if (firstX != x || firstY != y)
@@ -1021,8 +1027,8 @@ void CandidatePresenter::PlaceAndShow(POINT caret, float widthDip, float heightD
         L"size_px=({},{}) host=({},{}) first=({},{}) on_screen={} card_px=({},{} {}w) monitor=({},{})-({},{})",
         scaleSource == CandidateScaleSource::RdpForeground ? L"rdp-foreground" : L"monitor", scale,
         GetDpiForWindow(hwnd_), GetDpiForSystem(), GetSystemMetrics(SM_REMOTESESSION) ? 1 : 0, caret.x, caret.y,
-        widthPx, heightPx, x, y, firstX, firstY, onScreen, x + cardLeftPx, y + cardTopPx, cardWidthPx, monitor.left,
-        monitor.top, monitor.right, monitor.bottom);
+        hostWidthPx, hostHeightPx, x, y, firstX, firstY, onScreen, x + cardLeftPx, y + cardTopPx, cardWidthPx,
+        monitor.left, monitor.top, monitor.right, monitor.bottom);
 }
 
 void CandidatePresenter::ShowFromGlobalState()
