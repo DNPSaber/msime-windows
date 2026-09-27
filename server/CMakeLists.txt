@@ -62,9 +62,9 @@ find_package(ZLIB REQUIRED)
 # Which is also why BUILD_TESTING has to be off across that add_subdirectory: the engine registers
 # eleven add_test() entries behind that flag, and EXCLUDE_FROM_ALL then never builds the
 # executables they point at, so ctest reports eleven "Unable to find executable" failures. The
-# engine's own suite is exercised through this repository's server/tests, which cover the same
-# surface against the shipped dictionaries. Restored immediately afterwards so this repository's
-# own tests/ still register.
+# engine's own suite runs in the separate Engine job of ci.yml (scripts/ci/test-engine.ps1), which
+# builds the engine standalone. Restored immediately afterwards so this repository's own tests/
+# still register.
 set(_metasequoia_saved_build_testing "${BUILD_TESTING}")
 set(BUILD_TESTING OFF)
 set(METASEQUOIA_IME_BUILD_VOICE ON CACHE BOOL "" FORCE)
@@ -163,6 +163,18 @@ set(SRC_FILES
     "./src/cloud/translation_gloss.h"
     "./src/config/ime_config.cpp"
     "./src/config/ime_config.h"
+    "./src/config/ime_config_appearance.cpp"
+    "./src/config/ime_config_fonts.cpp"
+    "./src/config/ime_config_general.cpp"
+    "./src/config/ime_config_input.cpp"
+    "./src/config/ime_config_internal.h"
+    "./src/config/ime_config_keys.cpp"
+    "./src/config/ime_config_services.cpp"
+    "./src/config/ime_config_template.cpp"
+    "./src/config/ime_config_theme.cpp"
+    "./src/config/ime_config_toml.cpp"
+    "./src/config/ime_config_toolbar.cpp"
+    "./src/config/ime_config_write.cpp"
     "./src/conversion/chinese_converter.cpp"
     "./src/conversion/chinese_converter.h"
     "./src/defines/defines.h"
@@ -435,6 +447,18 @@ add_executable(${SETTINGS_EXECUTABLE_NAME} WIN32
     "./src/statistics/stats_store.h"
     "./src/config/ime_config.cpp"
     "./src/config/ime_config.h"
+    "./src/config/ime_config_appearance.cpp"
+    "./src/config/ime_config_fonts.cpp"
+    "./src/config/ime_config_general.cpp"
+    "./src/config/ime_config_input.cpp"
+    "./src/config/ime_config_internal.h"
+    "./src/config/ime_config_keys.cpp"
+    "./src/config/ime_config_services.cpp"
+    "./src/config/ime_config_template.cpp"
+    "./src/config/ime_config_theme.cpp"
+    "./src/config/ime_config_toml.cpp"
+    "./src/config/ime_config_toolbar.cpp"
+    "./src/config/ime_config_write.cpp"
     "./src/cloud/custom_translation.cpp"
     "./src/cloud/custom_translation.h"
     "./src/cloud/niutrans_translation.cpp"

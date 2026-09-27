@@ -20,13 +20,25 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 add_library(msimeui STATIC
+    src/Accordion.cpp
     src/Application.cpp
     src/Brush.cpp
-    src/Controls.cpp
+    src/Button.cpp
+    src/CandidateList.cpp
+    src/ComboBox.cpp
+    src/ControlsInternal.cpp
     src/DebugLog.cpp
     src/DeviceResources.cpp
     src/Fonts.cpp
+    src/Image.cpp
+    src/ListView.cpp
+    src/Menu.cpp
+    src/Popup.cpp
+    src/RangeControls.cpp
+    src/Separator.cpp
+    src/TabControl.cpp
     src/TextBox.cpp
+    src/TreeView.cpp
     src/Layout.cpp
     src/Scene.cpp
     src/Theme.cpp
@@ -41,6 +53,7 @@ add_library(msimeui STATIC
     src/tsf/TsfTextServices.cpp
     include/msimeui/Application.h
     include/msimeui/Brush.h
+    src/ControlsInternal.h
     src/DebugLog.h
     include/msimeui/Controls.h
     include/msimeui/DeviceResources.h
