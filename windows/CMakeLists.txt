@@ -97,6 +97,9 @@ add_library(${PROJECT_NAME} SHARED
     "./src/Composition/Composition.cpp"
     "./src/Composition/CompositionProcessorEngine.cpp"
     "./src/Composition/CompositionProcessorEngine.h"
+    "./src/Composition/CompositionProcessorEngine_KeyClassify.cpp"
+    "./src/Composition/CompositionProcessorEngine_Modes.cpp"
+    "./src/Composition/CompositionProcessorEngine_PreservedKeys.cpp"
     "./src/Composition/EndComposition.cpp"
     "./src/Composition/StartComposition.cpp"
     # DisplayAttribute
@@ -128,8 +131,12 @@ add_library(${PROJECT_NAME} SHARED
     "./src/IME/MetasequoiaIME.def"
     "./src/IME/MetasequoiaIME.h"
     "./src/IME/MetasequoiaIME.rc"
+    "./src/IME/MetasequoiaIME_AsyncRequests.cpp"
+    "./src/IME/MetasequoiaIME_IpcWorker.cpp"
+    "./src/IME/MetasequoiaIME_WindowProc.cpp"
     "./src/IME/MetasequoiaIMEBaseStructure.cpp"
     "./src/IME/MetasequoiaIMEBaseStructure.h"
+    "./src/IME/MetasequoiaIMEInternal.h"
     "./src/IME/MetasequoiaIMEStructureArray.h"
     # IPC
     "./src/IPC/Ipc.cpp"
@@ -137,6 +144,9 @@ add_library(${PROJECT_NAME} SHARED
     "./src/IPC/VoiceCompositionPipe.h"
     # Key
     "./src/Key/KeyEventSink.cpp"
+    "./src/Key/KeyEventSink_DeferredKeys.cpp"
+    "./src/Key/KeyEventSink_Hotkeys.cpp"
+    "./src/Key/KeyEventSinkInternal.h"
     "./src/Key/KeyHandler.cpp"
     "./src/Key/KeyHandlerEditSession.cpp"
     "./src/Key/KeyHandlerEditSession.h"
