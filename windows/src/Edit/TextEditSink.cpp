@@ -127,7 +127,8 @@ STDAPI CMetasequoiaIME::OnEndEdit(__RPC__in_opt ITfContext *pContext, TfEditCook
         {
             _DebugCompositionRecovery(ownerMatches ? L"composing-property-missing" : L"edit-context-mismatch",
                                       compositionStateHr);
-            MarkNamedpipeSessionDirtyForOwner(this);
+            // The host dropped or moved the composition; the pipes are fine.
+            _ResetSessionAfterFailure(DeferredKeyFailureKind::Resync);
             return S_OK;
         }
     }
@@ -163,7 +164,7 @@ STDAPI CMetasequoiaIME::OnEndEdit(__RPC__in_opt ITfContext *pContext, TfEditCook
                         _CaptureCompositionEpoch());
                     if (FAILED(endHr))
                     {
-                        MarkNamedpipeSessionDirtyForOwner(this);
+                        _ResetSessionAfterFailure(DeferredKeyFailureKind::Resync);
                     }
                 }
 

@@ -1,5 +1,5 @@
 // Deferred key FIFO: barrier checks, the projected composition state that classifies keys queued
-// behind it, recovery checkpoints, and the queue/drain/retry/replay path.
+// behind it, and the queue/drain/complete/fail path. A failed key is dropped, never replayed.
 
 #include "Private.h"
 #include "Globals.h"
@@ -32,12 +32,8 @@ using namespace key_event_sink_detail;
 
 namespace
 {
-constexpr UINT kMaxDeferredKeyReplayAttempts = 8;
-
-// A recovery checkpoint may need one INPUT for every raw pinyin character and
-// one MOVE_LEFT for every character to the right of the caret.  Keep enough
-// additional room for a short burst that arrives while the replacement IPC
-// epoch is becoming ready.
+// Room for a fast burst typed while a slow edit session or a focus session
+// activation holds the FIFO. A key that does not fit is not eaten.
 constexpr size_t MAX_DEFERRED_KEY_DOWN_COUNT = static_cast<size_t>(MAX_PINYIN_LENGTH) * 2 + 32;
 
 struct DeferredShadowState
@@ -189,36 +185,42 @@ void ApplyDeferredKeyState(DeferredShadowState &shadow, const _KEYSTROKE_STATE &
     }
 }
 
-bool IsRecoverableDeferredPrefix(const _KEYSTROKE_STATE &keyState)
+const wchar_t *DeferredKeyFailureKindName(DeferredKeyFailureKind kind)
 {
-    switch (keyState.Function)
+    switch (kind)
     {
-    case FUNCTION_INPUT:
-    case FUNCTION_BACKSPACE:
-    case FUNCTION_BACKSPACE_SEGMENT:
-    case FUNCTION_MOVE_LEFT_SEGMENT:
-    case FUNCTION_MOVE_RIGHT_SEGMENT:
-    case FUNCTION_DELETE:
-    case FUNCTION_MOVE_LEFT:
-    case FUNCTION_MOVE_RIGHT:
-    case FUNCTION_MOVE_UP:
-    case FUNCTION_MOVE_DOWN:
-    case FUNCTION_MOVE_PAGE_UP:
-    case FUNCTION_MOVE_PAGE_DOWN:
-    case FUNCTION_MOVE_PAGE_TOP:
-    case FUNCTION_MOVE_PAGE_BOTTOM:
-    case FUNCTION_CONVERT_WILDCARD:
-    case FUNCTION_SERVER_CANDIDATE_KEY:
-        return true;
+    case DeferredKeyFailureKind::Stale:
+        return L"stale";
+    case DeferredKeyFailureKind::Offline:
+        return L"offline";
+    case DeferredKeyFailureKind::Resync:
+        return L"resync";
+    case DeferredKeyFailureKind::Transport:
+        return L"transport";
     default:
-        return false;
+        return L"unknown";
     }
 }
 
-bool StartsNewDeferredPrefix(const _KEYSTROKE_STATE &keyState)
+const wchar_t *DeferredKeyFailureReasonName(DeferredKeyFailureReason reason)
 {
-    return keyState.Function == FUNCTION_FINALIZE_TEXTSTORE_AND_INPUT ||
-           keyState.Function == FUNCTION_FINALIZE_CANDIDATELIST_AND_INPUT;
+    switch (reason)
+    {
+    case DeferredKeyFailureReason::Superseded:
+        return L"superseded";
+    case DeferredKeyFailureReason::HostEditRejected:
+        return L"host-edit-rejected";
+    case DeferredKeyFailureReason::EditSessionRequestFailed:
+        return L"edit-session-request-failed";
+    case DeferredKeyFailureReason::AsyncPostFailed:
+        return L"async-post-failed";
+    case DeferredKeyFailureReason::TransportBroken:
+        return L"transport-broken";
+    case DeferredKeyFailureReason::DeliveryAmbiguous:
+        return L"delivery-ambiguous";
+    default:
+        return L"unknown";
+    }
 }
 
 } // namespace
@@ -241,7 +243,7 @@ bool CMetasequoiaIME::_HasDeferredKeyBarrier() const
 
 bool CMetasequoiaIME::_DeferredKeyQueueHasCapacity() const
 {
-    size_t deferredCount = _deferredKeyDowns.size() + _deferredAppliedPrefix.size();
+    size_t deferredCount = _deferredKeyDowns.size();
     if (_hasDeferredKeyInFlight)
     {
         ++deferredCount;
@@ -266,8 +268,8 @@ void CMetasequoiaIME::_EnsureDeferredKeyProjection()
         _pCompositionProcessorEngine->GetDoubleSingleByteMode(_pThreadMgr, _tfClientId) != FALSE;
     // In the healthy path every IME-owned key enters the FIFO as well, so its
     // first projection starts from the composition that is already visible.
-    // A transport-recovery checkpoint arms this projection before the local
-    // reset cancels that composition.
+    // After a failure, _ArmEmptyDeferredProjection starts it from the empty
+    // composition the pending reset leaves behind instead.
     _deferredProjectedInputLength = _pCompositionProcessorEngine
                                         ? min(static_cast<size_t>(MAX_PINYIN_LENGTH),
                                               static_cast<size_t>(_pCompositionProcessorEngine->GetVirtualKeyLength()))
@@ -366,112 +368,6 @@ void CMetasequoiaIME::_ApplyDeferredPreservedKeyProjection(REFGUID preservedKey)
     default:
         break;
     }
-}
-
-bool CMetasequoiaIME::_RefreshDeferredRecoveryPrefix(_In_ ITfContext *pContext)
-{
-    while (!_deferredAppliedPrefix.empty())
-    {
-        ITfContext *prefixContext = _deferredAppliedPrefix.front().context;
-        _deferredAppliedPrefix.pop_front();
-        if (prefixContext)
-        {
-            prefixContext->Release();
-        }
-    }
-
-    if (pContext == nullptr || _pCompositionProcessorEngine == nullptr)
-    {
-        return false;
-    }
-
-    CStringRange &raw = _pCompositionProcessorEngine->GetKeystrokeBuffer();
-    const size_t rawLength = static_cast<size_t>(raw.GetLength());
-    const size_t caret = min(rawLength, static_cast<size_t>(_pCompositionProcessorEngine->GetCaretPosition()));
-    const size_t moveLeftCount = rawLength - caret;
-    if (rawLength + moveLeftCount > MAX_DEFERRED_KEY_DOWN_COUNT)
-    {
-        return false;
-    }
-
-    for (size_t index = 0; index < rawLength; ++index)
-    {
-        const WCHAR wch = raw.Get()[index];
-        const SHORT virtualKey = VkKeyScanW(wch);
-        DeferredKeyDown recoveryKey;
-        recoveryKey.kind = DeferredKeyDown::Kind::KeyDown;
-        recoveryKey.context = pContext;
-        recoveryKey.wParam =
-            virtualKey == -1 ? static_cast<WPARAM>(VK_PACKET) : static_cast<WPARAM>(LOBYTE(virtualKey));
-        recoveryKey.translatedWch = wch;
-        recoveryKey.modifiersDown = virtualKey != -1 && (HIBYTE(virtualKey) & 1) != 0 ? 1u : 0u;
-        recoveryKey.keyState.Category = CATEGORY_COMPOSING;
-        recoveryKey.keyState.Function = FUNCTION_INPUT;
-        recoveryKey.focusGeneration = _deferredKeyFocusGeneration;
-        pContext->AddRef();
-        _deferredAppliedPrefix.push_back(recoveryKey);
-    }
-    for (size_t index = 0; index < moveLeftCount; ++index)
-    {
-        DeferredKeyDown recoveryKey;
-        recoveryKey.kind = DeferredKeyDown::Kind::KeyDown;
-        recoveryKey.context = pContext;
-        recoveryKey.wParam = VK_LEFT;
-        recoveryKey.keyState.Category = CATEGORY_COMPOSING;
-        recoveryKey.keyState.Function = FUNCTION_MOVE_LEFT;
-        recoveryKey.focusGeneration = _deferredKeyFocusGeneration;
-        pContext->AddRef();
-        _deferredAppliedPrefix.push_back(recoveryKey);
-    }
-    return true;
-}
-
-void CMetasequoiaIME::_ArmDeferredRecoveryForTransport(_In_opt_ ITfContext *pContext)
-{
-    // An in-flight key owns its exact retry token.  Its failure path moves the
-    // checkpoint in front of that key; moving it here as well would duplicate
-    // the prefix.
-    if (_hasDeferredKeyInFlight)
-    {
-        return;
-    }
-
-    ITfContext *recoveryContext = pContext ? pContext : _pContext;
-    const bool activeDeferredState = !_deferredKeyDowns.empty() || _deferredKeyProjectionValid;
-    if (!activeDeferredState)
-    {
-        // The dormant checkpoint may have been superseded by a non-eaten
-        // application key that finalized/cancelled the composition.  Refresh
-        // from the engine at the transport boundary instead of trusting stale
-        // history.
-        if (recoveryContext)
-        {
-            (void)_RefreshDeferredRecoveryPrefix(recoveryContext);
-        }
-    }
-    else if (_deferredAppliedPrefix.empty())
-    {
-        // A retry has already materialized the checkpoint in the FIFO.  The
-        // real engine can still contain the same raw text until the queued
-        // reset edit session runs, so snapshotting it again would duplicate
-        // the whole prefix.
-        return;
-    }
-    if (_deferredAppliedPrefix.empty())
-    {
-        return;
-    }
-
-    // Capture the current real state before the local reset cancels it.  The
-    // queued checkpoint then represents that same future state while reset is
-    // pending, so later key classification remains ordered.
-    _EnsureDeferredKeyProjection();
-    while (!_deferredAppliedPrefix.empty())
-    {
-        _deferredKeyDowns.push_front(_deferredAppliedPrefix.back());
-        _deferredAppliedPrefix.pop_back();
-    }
-    _ScheduleDeferredKeyDownDrain();
 }
 
 bool CMetasequoiaIME::_ClassifyDeferredKeyDown(_In_ ITfContext *pContext, WPARAM wParam, LPARAM lParam,
@@ -740,7 +636,8 @@ bool CMetasequoiaIME::_ClassifyDeferredKeyDown(_In_ ITfContext *pContext, WPARAM
 }
 
 bool CMetasequoiaIME::_QueueDeferredKeyDown(_In_ ITfContext *pContext, WPARAM wParam, LPARAM lParam,
-                                            WCHAR translatedWch, UINT modifiersDown, const _KEYSTROKE_STATE &keyState)
+                                            WCHAR translatedWch, UINT modifiersDown, const _KEYSTROKE_STATE &keyState,
+                                            bool scheduleDrain)
 {
     // Repeats are owned but do not enqueue another global configuration toggle.
     if (keyState.Function == FUNCTION_TOGGLE_CHARACTER_SET && (lParam & 0x40000000) != 0)
@@ -772,7 +669,10 @@ bool CMetasequoiaIME::_QueueDeferredKeyDown(_In_ ITfContext *pContext, WPARAM wP
     {
         _EnsureDeferredKeyProjection();
     }
-    _ScheduleDeferredKeyDownDrain();
+    if (scheduleDrain)
+    {
+        _ScheduleDeferredKeyDownDrain();
+    }
     return true;
 }
 
@@ -828,15 +728,6 @@ void CMetasequoiaIME::_ClearDeferredKeyDowns()
             context->Release();
         }
     }
-    while (!_deferredAppliedPrefix.empty())
-    {
-        ITfContext *context = _deferredAppliedPrefix.front().context;
-        _deferredAppliedPrefix.pop_front();
-        if (context)
-        {
-            context->Release();
-        }
-    }
     if (_hasDeferredKeyInFlight)
     {
         ITfContext *context = _deferredKeyInFlight.context;
@@ -862,6 +753,72 @@ void CMetasequoiaIME::_ClearDeferredKeyDowns()
     _backspaceHoldArmed = false;
 }
 
+void CMetasequoiaIME::_ArmEmptyDeferredProjection()
+{
+    // Keys typed while the reset is pending are drained after it has cancelled
+    // the composition, so classify them against that empty composition rather
+    // than against the one still on screen.
+    _deferredKeyProjectionValid = false;
+    _EnsureDeferredKeyProjection();
+    _deferredProjectedInputLength = 0;
+    _deferredProjectedRawInput.clear();
+    _deferredProjectedCaret = 0;
+    _deferredProjectedCandidateActive = false;
+    _deferredProjectedUnicodeMode = false;
+}
+
+void CMetasequoiaIME::_ReleaseIdleDeferredProjection()
+{
+    // Once the reset gate has reopened and nothing is queued, the real
+    // composition is authoritative again and the healthy path (including the
+    // synchronous first-key drain) must not stay behind a stale barrier.
+    if (!_deferredKeyProjectionValid || !_deferredKeyDowns.empty() || _hasDeferredKeyInFlight ||
+        _localSessionResetPending.load(std::memory_order_acquire))
+    {
+        return;
+    }
+    _deferredKeyProjectionValid = false;
+    _deferredProjectedInputLength = 0;
+    _deferredProjectedRawInput.clear();
+    _deferredProjectedCaret = 0;
+    _deferredProjectedCandidateActive = false;
+    _deferredProjectedUnicodeMode = false;
+}
+
+void CMetasequoiaIME::_ResetSessionAfterFailure(DeferredKeyFailureKind kind)
+{
+    if (kind == DeferredKeyFailureKind::Stale)
+    {
+        return;
+    }
+    DebugTsfIssue47(L"session-failure-reset", FANY_IME_NO_REQUEST_ID, 0, L'\0', 0, static_cast<UINT>(kind), -1,
+                    _IsComposing(),
+                    _pCompositionProcessorEngine ? _pCompositionProcessorEngine->GetVirtualKeyLength() : 0, S_FALSE,
+                    _deferredKeyReplayToken);
+    // Every queued key was classified against the composition that is being
+    // discarded: swallow them with it, never hand them back or resend them.
+    // The Backspace hold guard survives, so the rest of a hold that began in
+    // the composition cannot delete document text once it is gone (#347).
+    const bool backspaceHoldArmed = _backspaceHoldArmed;
+    _ClearDeferredKeyDowns();
+    _backspaceHoldArmed = backspaceHoldArmed;
+
+    if (kind == DeferredKeyFailureKind::Transport)
+    {
+        MarkNamedpipeSessionDirtyForOwner(this);
+    }
+    else if (kind == DeferredKeyFailureKind::Resync)
+    {
+        (void)_RequestLocalResync();
+    }
+    // Offline keeps the local composition: it is the only authority there.
+    if (kind != DeferredKeyFailureKind::Offline && _localSessionResetPending.load(std::memory_order_acquire))
+    {
+        _ArmEmptyDeferredProjection();
+    }
+    _TryLeaveServerUnavailableFallback();
+}
+
 void CMetasequoiaIME::_CompleteDeferredKeyReplay(uint64_t replayToken)
 {
     if (replayToken == 0 || !_hasDeferredKeyInFlight || _deferredKeyReplayToken != replayToken)
@@ -879,77 +836,18 @@ void CMetasequoiaIME::_CompleteDeferredKeyReplay(uint64_t replayToken)
     if (_deferredKeyDowns.empty())
     {
         // The exact final edit session has completed, so the real composition
-        // has caught up with the future projection.  Compact the applied
-        // event history into a bounded raw-text/caret checkpoint.  This
-        // checkpoint is dormant (not a barrier) until a transport reset needs
-        // to rebuild the composition.
+        // has caught up with the future projection.
         _deferredKeyProjectionValid = false;
         _deferredProjectedInputLength = 0;
         _deferredProjectedRawInput.clear();
         _deferredProjectedCaret = 0;
         _deferredProjectedCandidateActive = false;
         _deferredProjectedUnicodeMode = false;
-        (void)_RefreshDeferredRecoveryPrefix(context);
-        _deferredKeyInFlight = {};
-        _hasDeferredKeyInFlight = false;
-        _deferredKeyReplayToken = 0;
-        if (context)
-        {
-            context->Release();
-        }
-        _TryLeaveServerUnavailableFallback();
-        _ScheduleDeferredKeyDownDrain();
-        return;
     }
-
-    bool contextTransferredToPrefix = false;
-    const auto clearAppliedPrefix = [this]() {
-        while (!_deferredAppliedPrefix.empty())
-        {
-            ITfContext *prefixContext = _deferredAppliedPrefix.front().context;
-            _deferredAppliedPrefix.pop_front();
-            if (prefixContext)
-            {
-                prefixContext->Release();
-            }
-        }
-    };
-    if (_deferredKeyInFlight.kind == DeferredKeyDown::Kind::KeyDown)
-    {
-        if (StartsNewDeferredPrefix(_deferredKeyInFlight.keyState))
-        {
-            clearAppliedPrefix();
-            // The old text/candidate side of this combined operation has
-            // already committed successfully.  A replacement Server epoch
-            // must rebuild only the new raw character; replaying the original
-            // finalize-and-input function would try to finalize state that no
-            // longer exists.
-            _deferredKeyInFlight.keyState.Category = CATEGORY_COMPOSING;
-            _deferredKeyInFlight.keyState.Function = FUNCTION_INPUT;
-            _deferredAppliedPrefix.push_back(_deferredKeyInFlight);
-            contextTransferredToPrefix = true;
-        }
-        else if (IsRecoverableDeferredPrefix(_deferredKeyInFlight.keyState))
-        {
-            _deferredAppliedPrefix.push_back(_deferredKeyInFlight);
-            contextTransferredToPrefix = true;
-        }
-        else
-        {
-            clearAppliedPrefix();
-        }
-    }
-    else if (_deferredKeyInFlight.kind == DeferredKeyDown::Kind::PreservedKey && _pCompositionProcessorEngine &&
-             _pCompositionProcessorEngine->GetPreservedKeyAction(_deferredKeyInFlight.preservedKey) ==
-                 CCompositionProcessorEngine::PreservedKeyAction::ToggleImeMode)
-    {
-        clearAppliedPrefix();
-    }
-
     _deferredKeyInFlight = {};
     _hasDeferredKeyInFlight = false;
     _deferredKeyReplayToken = 0;
-    if (context && !contextTransferredToPrefix)
+    if (context)
     {
         context->Release();
     }
@@ -965,107 +863,37 @@ bool CMetasequoiaIME::_IsDeferredKeyReplayCurrent(uint64_t replayToken, uint64_t
            (expectedContext == nullptr || _deferredKeyInFlight.context == expectedContext);
 }
 
-void CMetasequoiaIME::_RetryDeferredKeyReplay(uint64_t replayToken)
+void CMetasequoiaIME::_FailDeferredKey(uint64_t replayToken, DeferredKeyFailureReason reason)
 {
     if (replayToken == 0 || !_hasDeferredKeyInFlight || _deferredKeyReplayToken != replayToken)
     {
         return;
     }
+    DeferredKeyFailureKind kind = ResolveDeferredKeyFailure(reason, _serverUnavailableFallbackActive);
     if (_deferredKeyInFlight.focusGeneration != _deferredKeyFocusGeneration)
     {
-        DebugTsfIssue47(L"deferred-replay-focus-changed", FANY_IME_NO_REQUEST_ID,
-                        static_cast<UINT>(_deferredKeyInFlight.wParam), _deferredKeyInFlight.translatedWch,
-                        _deferredKeyInFlight.keyState.Category, _deferredKeyInFlight.keyState.Function, 1,
-                        _IsComposing(),
-                        _pCompositionProcessorEngine ? _pCompositionProcessorEngine->GetVirtualKeyLength() : 0, S_FALSE,
-                        replayToken);
+        // A focus change already discarded everything this key belonged to.
+        kind = DeferredKeyFailureKind::Stale;
+    }
+    const std::wstring stage = std::wstring(L"deferred-key-dropped:") + DeferredKeyFailureKindName(kind) + L":" +
+                               DeferredKeyFailureReasonName(reason);
+    DebugTsfIssue47(stage.c_str(), FANY_IME_NO_REQUEST_ID, static_cast<UINT>(_deferredKeyInFlight.wParam),
+                    _deferredKeyInFlight.translatedWch, _deferredKeyInFlight.keyState.Category,
+                    _deferredKeyInFlight.keyState.Function, 1, _IsComposing(),
+                    _pCompositionProcessorEngine ? _pCompositionProcessorEngine->GetVirtualKeyLength() : 0, S_FALSE,
+                    replayToken);
+    if (kind == DeferredKeyFailureKind::Stale)
+    {
+        // Retire the token without applying the key. Whatever superseded it
+        // owns the cleanup; the keys behind it keep their order.
         _CompleteDeferredKeyReplay(replayToken);
         return;
     }
-
-    if (_deferredKeyInFlight.replayAttempts >= kMaxDeferredKeyReplayAttempts)
-    {
-        DebugTsfIssue47(L"deferred-replay-abandoned", FANY_IME_NO_REQUEST_ID,
-                        static_cast<UINT>(_deferredKeyInFlight.wParam), _deferredKeyInFlight.translatedWch,
-                        _deferredKeyInFlight.keyState.Category, _deferredKeyInFlight.keyState.Function, 1,
-                        _IsComposing(),
-                        _pCompositionProcessorEngine ? _pCompositionProcessorEngine->GetVirtualKeyLength() : 0, E_FAIL,
-                        replayToken);
-        // A permanently unanswerable request must not monopolize the ordered
-        // replay queue forever. The real composition is still intact because
-        // the failing edit session did not commit; discard this poisoned batch
-        // and reconnect for subsequent physical input.
-        MarkNamedpipeSessionDirtyForOwner(this);
-        _ClearDeferredKeyDowns();
-        return;
-    }
-
-    const bool needsBackoff = _deferredKeyInFlight.replayAttempts >= 2;
-    DebugTsfIssue47(needsBackoff ? L"deferred-replay-retry-backoff" : L"deferred-replay-retry", FANY_IME_NO_REQUEST_ID,
-                    static_cast<UINT>(_deferredKeyInFlight.wParam), _deferredKeyInFlight.translatedWch,
-                    _deferredKeyInFlight.keyState.Category, _deferredKeyInFlight.keyState.Function, 1, _IsComposing(),
-                    _pCompositionProcessorEngine ? _pCompositionProcessorEngine->GetVirtualKeyLength() : 0, S_FALSE,
-                    replayToken);
-    _deferredKeyDowns.push_front(_deferredKeyInFlight);
-    while (!_deferredAppliedPrefix.empty())
-    {
-        _deferredKeyDowns.push_front(_deferredAppliedPrefix.back());
-        _deferredAppliedPrefix.pop_back();
-    }
-    _deferredKeyInFlight = {};
-    _hasDeferredKeyInFlight = false;
-    _deferredKeyReplayToken = 0;
-    // Finish the ownership transfer before a dirty notification can fall
-    // back to synchronous window dispatch and re-enter reset bookkeeping.
-    MarkNamedpipeSessionDirtyForOwner(this);
-    if (!needsBackoff)
-    {
-        _ScheduleDeferredKeyDownDrain();
-    }
-    else if (_msgWndHandle && IsWindow(_msgWndHandle))
-    {
-        PostOwnerMessageWithSyncFallback(_msgWndHandle, WM_IpcReconnect);
-    }
-}
-
-void CMetasequoiaIME::_DropAmbiguousDeferredKey(uint64_t replayToken)
-{
-    if (replayToken == 0 || !_hasDeferredKeyInFlight || _deferredKeyReplayToken != replayToken)
-    {
-        return;
-    }
-    if (_deferredKeyInFlight.focusGeneration != _deferredKeyFocusGeneration)
-    {
-        _RetryDeferredKeyReplay(replayToken);
-        return;
-    }
-
-    DebugTsfIssue47(L"deferred-replay-ambiguous-dropped", FANY_IME_NO_REQUEST_ID,
-                    static_cast<UINT>(_deferredKeyInFlight.wParam), _deferredKeyInFlight.translatedWch,
-                    _deferredKeyInFlight.keyState.Category, _deferredKeyInFlight.keyState.Function, 1, _IsComposing(),
-                    _pCompositionProcessorEngine ? _pCompositionProcessorEngine->GetVirtualKeyLength() : 0,
-                    FANY_E_COMMIT_REPLY_AMBIGUOUS, replayToken);
-    // The Server received this commit and may have executed it, but its
-    // reply is lost, so the chosen text is unknown. Replaying the key would
-    // run the selection a second time against a page rebuilt from the prefix,
-    // whose order the first run may already have changed -- committing a
-    // candidate the user never saw. Rebuild only the composition the user
-    // typed and let them choose again. Keys queued after this one stay queued.
-    ITfContext *context = _deferredKeyInFlight.context;
-    while (!_deferredAppliedPrefix.empty())
-    {
-        _deferredKeyDowns.push_front(_deferredAppliedPrefix.back());
-        _deferredAppliedPrefix.pop_back();
-    }
-    _deferredKeyInFlight = {};
-    _hasDeferredKeyInFlight = false;
-    _deferredKeyReplayToken = 0;
-    if (context)
-    {
-        context->Release();
-    }
-    MarkNamedpipeSessionDirtyForOwner(this);
-    _ScheduleDeferredKeyDownDrain();
+    // The key is dropped with the queue: an eaten key is never handed back to
+    // the host and never sent again. A delivered commit whose reply was lost
+    // may already have run on the Server; resending it would pick again from a
+    // page the first run may have reordered, so the user chooses again.
+    _ResetSessionAfterFailure(kind);
 }
 
 void CMetasequoiaIME::_ScheduleDeferredKeyDownDrain()
@@ -1140,22 +968,20 @@ void CMetasequoiaIME::_DrainOneDeferredKeyDown()
     {
         DebugTsfKeyLatency(L"deferred-key-queue", 0, static_cast<double>(GetTickCount64() - key.queuedAtMs), S_OK);
     }
-    ++key.replayAttempts;
     const uint64_t replayToken = _deferredKeyReplayToken;
     const uint64_t focusToken = _CaptureFocusSessionToken();
     if (key.focusGeneration != _deferredKeyFocusGeneration)
     {
         // All queued keys belong to the focused top context that captured
-        // them. Never replay into another editor after another focus change.
+        // them. Never dispatch into another editor after another focus change.
         _ClearDeferredKeyDowns();
         return;
     }
     if (!_serverUnavailableFallbackActive && !_IsFocusSessionCurrent(focusToken, key.context))
     {
-        // A token/Ready fence can close without a document focus change.
-        // Preserve the exact item for the replacement Server epoch; an actual
-        // focus-generation change is handled by _ClearDeferredKeyDowns above.
-        _RetryDeferredKeyReplay(replayToken);
+        // The session is ready, so the key's context is no longer the focused
+        // top context: never dispatch it into another editor.
+        _FailDeferredKey(replayToken, DeferredKeyFailureReason::Superseded);
         return;
     }
 
@@ -1173,21 +999,9 @@ void CMetasequoiaIME::_DrainOneDeferredKeyDown()
                                          : CCompositionProcessorEngine::PreservedKeyAction::None;
         const bool awaitsEditSession =
             preservedAction == CCompositionProcessorEngine::PreservedKeyAction::ToggleImeMode;
-        if (!key.preservedApplied)
-        {
-            // OnPreservedKey changes compartments synchronously. Mark that
-            // phase before entering COM so a failed async commit retries only
-            // the commit phase and never toggles twice.
-            key.preservedApplied = true;
-            _DispatchPreservedKey(key.context, key.preservedKey, &eaten, key.focusGeneration, true, replayToken);
-        }
-        else if (awaitsEditSession)
-        {
-            _KEYSTROKE_STATE toggleState = {};
-            toggleState.Category = CATEGORY_COMPOSING;
-            toggleState.Function = FUNCTION_TOGGLE_IME_MODE;
-            _InvokeKeyHandler(key.context, 0, L'\0', 0, toggleState, FANY_IME_NO_REQUEST_ID, {}, 0, 0, 0, replayToken);
-        }
+        // OnPreservedKey changes compartments synchronously; a failure of the
+        // commit phase that follows drops the key and never toggles twice.
+        _DispatchPreservedKey(key.context, key.preservedKey, &eaten, key.focusGeneration, true, replayToken);
         if (!awaitsEditSession && _deferredKeyReplayToken == replayToken)
         {
             _CompleteDeferredKeyReplay(replayToken);
@@ -1232,9 +1046,16 @@ void CMetasequoiaIME::_DrainOneDeferredKeyDown()
     const KeyDownDispatchResult result =
         _DispatchKeyDown(key.context, key.wParam, key.lParam, &eaten, &key.translatedWch, &key.modifiersDown,
                          &key.keyState, false, key.focusGeneration, replayToken);
-    if (result == KeyDownDispatchResult::Retry)
+    if (result == KeyDownDispatchResult::Superseded)
     {
-        _RetryDeferredKeyReplay(replayToken);
+        _FailDeferredKey(replayToken, DeferredKeyFailureReason::Superseded);
+        return;
+    }
+    if (result == KeyDownDispatchResult::TransportFailed)
+    {
+        // DefinitelyNotSent and DeliveryAmbiguous alike: the key is dropped,
+        // never written again.
+        _FailDeferredKey(replayToken, DeferredKeyFailureReason::TransportBroken);
         return;
     }
 

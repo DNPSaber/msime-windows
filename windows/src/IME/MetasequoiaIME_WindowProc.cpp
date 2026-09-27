@@ -268,7 +268,8 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
                         if (FAILED(pIME->_InvokeKeyHandler(context, 0, L'\0', 0, keyState, FANY_IME_NO_REQUEST_ID, {},
                                                            0, request.compositionEpoch, request.focusToken)))
                         {
-                            MarkNamedpipeSessionDirtyForOwner(pIME);
+                            // The host refused the commit; the pipes are fine.
+                            pIME->_ResetSessionAfterFailure(DeferredKeyFailureKind::Resync);
                         }
                         context->Release();
                     }
@@ -348,12 +349,9 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
             break;
         }
         pIME->_workerCommitReady.store(false, std::memory_order_release);
-        // Preserve the visible raw composition before the transport reset
-        // cancels the local TSF text store.  If a key arrived after the reader
-        // thread closed Ready but before this message ran, its queued item
-        // remains behind this checkpoint.
-        pIME->_ArmDeferredRecoveryForTransport(pIME->_pContext);
-        MarkNamedpipeSessionDirtyForOwner(pIME);
+        // The Server side of this composition is gone. Cancel the local one
+        // and swallow the keys queued against it; the user starts from empty.
+        pIME->_ResetSessionAfterFailure(DeferredKeyFailureKind::Transport);
         CloseNamedpipe();
         if (Global::g_connected)
         {
@@ -369,7 +367,8 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
             // Worker-thread callbacks cannot access the UI thread's TLS IPC
             // binding.  Let the owner thread allocate and post an exact reset
             // token here.
-            MarkNamedpipeSessionDirtyForOwner(pIME);
+            pIME->_ResetSessionAfterFailure(lParam == IPC_SESSION_DIRTY_RESYNC ? DeferredKeyFailureKind::Resync
+                                                                               : DeferredKeyFailureKind::Transport);
         }
         else
         {
@@ -630,7 +629,7 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
         if (!pIME->_IsFocusSessionCurrent(request.focusToken) ||
             !pIME->_IsCompositionEpochCurrent(request.compositionEpoch))
         {
-            pIME->_RetryDeferredKeyReplay(request.deferredReplayToken);
+            pIME->_FailDeferredKey(request.deferredReplayToken, DeferredKeyFailureReason::Superseded);
             break;
         }
         PerfTimer timer;
@@ -654,7 +653,7 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
         }
         if (!handedOffReplay)
         {
-            pIME->_RetryDeferredKeyReplay(request.deferredReplayToken);
+            pIME->_FailDeferredKey(request.deferredReplayToken, DeferredKeyFailureReason::AsyncPostFailed);
         }
         break;
     }
@@ -667,7 +666,7 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
         if (!pIME->_IsFocusSessionCurrent(request.focusToken) ||
             !pIME->_IsCompositionEpochCurrent(request.compositionEpoch))
         {
-            pIME->_RetryDeferredKeyReplay(request.deferredReplayToken);
+            pIME->_FailDeferredKey(request.deferredReplayToken, DeferredKeyFailureReason::Superseded);
             break;
         }
         PerfTimer timer;
@@ -706,7 +705,7 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
         }
         if (!handedOffReplay)
         {
-            pIME->_RetryDeferredKeyReplay(request.deferredReplayToken);
+            pIME->_FailDeferredKey(request.deferredReplayToken, DeferredKeyFailureReason::AsyncPostFailed);
         }
         break;
     }
@@ -719,30 +718,43 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
         if (!pIME->_IsFocusSessionCurrent(request.focusToken) ||
             !pIME->_IsCompositionEpochCurrent(request.compositionEpoch))
         {
-            pIME->_RetryDeferredKeyReplay(request.deferredReplayToken);
+            pIME->_FailDeferredKey(request.deferredReplayToken, DeferredKeyFailureReason::Superseded);
             break;
         }
         const UINT code = request.code;
         const WCHAR wch = request.wch;
-        // This key may commit the highlighted candidate, so it gets the commit
-        // reply budget and is never replayed once delivered.
-        FanyImeNamedpipeDataToTsf *receivedData = TryReadCommitReplyFromServerPipe(request.requestId);
+        // Paging and highlight moves only need an acknowledgement: wait the
+        // ordinary budget and treat a missing reply as a soft miss, with no
+        // teardown and no queue clear (a late reply is cached by request id).
+        // Every other candidate key may commit the highlighted candidate, so
+        // it gets the commit reply budget and is never resent once delivered.
+        const bool navigationOnly = IsCandidateNavigationOnlyKey(code);
+        FanyImeNamedpipeDataToTsf *receivedData =
+            navigationOnly ? TryReadDataFromServerPipeWithTimeout(request.requestId, /*abortTransportOnTimeout=*/false)
+                           : TryReadCommitReplyFromServerPipe(request.requestId);
         if (receivedData->msg_type == Global::DataFromServerMsgType::TransportUnavailable)
         {
-            // Keep the existing composition intact. A transport failure is
-            // not text and must never be committed to the application.
-            if (request.deferredReplayToken != 0 && IsDeliveredServerRequestId(request.requestId))
+            // A transport failure is not text and must never be committed to
+            // the application. A delivered key may already have committed on
+            // the Server: it is dropped with the composition, never resent.
+            const DeferredKeyFailureReason reason = IsDeliveredServerRequestId(request.requestId)
+                                                        ? DeferredKeyFailureReason::DeliveryAmbiguous
+                                                        : DeferredKeyFailureReason::TransportBroken;
+            if (request.deferredReplayToken != 0)
             {
-                pIME->_DropAmbiguousDeferredKey(request.deferredReplayToken);
-            }
-            else if (request.deferredReplayToken != 0)
-            {
-                pIME->_RetryDeferredKeyReplay(request.deferredReplayToken);
+                pIME->_FailDeferredKey(request.deferredReplayToken, reason);
             }
             else
             {
-                MarkNamedpipeSessionDirtyForOwner(pIME);
+                pIME->_ResetSessionAfterFailure(DeferredKeyFailureKind::Transport);
             }
+            break;
+        }
+        if (navigationOnly)
+        {
+            // The Server never commits for these keys, so the reply (or the
+            // soft miss standing in for it) carries nothing to apply.
+            pIME->_CompleteDeferredKeyReplay(request.deferredReplayToken);
             break;
         }
 
@@ -790,7 +802,7 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
         if (!pIME->_IsFocusSessionCurrent(request.focusToken) ||
             !pIME->_IsCompositionEpochCurrent(request.compositionEpoch))
         {
-            pIME->_RetryDeferredKeyReplay(request.deferredReplayToken);
+            pIME->_FailDeferredKey(request.deferredReplayToken, DeferredKeyFailureReason::Superseded);
             break;
         }
         PerfTimer timer;
@@ -814,7 +826,7 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
         }
         if (!handedOffReplay)
         {
-            pIME->_RetryDeferredKeyReplay(request.deferredReplayToken);
+            pIME->_FailDeferredKey(request.deferredReplayToken, DeferredKeyFailureReason::AsyncPostFailed);
         }
         break;
     }

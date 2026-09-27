@@ -106,7 +106,8 @@ STDAPI CMetasequoiaIME::OnSetFocus(_In_ ITfDocumentMgr *pDocMgrFocus, _In_ ITfDo
             !_IsSameComObject(compositionDocumentMgr, pDocMgrFocus))
         {
             _DebugCompositionRecovery(L"focus-document-mismatch", ownerHr);
-            MarkNamedpipeSessionDirtyForOwner(this);
+            // The composition belongs to another document; the pipes are fine.
+            _ResetSessionAfterFailure(DeferredKeyFailureKind::Resync);
         }
         if (compositionDocumentMgr)
         {

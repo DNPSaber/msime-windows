@@ -1645,7 +1645,7 @@ HRESULT CMetasequoiaIME::_InvokeKeyHandler(_In_ ITfContext *pContext, UINT code,
     {
         if (deferredReplayToken != 0)
         {
-            _RetryDeferredKeyReplay(deferredReplayToken);
+            _FailDeferredKey(deferredReplayToken, DeferredKeyFailureReason::EditSessionRequestFailed);
         }
         goto Exit;
     }
@@ -1665,7 +1665,9 @@ HRESULT CMetasequoiaIME::_InvokeKeyHandler(_In_ ITfContext *pContext, UINT code,
                     deferredReplayToken);
     if ((FAILED(requestHr) || FAILED(editSessionHr)) && deferredReplayToken != 0)
     {
-        _RetryDeferredKeyReplay(deferredReplayToken);
+        // A session that already ran has retired its own token; this only
+        // drops a key whose session was never granted.
+        _FailDeferredKey(deferredReplayToken, DeferredKeyFailureReason::EditSessionRequestFailed);
     }
 
     pEditSession->Release();

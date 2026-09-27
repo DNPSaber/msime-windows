@@ -281,6 +281,7 @@ CMetasequoiaIME::CMetasequoiaIME()
     _localSessionResetToken.store(0);
     _localResetEditSessionQueued = false;
     _queuedLocalResetToken = 0;
+    _localResyncResetToken = 0;
     _focusResetPending = false;
     _activationRequired = false;
     _focusLostToWindowsTextInputHost = false;
@@ -457,6 +458,7 @@ void CMetasequoiaIME::_CompleteLocalSessionReset(UINT resetToken)
     if (currentToken == resetToken && !_IsComposing() && _pCandidateListUIPresenter == nullptr)
     {
         _localSessionResetPending.store(false, std::memory_order_release);
+        _OnLocalSessionResetReleased(resetToken);
     }
     else if (currentToken == resetToken && _localSessionResetPending.load(std::memory_order_acquire))
     {
@@ -484,7 +486,12 @@ void CMetasequoiaIME::_RequestLocalSessionReset(_In_opt_ ITfContext *preferredCo
     {
         return;
     }
-    _workerCommitReady.store(false, std::memory_order_release);
+    if (resetToken != _localResyncResetToken)
+    {
+        // A resync keeps the focus token, so its worker acknowledgement stays
+        // valid; the pending gate alone already fences worker deliveries.
+        _workerCommitReady.store(false, std::memory_order_release);
+    }
     _ClearPendingIpcRequests();
 
     if (_localResetEditSessionQueued)
@@ -498,6 +505,7 @@ void CMetasequoiaIME::_RequestLocalSessionReset(_In_opt_ ITfContext *preferredCo
         if (_localSessionResetToken.load(std::memory_order_acquire) == resetToken)
         {
             _localSessionResetPending.store(false, std::memory_order_release);
+            _OnLocalSessionResetReleased(resetToken);
         }
         if (Global::g_connected && _msgWndHandle && IsWindow(_msgWndHandle))
         {
@@ -560,12 +568,58 @@ void CMetasequoiaIME::_RequestLocalSessionReset(_In_opt_ ITfContext *preferredCo
     if (_localSessionResetToken.load(std::memory_order_acquire) == resetToken)
     {
         _localSessionResetPending.store(false, std::memory_order_release);
+        _OnLocalSessionResetReleased(resetToken);
     }
     if (Global::g_connected && _msgWndHandle && IsWindow(_msgWndHandle))
     {
         PostMessage(_msgWndHandle, WM_IpcReconnect, 0, 0);
         _ScheduleDeferredKeyDownDrain();
     }
+}
+
+bool CMetasequoiaIME::_RequestLocalResync()
+{
+    if (!IsNamedpipeFocusStateOwner(this) || !_msgWndHandle || !IsWindow(_msgWndHandle))
+    {
+        return false;
+    }
+    if (_localSessionResetPending.load(std::memory_order_acquire))
+    {
+        // The pending reset already cancels this composition before the next
+        // key is drained, and either rotates the focus token or resyncs.
+        return true;
+    }
+    const UINT resetToken = BeginNamedpipeLocalSessionReset();
+    if (resetToken == 0)
+    {
+        return false;
+    }
+    _localResyncResetToken = resetToken;
+    if (!PostMessage(_msgWndHandle, WM_IpcSessionDirty, static_cast<WPARAM>(resetToken), 0))
+    {
+        // Always called on the owner thread: run the reset now instead of
+        // leaving the gate closed with nothing to reopen it.
+        _RequestLocalSessionReset(nullptr, resetToken);
+    }
+    return true;
+}
+
+void CMetasequoiaIME::_OnLocalSessionResetReleased(UINT resetToken)
+{
+    if (resetToken != 0 && resetToken == _localResyncResetToken)
+    {
+        _localResyncResetToken = 0;
+        // The local cancel could not tell the Server: the reset gate holds back
+        // every ordinary packet. The focus token was kept, so clear the Server
+        // composition on that same token, ahead of any key drained after this.
+        // A transport reset that superseded the resync already rotated the
+        // token; its activation clears the Server instead.
+        if (Global::g_connected && _IsFocusSessionCurrent(_CaptureFocusSessionToken()))
+        {
+            SendHideCandidateWndEventToUIProcess();
+        }
+    }
+    _ReleaseIdleDeferredProjection();
 }
 
 void CMetasequoiaIME::_ScheduleCandidatePresenterCleanup(_In_ CCandidateListUIPresenter *pPresenter)
@@ -895,6 +949,7 @@ STDAPI CMetasequoiaIME::Deactivate()
     _localSessionResetPending.store(false, std::memory_order_release);
     _localResetEditSessionQueued = false;
     _queuedLocalResetToken = 0;
+    _localResyncResetToken = 0;
     _ClearDeferredKeyDowns();
     MarkNamedpipeFocusLost();
     FlushNamedpipeImeDeactivation(deactivatedFocusToken);

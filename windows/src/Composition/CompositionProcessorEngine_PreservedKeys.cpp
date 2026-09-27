@@ -356,7 +356,6 @@ void CCompositionProcessorEngine::OnPreservedKey( //
         {
             WriteDataToSharedMemory(Global::Keycode, L'\0', Global::ModifiersDown, nullptr, 0, L"", 0b000111);
             SendKeyEventToUIProcess();
-            ClearNamedpipeDataIfExists();
         }
     }
     else if (IsEqualGUID(rguid, _PreservedKey_DoubleSingleByte.Guid))

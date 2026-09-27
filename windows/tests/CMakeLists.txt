@@ -33,6 +33,11 @@ target_include_directories(test_key_focus_recovery PRIVATE ../src)
 target_compile_features(test_key_focus_recovery PRIVATE cxx_std_17)
 add_test(NAME key_focus_recovery COMMAND test_key_focus_recovery)
 
+add_executable(test_deferred_key_failure_policy deferred_key_failure_policy.cpp)
+target_include_directories(test_deferred_key_failure_policy PRIVATE ../src)
+target_compile_features(test_deferred_key_failure_policy PRIVATE cxx_std_17)
+add_test(NAME deferred_key_failure_policy COMMAND test_deferred_key_failure_policy)
+
 add_executable(test_caret_anchor_policy caret_anchor_policy.cpp)
 target_include_directories(test_caret_anchor_policy PRIVATE ../src)
 target_compile_features(test_caret_anchor_policy PRIVATE cxx_std_17)

@@ -103,12 +103,10 @@ int SendHideCaretStateEventToUIProcessViaNamedPipe();
 int SendShowCandidateWndEventToUIProcessViaNamedPipe();
 int SendMoveCandidateWndEventToUIProcessViaNamedPipe();
 int SendLangbarRightClickEventToUIProcessViaNamedPipe(const RECT *prcArea);
-void ClearNamedpipeDataIfExists(bool force = false);
 // Best-effort read of the Server-published current candidate page (comma-
 // separated). Used in UILess mode so ITfCandidateListUIElement::GetString can
 // return real candidates after PrepareCandidateList has written shared memory.
 bool TryReadCandidatePageFromSharedMemory(_Out_ std::wstring *candidatePage);
-struct FanyImeNamedpipeDataToTsf *TryReadDataFromServerPipeWithTimeout(uint64_t expectedRequestId);
 // When abortTransportOnTimeout is false, a missed reply leaves the pipe up and
 // returns a non-TransportUnavailable empty frame for the caller to fall back.
 struct FanyImeNamedpipeDataToTsf *TryReadDataFromServerPipeWithTimeout(uint64_t expectedRequestId,
@@ -118,8 +116,8 @@ struct FanyImeNamedpipeDataToTsf *TryReadDataFromServerPipeWithTimeout(uint64_t 
 // a miss is DeliveryAmbiguous: the Server may have committed the selection.
 // Waiting for the same request_id is the only way to learn which candidate it
 // chose; a slow machine (battery, throttled disk) routinely needs more than
-// the ordinary 50ms, and tearing the pipe down then replaying the key would
-// re-run the selection against a rebuilt, possibly reordered page.
+// the ordinary 50ms. A miss past this budget drops the key and resets the
+// transport; the selection is never sent a second time.
 constexpr DWORD FANY_IME_COMMIT_REPLY_TIMEOUT_MS = 300;
 struct FanyImeNamedpipeDataToTsf *TryReadCommitReplyFromServerPipe(uint64_t expectedRequestId);
 // True when requestId names a request that was actually written to the Server,
@@ -129,10 +127,9 @@ inline bool IsDeliveredServerRequestId(uint64_t requestId)
     return requestId != FANY_IME_NO_REQUEST_ID && requestId != FANY_IME_UNSOLICITED_REQUEST_ID;
 }
 // Edit-session result for a commit whose reply never arrived although the
-// request was delivered. The deferred queue rebuilds the composition from the
-// applied prefix but must not replay the committing key itself.
+// request was delivered. The key is dropped with the composition and never
+// sent again (DeferredKeyFailureReason::DeliveryAmbiguous).
 constexpr HRESULT FANY_E_COMMIT_REPLY_AMBIGUOUS = __HRESULT_FROM_WIN32(ERROR_TIMEOUT);
-struct FanyImeNamedpipeDataToTsf *ReadDataFromServerViaNamedPipe(uint64_t expectedRequestId);
 
 //
 // Modifiers:
