@@ -34,6 +34,14 @@ constexpr UINT kCandidateMoveSettleMs = 50;
 // milliseconds later.
 constexpr UINT_PTR TIMER_ID_CANDIDATE_HIDE_GRACE = 12;
 constexpr UINT kCandidateHideGraceMs = 50;
+// Floating toolbar auto-hide. ID 1 on the toolbar HWND belongs to msimeui's
+// caret-blink timer. The countdown polls so hover can be sampled without any
+// page-side mouse messages; the fade steps the layered alpha down.
+constexpr UINT_PTR TIMER_ID_FTB_AUTO_HIDE = 13;
+constexpr UINT_PTR TIMER_ID_FTB_AUTO_HIDE_FADE = 14;
+constexpr UINT kFloatingToolbarAutoHidePollMs = 200;
+constexpr UINT kFloatingToolbarAutoHideFadeStepMs = 16;
+constexpr UINT kFloatingToolbarAutoHideFadeMs = 400;
 // A show repeating the previous frame's preedit, page and caret within this
 // window is a duplicate post rather than new state — the candidate rebuild and
 // the English/cloud merge each request a show per keystroke. Rendering both

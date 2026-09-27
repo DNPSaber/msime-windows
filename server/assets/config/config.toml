@@ -33,6 +33,10 @@ floating_toolbar_settings = true
 floating_toolbar_scale = 1.0
 # 悬浮工具栏图标尺寸（px，再乘 scale），可选：16–28
 floating_toolbar_font_size = 24
+# 悬浮工具栏自动隐藏：显示一段时间无交互后淡出，鼠标悬停时不隐藏，切换中英等状态时重新显示
+floating_toolbar_auto_hide = false
+# 自动隐藏延时（秒），可选：1–60
+floating_toolbar_auto_hide_delay = 5
 # Emoji
 enable_emoji = true
 # 翻页方式

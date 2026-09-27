@@ -33,6 +33,7 @@ vi.mock('./ai-settings', () => ({ applyAiConfig: vi.fn() }));
 vi.mock('./floating-toolbar', () => ({
   applyCaretStateIndicatorPosition: vi.fn(),
   applyFloatingToolbarAppearanceConfig: vi.fn(),
+  applyFloatingToolbarAutoHideConfig: vi.fn(),
   applyFloatingToolbarItemsConfig: vi.fn()
 }));
 vi.mock('./stats', () => ({ applyStatisticsEnabled: vi.fn(), applyStatisticsRetention: vi.fn() }));

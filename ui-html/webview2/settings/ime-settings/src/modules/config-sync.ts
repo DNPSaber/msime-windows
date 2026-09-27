@@ -375,6 +375,10 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
         data?.general?.floating_toolbar_scale,
         data?.general?.floating_toolbar_font_size
       );
+      module.applyFloatingToolbarAutoHideConfig(
+        data?.general?.floating_toolbar_auto_hide,
+        data?.general?.floating_toolbar_auto_hide_delay
+      );
     });
   }
   if (applies('stats')) {

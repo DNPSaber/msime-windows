@@ -664,7 +664,7 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                                 const bool value = json::value_to<bool>(data.at("value"));
                                 if (SetConfiguredFloatingToolbarEnabled(value))
                                 {
-                                    ApplyConfiguredFloatingToolbarVisibility(L"settings-toggle");
+                                    RestartFloatingToolbarAutoHide(L"settings-toggle");
                                     SyncMenuFloatingToolbarToggle();
                                     PostSettingsConfig();
                                 }
@@ -706,6 +706,24 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                                 if (SetConfiguredFloatingToolbarFontSize(static_cast<int>(data.at("value").as_int64())))
                                 {
                                     ApplyConfiguredFloatingToolbarSize();
+                                    PostSettingsConfig();
+                                }
+                            }
+                            // Must precede the general.floating_toolbar_ item prefix below.
+                            else if (path == "general.floating_toolbar_auto_hide")
+                            {
+                                if (SetConfiguredFloatingToolbarAutoHide(json::value_to<bool>(data.at("value"))))
+                                {
+                                    RestartFloatingToolbarAutoHide(L"settings-auto-hide");
+                                    PostSettingsConfig();
+                                }
+                            }
+                            else if (path == "general.floating_toolbar_auto_hide_delay")
+                            {
+                                if (SetConfiguredFloatingToolbarAutoHideDelay(
+                                        static_cast<int>(data.at("value").as_int64())))
+                                {
+                                    RestartFloatingToolbarAutoHide(L"settings-auto-hide-delay");
                                     PostSettingsConfig();
                                 }
                             }
@@ -1297,6 +1315,8 @@ void PostSettingsConfig()
             {"floating_toolbar_settings", toolbar.settings},
             {"floating_toolbar_scale", GetConfiguredFloatingToolbarScale()},
             {"floating_toolbar_font_size", GetConfiguredFloatingToolbarFontSize()},
+            {"floating_toolbar_auto_hide", GetConfiguredFloatingToolbarAutoHide()},
+            {"floating_toolbar_auto_hide_delay", GetConfiguredFloatingToolbarAutoHideDelay()},
             {"cn_en_mixed_input", GetConfiguredEnglishCandidatesEnabled()},
             {"candidate_translations", GetConfiguredCandidateTranslationsEnabled()},
             {"cn_en_mixed_input_min_chars", GetConfiguredEnglishMixedInputMinChars()},

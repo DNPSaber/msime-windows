@@ -285,6 +285,12 @@ bool SetConfiguredFloatingToolbarScale(double scale);
 // Icon box size in CSS px before user scale (16–28, default 24).
 int GetConfiguredFloatingToolbarFontSize();
 bool SetConfiguredFloatingToolbarFontSize(int font_size);
+// Fade the toolbar out after it has been shown this many seconds (1–60,
+// default 5) without hover; a CN/EN-style state change shows it again.
+bool GetConfiguredFloatingToolbarAutoHide();
+bool SetConfiguredFloatingToolbarAutoHide(bool enabled);
+int GetConfiguredFloatingToolbarAutoHideDelay();
+bool SetConfiguredFloatingToolbarAutoHideDelay(int seconds);
 bool GetConfiguredEnglishCandidatesEnabled();
 bool SetConfiguredEnglishCandidatesEnabled(bool enabled);
 bool GetConfiguredCandidateTranslationsEnabled();

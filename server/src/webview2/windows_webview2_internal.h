@@ -34,6 +34,8 @@ int FineTuneWindow(HWND hwnd);
 void ApplyConfiguredFloatingToolbarVisibility(const wchar_t *reason);
 void ApplyConfiguredFloatingToolbarSize();
 void ReconcileFloatingToolbarVisibilityAfterReady(const wchar_t *reason);
+void RestartFloatingToolbarAutoHide(const wchar_t *reason);
+void RevealAutoHiddenFloatingToolbar(const wchar_t *reason);
 void ApplyConfiguredInputScheme();
 void ApplyConfiguredShuangpinSchema();
 bool EnsureSmallWindowsTopmost(const wchar_t *reason);

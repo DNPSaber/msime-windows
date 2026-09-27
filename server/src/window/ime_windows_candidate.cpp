@@ -505,6 +505,8 @@ LRESULT CALLBACK WndProcCandWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
             const FloatingToolbarItemsConfig previous_floating_toolbar_items = GetConfiguredFloatingToolbarItems();
             const double previous_floating_toolbar_scale = GetConfiguredFloatingToolbarScale();
             const int previous_floating_toolbar_font_size = GetConfiguredFloatingToolbarFontSize();
+            const bool previous_floating_toolbar_auto_hide = GetConfiguredFloatingToolbarAutoHide();
+            const int previous_floating_toolbar_auto_hide_delay = GetConfiguredFloatingToolbarAutoHideDelay();
             const bool previous_cloud_candidates = GetConfiguredCloudCandidatesEnabled();
             const bool previous_comma_period = GetConfiguredPagingCommaPeriodEnabled();
             const bool previous_smart_punctuation = GetConfiguredSmartPunctuationEnabled();
@@ -579,8 +581,13 @@ LRESULT CALLBACK WndProcCandWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
                 }
                 if (previous_floating_toolbar != GetConfiguredFloatingToolbarEnabled())
                 {
-                    ApplyConfiguredFloatingToolbarVisibility(L"config-sync");
+                    RestartFloatingToolbarAutoHide(L"config-sync");
                     SyncMenuFloatingToolbarToggle();
+                }
+                else if (previous_floating_toolbar_auto_hide != GetConfiguredFloatingToolbarAutoHide() ||
+                         previous_floating_toolbar_auto_hide_delay != GetConfiguredFloatingToolbarAutoHideDelay())
+                {
+                    RestartFloatingToolbarAutoHide(L"config-sync-auto-hide");
                 }
                 if (previous_caret_state_indicator != GetConfiguredCaretStateIndicatorEnabled() &&
                     !GetConfiguredCaretStateIndicatorEnabled() && ::global_hwnd_caret_state)

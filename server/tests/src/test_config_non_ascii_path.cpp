@@ -842,3 +842,67 @@ TEST_CASE(settings_window_linger_defaults_off_and_round_trips)
 
     fs::remove_all(unique_root, ec);
 }
+
+// 悬浮工具栏自动隐藏：两个模板都必须带键（否则升级合并会丢掉用户的选择），
+// 默认关闭、延时 5 秒；延时越界的读值回退到 5，越界的写入被拒且不落盘。
+TEST_CASE(floating_toolbar_auto_hide_defaults_and_round_trips)
+{
+    {
+        std::ifstream input(MSIME_DEFAULT_CONFIG_PATH, std::ios::binary);
+        REQUIRE(static_cast<bool>(input));
+        const std::string installed((std::istreambuf_iterator<char>(input)), {});
+        const auto working_path =
+            std::filesystem::path(MSIME_DEFAULT_CONFIG_PATH).parent_path().parent_path().parent_path() /
+            "server/assets/config/config.toml";
+        std::ifstream development(working_path, std::ios::binary);
+        REQUIRE(static_cast<bool>(development));
+        const std::string working((std::istreambuf_iterator<char>(development)), {});
+        for (const std::string *text : {&installed, &working})
+        {
+            const auto parsed = toml::parse(*text);
+            REQUIRE(!parsed["general"]["floating_toolbar_auto_hide"].value_or(true));
+            REQUIRE_EQ(parsed["general"]["floating_toolbar_auto_hide_delay"].value_or(0), 5);
+        }
+    }
+
+    namespace fs = std::filesystem;
+    const fs::path unique_root = MakeProfileRoot();
+    const fs::path local_app_data = unique_root / L"本地";
+    const fs::path data_dir = local_app_data / L"metasequoiaime";
+
+    std::error_code ec;
+    fs::remove_all(unique_root, ec);
+    SeedTemplate(data_dir);
+
+    {
+        ScopedConfigLocation local_app_data_env(local_app_data);
+
+        InitImeConfig();
+        REQUIRE(!GetConfiguredFloatingToolbarAutoHide());
+        REQUIRE_EQ(GetConfiguredFloatingToolbarAutoHideDelay(), 5);
+
+        WriteText(data_dir / L"config.toml", "[general]\nfloating_toolbar_auto_hide_delay = 0\n");
+        InitImeConfig();
+        REQUIRE_EQ(GetConfiguredFloatingToolbarAutoHideDelay(), 5);
+        WriteText(data_dir / L"config.toml", "[general]\nfloating_toolbar_auto_hide_delay = 61\n");
+        InitImeConfig();
+        REQUIRE_EQ(GetConfiguredFloatingToolbarAutoHideDelay(), 5);
+
+        const std::string before_invalid_set = ReadText(data_dir / L"config.toml");
+        REQUIRE(!SetConfiguredFloatingToolbarAutoHideDelay(0));
+        REQUIRE(!SetConfiguredFloatingToolbarAutoHideDelay(61));
+        REQUIRE_EQ(GetConfiguredFloatingToolbarAutoHideDelay(), 5);
+        REQUIRE_EQ(ReadText(data_dir / L"config.toml"), before_invalid_set);
+
+        REQUIRE(SetConfiguredFloatingToolbarAutoHide(true));
+        for (const int seconds : {1, 12, 60})
+        {
+            REQUIRE(SetConfiguredFloatingToolbarAutoHideDelay(seconds));
+            InitImeConfig();
+            REQUIRE(GetConfiguredFloatingToolbarAutoHide());
+            REQUIRE_EQ(GetConfiguredFloatingToolbarAutoHideDelay(), seconds);
+        }
+    }
+
+    fs::remove_all(unique_root, ec);
+}

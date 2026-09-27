@@ -10,6 +10,12 @@
 .section-title.caret-state-option-title { font-weight: 400; -webkit-text-stroke: 0.25px currentColor; }
 .floating-toolbar-setting-row { padding: 20px 24px; }
 .floating-toolbar-description { margin-top: 6px; color: var(--text-muted); font-size: 12px; }
+/* Auto-hide rows sit under the main switch; the delay is a child of the auto-hide
+   switch, indented and greyed out while that switch is off. */
+.ftb-auto-hide-row, .ftb-auto-hide-delay-row { border-top: 1px solid var(--divider-color); }
+.ftb-auto-hide-delay-row { padding-left: 48px; }
+.ftb-auto-hide-delay-row.is-disabled { opacity: 0.45; }
+.ftb-auto-hide-delay-row.is-disabled .number-stepper { pointer-events: none; }
 .floating-toolbar-preview { min-height: 190px; padding: 20px 24px 30px; border-top: 1px solid var(--border-color); background: var(--surface-subtle); }
 .floating-toolbar-preview-label { margin-bottom: 28px; color: var(--text-muted); font-size: 12px; }
 .caret-state-preview { padding: 20px 24px 30px; border-top: 1px solid var(--border-color); background: var(--surface-subtle); }
