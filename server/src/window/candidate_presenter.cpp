@@ -1105,11 +1105,13 @@ void CandidatePresenter::ShowFromGlobalState(POINT caret)
         impl_->root->ArrangeInLayout({0.0f, 0.0f, widthDip, heightDip});
     };
     // Late additions to the page (translations, cloud/AI/English merges) change
-    // the card's size between two frames of the same composition, and the eye
-    // reads that as flicker even though every frame is complete. Within one
-    // composition the card therefore only grows; it shrinks back only when the
-    // natural size falls well below the kept one (a page that really got
-    // smaller). Hide() starts the next composition from the natural size.
+    // the card's size between two frames of the same input, and the eye reads
+    // that as flicker even though every frame is complete. For one input
+    // (preedit + caret + page) the card therefore only grows; it shrinks back
+    // only when the natural size falls well below the kept one (a page that
+    // really got smaller). Another keystroke, caret move or page turn is a
+    // different page and starts from its natural size, as does Hide();
+    // carrying the old size over leaves blank rows at the bottom.
     if (impl_->card)
     {
         impl_->card->SetMinWidth(kCandidateMinWidthDip);
@@ -1118,6 +1120,15 @@ void CandidatePresenter::ShowFromGlobalState(POINT caret)
     layoutRoot();
     if (impl_->card)
     {
+        std::wstring stickyKey = GetPreeditWithCaretMarker();
+        stickyKey += L'#';
+        stickyKey += std::to_wstring(Global::candidate_ui.page_index);
+        if (stickyKey != stickyCardKey_)
+        {
+            stickyCardKey_ = std::move(stickyKey);
+            stickyCardWidthDip_ = 0.0f;
+            stickyCardHeightDip_ = 0.0f;
+        }
         const msimeui::RectF natural = impl_->card->GetBounds();
         const float maxCardWidthDip = (std::max)(kCandidateMinWidthDip, maxW - kShadowPadLeft - kShadowPadRight);
         stickyCardWidthDip_ = (std::min)(StickyCardExtent(stickyCardWidthDip_, natural.width), maxCardWidthDip);
@@ -1176,6 +1187,7 @@ void CandidatePresenter::Hide()
     SetCandidateHostCloaked(true);
     lastHostWidthPx_ = 0;
     lastHostHeightPx_ = 0;
+    stickyCardKey_.clear();
     stickyCardWidthDip_ = 0.0f;
     stickyCardHeightDip_ = 0.0f;
     SetWindowPos(hwnd_, nullptr, 0, Global::INVALID_Y, 0, 0,
