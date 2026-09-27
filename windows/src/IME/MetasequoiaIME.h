@@ -3,6 +3,7 @@
 #include "KeyHandlerEditSession.h"
 #include "MetasequoiaIMEBaseStructure.h"
 #include "Ipc.h"
+#include "DeferredKeyFailurePolicy.h"
 #include <atomic>
 #include <chrono>
 #include <cstdint>
@@ -35,6 +36,9 @@ const DWORD WM_AsyncServerCandidateKey = WM_USER + 14;
 const DWORD WM_IpcWorkerDisconnected = WM_USER + 15;
 const DWORD WM_IpcReconnect = WM_USER + 16;
 const DWORD WM_IpcSessionDirty = WM_USER + 17;
+// lParam of a WM_IpcSessionDirty posted with reset token 0 from another thread:
+// resync the composition instead of running the full transport reset.
+constexpr LPARAM IPC_SESSION_DIRTY_RESYNC = 1;
 const DWORD WM_DrainDeferredKeyDown = WM_USER + 18;
 const DWORD WM_InsertText = WM_USER + 19;
 const DWORD WM_RefreshLanguageBarTheme = WM_USER + 20;
@@ -411,6 +415,10 @@ class CMetasequoiaIME : public ITfTextInputProcessorEx,
     void _DebugCompositionRecovery(_In_z_ const WCHAR *reason, HRESULT hr) const;
     bool _IsLocalSessionResetCurrent(UINT resetToken) const;
     void _CompleteLocalSessionReset(UINT resetToken);
+    // Discards the queued keys and the composition after a failure: Resync
+    // cancels locally and clears the Server composition on the current focus
+    // token, Transport runs the full reset, Offline keeps the local composition.
+    void _ResetSessionAfterFailure(DeferredKeyFailureKind kind);
     bool _IsDeferredKeyReplayCurrent(uint64_t replayToken, uint64_t focusGeneration,
                                      _In_opt_ ITfContext *expectedContext) const;
     void _CompleteDeferredKeyReplay(uint64_t replayToken);
@@ -483,6 +491,13 @@ class CMetasequoiaIME : public ITfTextInputProcessorEx,
     void _ClearAsyncKeyRequests();
     void _ClearPendingIpcRequests();
     void _RequestLocalSessionReset(_In_opt_ ITfContext *preferredContext, UINT resetToken);
+    // Opens the local reset gate without rotating the focus token or closing a
+    // pipe. When the gate closes again, HideCandidateWnd clears the Server
+    // composition on the same token.
+    bool _RequestLocalResync();
+    void _OnLocalSessionResetReleased(UINT resetToken);
+    void _ArmEmptyDeferredProjection();
+    void _ReleaseIdleDeferredProjection();
     bool _CaptureWindowsTextInputHostFocusLoss();
     // Caret badge on moving focus into another text field: callbacks only
     // schedule; the timer announces once focus has settled.
@@ -812,6 +827,9 @@ class CMetasequoiaIME : public ITfTextInputProcessorEx,
     std::atomic<UINT> _localSessionResetToken;
     bool _localResetEditSessionQueued;
     UINT _queuedLocalResetToken;
+    // Reset token opened by _RequestLocalResync; 0 when the pending reset (if
+    // any) is a transport or focus reset.
+    UINT _localResyncResetToken;
     bool _focusResetPending;
     bool _activationRequired;
     bool _focusLostToWindowsTextInputHost;

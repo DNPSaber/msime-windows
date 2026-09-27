@@ -268,7 +268,8 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
                         if (FAILED(pIME->_InvokeKeyHandler(context, 0, L'\0', 0, keyState, FANY_IME_NO_REQUEST_ID, {},
                                                            0, request.compositionEpoch, request.focusToken)))
                         {
-                            MarkNamedpipeSessionDirtyForOwner(pIME);
+                            // The host refused the commit; the pipes are fine.
+                            pIME->_ResetSessionAfterFailure(DeferredKeyFailureKind::Resync);
                         }
                         context->Release();
                     }
@@ -369,7 +370,8 @@ LRESULT CALLBACK CMetasequoiaIME_WindowProc(HWND hWnd, UINT message, WPARAM wPar
             // Worker-thread callbacks cannot access the UI thread's TLS IPC
             // binding.  Let the owner thread allocate and post an exact reset
             // token here.
-            MarkNamedpipeSessionDirtyForOwner(pIME);
+            pIME->_ResetSessionAfterFailure(lParam == IPC_SESSION_DIRTY_RESYNC ? DeferredKeyFailureKind::Resync
+                                                                               : DeferredKeyFailureKind::Transport);
         }
         else
         {

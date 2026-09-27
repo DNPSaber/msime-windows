@@ -862,6 +862,72 @@ void CMetasequoiaIME::_ClearDeferredKeyDowns()
     _backspaceHoldArmed = false;
 }
 
+void CMetasequoiaIME::_ArmEmptyDeferredProjection()
+{
+    // Keys typed while the reset is pending are drained after it has cancelled
+    // the composition, so classify them against that empty composition rather
+    // than against the one still on screen.
+    _deferredKeyProjectionValid = false;
+    _EnsureDeferredKeyProjection();
+    _deferredProjectedInputLength = 0;
+    _deferredProjectedRawInput.clear();
+    _deferredProjectedCaret = 0;
+    _deferredProjectedCandidateActive = false;
+    _deferredProjectedUnicodeMode = false;
+}
+
+void CMetasequoiaIME::_ReleaseIdleDeferredProjection()
+{
+    // Once the reset gate has reopened and nothing is queued, the real
+    // composition is authoritative again and the healthy path (including the
+    // synchronous first-key drain) must not stay behind a stale barrier.
+    if (!_deferredKeyProjectionValid || !_deferredKeyDowns.empty() || _hasDeferredKeyInFlight ||
+        _localSessionResetPending.load(std::memory_order_acquire))
+    {
+        return;
+    }
+    _deferredKeyProjectionValid = false;
+    _deferredProjectedInputLength = 0;
+    _deferredProjectedRawInput.clear();
+    _deferredProjectedCaret = 0;
+    _deferredProjectedCandidateActive = false;
+    _deferredProjectedUnicodeMode = false;
+}
+
+void CMetasequoiaIME::_ResetSessionAfterFailure(DeferredKeyFailureKind kind)
+{
+    if (kind == DeferredKeyFailureKind::Stale)
+    {
+        return;
+    }
+    DebugTsfIssue47(L"session-failure-reset", FANY_IME_NO_REQUEST_ID, 0, L'\0', 0, static_cast<UINT>(kind), -1,
+                    _IsComposing(),
+                    _pCompositionProcessorEngine ? _pCompositionProcessorEngine->GetVirtualKeyLength() : 0, S_FALSE,
+                    _deferredKeyReplayToken);
+    // Every queued key was classified against the composition that is being
+    // discarded: swallow them with it, never hand them back or resend them.
+    // The Backspace hold guard survives, so the rest of a hold that began in
+    // the composition cannot delete document text once it is gone (#347).
+    const bool backspaceHoldArmed = _backspaceHoldArmed;
+    _ClearDeferredKeyDowns();
+    _backspaceHoldArmed = backspaceHoldArmed;
+
+    if (kind == DeferredKeyFailureKind::Transport)
+    {
+        MarkNamedpipeSessionDirtyForOwner(this);
+    }
+    else if (kind == DeferredKeyFailureKind::Resync)
+    {
+        (void)_RequestLocalResync();
+    }
+    // Offline keeps the local composition: it is the only authority there.
+    if (kind != DeferredKeyFailureKind::Offline && _localSessionResetPending.load(std::memory_order_acquire))
+    {
+        _ArmEmptyDeferredProjection();
+    }
+    _TryLeaveServerUnavailableFallback();
+}
+
 void CMetasequoiaIME::_CompleteDeferredKeyReplay(uint64_t replayToken)
 {
     if (replayToken == 0 || !_hasDeferredKeyInFlight || _deferredKeyReplayToken != replayToken)

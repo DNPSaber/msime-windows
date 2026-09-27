@@ -165,7 +165,9 @@ bool CMetasequoiaIME::_PostServerTextDelivery(UINT windowMessage, _In_z_ const W
     {
         std::lock_guard<std::mutex> lock(_pendingCommitCandidateMutex);
         _pendingServerCommitMessages.erase(token);
-        PostMessage(ownerWindow, WM_IpcSessionDirty, 0, 0);
+        // The delivery was lost locally; the pipes are fine. Resync the
+        // composition on the owner thread instead of rotating the transport.
+        PostMessage(ownerWindow, WM_IpcSessionDirty, 0, IPC_SESSION_DIRTY_RESYNC);
         return false;
     }
     return true;
