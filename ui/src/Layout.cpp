@@ -1912,15 +1912,7 @@ void Card::Render(DeviceResources &deviceResources)
 
     if (shadowEnabled_)
     {
-        if (shadowPasses_.empty())
-        {
-            DrawWin11WindowShadow(target, bounds_, brush_.radiusX, shadowScale_, shadowOpacity_);
-        }
-        else
-        {
-            DrawGaussianPasses(target, bounds_, brush_.radiusX, shadowPasses_.data(), shadowPasses_.size(),
-                               shadowScale_, shadowOpacity_);
-        }
+        RenderShadow(target);
     }
 
     const auto roundedRect =
@@ -1933,6 +1925,110 @@ void Card::Render(DeviceResources &deviceResources)
     {
         child->Render(deviceResources);
     }
+}
+
+void Card::RenderShadow(ID2D1RenderTarget *target)
+{
+    const bool builtIn = shadowPasses_.empty();
+    const ShadowPass *passes = builtIn ? kMistShadowPasses : shadowPasses_.data();
+    const size_t count = builtIn ? std::size(kMistShadowPasses) : shadowPasses_.size();
+    if (RenderCachedShadow(target, passes, count))
+    {
+        return;
+    }
+
+    // Uncached path, unchanged from before the cache existed.
+    cachedShadowBitmap_.Reset();
+    cachedShadowTarget_.Reset();
+    if (builtIn)
+    {
+        DrawWin11WindowShadow(target, bounds_, brush_.radiusX, shadowScale_, shadowOpacity_);
+    }
+    else
+    {
+        DrawGaussianPasses(target, bounds_, brush_.radiusX, passes, count, shadowScale_, shadowOpacity_);
+    }
+}
+
+bool Card::RenderCachedShadow(ID2D1RenderTarget *target, const ShadowPass *passes, size_t count)
+{
+    if (bounds_.width <= 0.0f || bounds_.height <= 0.0f || count == 0)
+    {
+        return false;
+    }
+
+    float dpiX = 96.0f;
+    float dpiY = 96.0f;
+    target->GetDpi(&dpiX, &dpiY);
+    const bool hit = cachedShadowBitmap_ && cachedShadowTarget_.Get() == target &&
+                     IsSameSize(cachedShadowSize_, {bounds_.width, bounds_.height}) &&
+                     cachedShadowRadius_ == brush_.radiusX && cachedShadowScale_ == shadowScale_ &&
+                     cachedShadowOpacity_ == shadowOpacity_ && cachedShadowDpiX_ == dpiX && cachedShadowDpiY_ == dpiY &&
+                     cachedShadowPasses_.size() == count &&
+                     std::equal(cachedShadowPasses_.begin(), cachedShadowPasses_.end(), passes);
+    if (!hit)
+    {
+        cachedShadowBitmap_.Reset();
+        cachedShadowTarget_.Reset();
+
+        const float s = std::max(shadowScale_, 0.15f);
+        float pad = 0.0f;
+        for (size_t i = 0; i < count; ++i)
+        {
+            // Same margin DrawGaussianShadowPass gives each pass, plus that pass's offset.
+            const float passPad = passes[i].sigma * s * 3.0f + 4.0f +
+                                  std::max(std::fabs(passes[i].offsetX), std::fabs(passes[i].offsetY)) * s;
+            pad = std::max(pad, passPad);
+        }
+        pad = std::ceil(pad);
+
+        ComPtr<ID2D1BitmapRenderTarget> composed;
+        if (FAILED(target->CreateCompatibleRenderTarget({bounds_.width + pad * 2.0f, bounds_.height + pad * 2.0f},
+                                                        composed.GetAddressOf())))
+        {
+            return false;
+        }
+        ComPtr<ID2D1DeviceContext> composedDc;
+        if (FAILED(composed.As(&composedDc)))
+        {
+            return false;
+        }
+        composed->BeginDraw();
+        composed->Clear(D2D1::ColorF(0, 0.0f));
+        const RectF local = {pad, pad, bounds_.width, bounds_.height};
+        bool drew = false;
+        for (size_t i = 0; i < count; ++i)
+        {
+            if (DrawGaussianShadowPass(composed.Get(), composedDc.Get(), local, brush_.radiusX, passes[i].sigma * s,
+                                       passes[i].alpha * shadowOpacity_, passes[i].offsetX * s, passes[i].offsetY * s))
+            {
+                drew = true;
+            }
+        }
+        ComPtr<ID2D1Bitmap> bitmap;
+        if (FAILED(composed->EndDraw()) || !drew || FAILED(composed->GetBitmap(bitmap.GetAddressOf())))
+        {
+            return false;
+        }
+
+        cachedShadowTarget_ = target;
+        cachedShadowBitmap_ = bitmap;
+        cachedShadowSize_ = {bounds_.width, bounds_.height};
+        cachedShadowRadius_ = brush_.radiusX;
+        cachedShadowScale_ = shadowScale_;
+        cachedShadowOpacity_ = shadowOpacity_;
+        cachedShadowDpiX_ = dpiX;
+        cachedShadowDpiY_ = dpiY;
+        cachedShadowPad_ = pad;
+        cachedShadowPasses_.assign(passes, passes + count);
+    }
+
+    const float pad = cachedShadowPad_;
+    target->DrawBitmap(cachedShadowBitmap_.Get(),
+                       D2D1::RectF(bounds_.x - pad, bounds_.y - pad, bounds_.x + bounds_.width + pad,
+                                   bounds_.y + bounds_.height + pad),
+                       1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+    return true;
 }
 
 TextBlock::TextBlock(std::wstring text, float fontSize, D2D1_COLOR_F color, bool bold)
@@ -1960,7 +2056,7 @@ void TextBlock::SetFontSize(float fontSize)
         return;
     }
     fontSize_ = fontSize;
-    InvalidateTextLayoutCache();
+    InvalidateTextFormatCache();
     InvalidateMeasure();
 }
 
@@ -1972,7 +2068,7 @@ void TextBlock::SetTextAlignment(DWRITE_TEXT_ALIGNMENT alignment)
     }
 
     textAlignment_ = alignment;
-    InvalidateTextLayoutCache();
+    InvalidateTextFormatCache();
     InvalidateVisual();
 }
 
@@ -1984,7 +2080,7 @@ void TextBlock::SetFontFamily(std::wstring fontFamily)
     }
 
     fontFamilyOverride_ = std::move(fontFamily);
-    InvalidateTextLayoutCache();
+    InvalidateTextFormatCache();
     InvalidateMeasure();
 }
 
@@ -1995,13 +2091,20 @@ void TextBlock::InvalidateTextLayoutCache()
     cachedLayoutWidth_ = -1.0f;
 }
 
+void TextBlock::InvalidateTextFormatCache()
+{
+    cachedTextFormat_.Reset();
+    cachedFormatFamily_.clear();
+    InvalidateTextLayoutCache();
+}
+
 void TextBlock::SetFallbackFontFamilies(std::vector<std::wstring> families)
 {
     if (hasCustomFontFallback_ && fallbackFontFamilies_ == families)
         return;
     hasCustomFontFallback_ = true;
     fallbackFontFamilies_ = std::move(families);
-    InvalidateTextLayoutCache();
+    InvalidateTextFormatCache();
     InvalidateMeasure();
 }
 
@@ -2066,26 +2169,33 @@ SizeF TextBlock::Measure(const SizeF &availableSize)
     const bool needsLayout = !cachedTextLayout_ || cachedLayoutWidth_ != maxWidth || cachedFontFamily_ != fontFamily;
     if (needsLayout)
     {
-        ComPtr<IDWriteTextFormat> format;
-        if (FAILED(dwriteFactory->CreateTextFormat(
-                fontFamily.c_str(), nullptr, bold_ ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
-                DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, fontSize_, L"", format.GetAddressOf())))
+        if (!cachedTextFormat_ || cachedFormatFamily_ != fontFamily)
         {
+            ComPtr<IDWriteTextFormat> format;
             if (FAILED(dwriteFactory->CreateTextFormat(
-                    UiFontFallbackFamily(), nullptr, bold_ ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
+                    fontFamily.c_str(), nullptr, bold_ ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL,
                     DWRITE_FONT_STYLE_NORMAL, DWRITE_FONT_STRETCH_NORMAL, fontSize_, L"", format.GetAddressOf())))
             {
-                measured_ = {maxWidth, fontSize_ + textLayoutPadding_.top + textLayoutPadding_.bottom};
-                return measured_;
+                if (FAILED(dwriteFactory->CreateTextFormat(
+                        UiFontFallbackFamily(), nullptr,
+                        bold_ ? DWRITE_FONT_WEIGHT_SEMI_BOLD : DWRITE_FONT_WEIGHT_NORMAL, DWRITE_FONT_STYLE_NORMAL,
+                        DWRITE_FONT_STRETCH_NORMAL, fontSize_, L"", format.GetAddressOf())))
+                {
+                    measured_ = {maxWidth, fontSize_ + textLayoutPadding_.top + textLayoutPadding_.bottom};
+                    return measured_;
+                }
             }
-        }
 
-        format->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
-        format->SetTextAlignment(textAlignment_);
-        if (hasCustomFontFallback_)
-            ApplyFontFallback(dwriteFactory, format.Get(), fallbackFontFamilies_);
-        else
-            ApplyUiFontFallback(dwriteFactory, format.Get());
+            format->SetWordWrapping(DWRITE_WORD_WRAPPING_WRAP);
+            format->SetTextAlignment(textAlignment_);
+            if (hasCustomFontFallback_)
+                ApplyFontFallback(dwriteFactory, format.Get(), fallbackFontFamilies_);
+            else
+                ApplyUiFontFallback(dwriteFactory, format.Get());
+            cachedTextFormat_ = format;
+            cachedFormatFamily_ = fontFamily;
+        }
+        IDWriteTextFormat *format = cachedTextFormat_.Get();
 
         const UINT32 caretPos = static_cast<UINT32>((std::min)(caretIndex_, text_.size()));
         const bool insertSlot = showCaret_ && caretPos < text_.size();
@@ -2095,8 +2205,8 @@ SizeF TextBlock::Measure(const SizeF &availableSize)
             layoutText.insert(layoutText.begin() + static_cast<std::ptrdiff_t>(caretPos), kCaretSlotChar);
         }
 
-        if (FAILED(dwriteFactory->CreateTextLayout(layoutText.c_str(), static_cast<UINT32>(layoutText.size()),
-                                                   format.Get(), maxWidth, std::numeric_limits<float>::max(),
+        if (FAILED(dwriteFactory->CreateTextLayout(layoutText.c_str(), static_cast<UINT32>(layoutText.size()), format,
+                                                   maxWidth, std::numeric_limits<float>::max(),
                                                    cachedTextLayout_.ReleaseAndGetAddressOf())))
         {
             measured_ = {maxWidth, fontSize_ + textLayoutPadding_.top + textLayoutPadding_.bottom};

@@ -1161,7 +1161,13 @@ void ShuangpinDictionary::set_rescoring_context(const std::string &context)
         return;
     }
     rescoring_context_ = context;
-    reset_cache();
+    // 只有神经重排生效时上文才影响候选，理由见 QuanpinDictionary::set_rescoring_context。
+    const bool rescoring_active = (sentence_association_.neural_keyboard && neural_keyboard_model_ != nullptr) ||
+                                  (sentence_association_.neural_desktop && neural_desktop_model_ != nullptr);
+    if (rescoring_active)
+    {
+        reset_cache();
+    }
 }
 
 void ShuangpinDictionary::reset_cache_if_database_changed()

@@ -4300,6 +4300,11 @@ void ApplyCandidateTranslations(std::vector<EnglishIme::TranslationResult> resul
         return;
 
     std::vector<EnglishIme::TranslationQuery> misses;
+    // The page reads its glosses from g_candidate_translation_glosses when it is
+    // built, so an unchanged map means the page on screen is already current.
+    // Most lookups on a new keystroke hit words the previous page already
+    // glossed; repainting for them cost a full candidate frame per keystroke.
+    bool glosses_changed = false;
     for (auto &result : results)
     {
         std::string gloss = std::move(result.gloss);
@@ -4308,16 +4313,21 @@ void ApplyCandidateTranslations(std::vector<EnglishIme::TranslationResult> resul
         const std::string identity = TranslationIdentity({result.key, result.direction});
         if (!gloss.empty())
         {
+            auto existing = g_candidate_translation_glosses.find(identity);
+            if (existing != g_candidate_translation_glosses.end() && existing->second == gloss)
+                continue;
             if (g_candidate_translation_glosses.size() >= kMaxCandidateTranslationGlosses &&
-                g_candidate_translation_glosses.find(identity) == g_candidate_translation_glosses.end())
+                existing == g_candidate_translation_glosses.end())
                 g_candidate_translation_glosses.clear();
             g_candidate_translation_glosses[identity] = std::move(gloss);
+            glosses_changed = true;
         }
         else if (!merge)
         {
             // The authoritative lookup found nothing: drop what an earlier
             // configuration may have cached for this word.
-            g_candidate_translation_glosses.erase(identity);
+            if (g_candidate_translation_glosses.erase(identity) > 0)
+                glosses_changed = true;
             const bool cloud_translatable = result.direction == EnglishIme::TranslationDirection::EnglishToChinese
                                                 ? CloudTranslation::IsCloudTranslatableEnglish(result.key)
                                                 : CloudTranslation::IsCloudTranslatableChinese(result.key);
@@ -4326,7 +4336,7 @@ void ApplyCandidateTranslations(std::vector<EnglishIme::TranslationResult> resul
         }
     }
     const FanyImeIpc::CandidateUiOwner owner = SnapshotCandidateUiOwner();
-    if (owner && IsPipeActivationCurrent(owner.client_id, owner.activation_epoch))
+    if (glosses_changed && owner && IsPipeActivationCurrent(owner.client_id, owner.activation_epoch))
         RefreshCandidatePageUi(true);
     if (!merge)
         CloudTranslation::RequestMisses(std::move(misses), generation);

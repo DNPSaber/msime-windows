@@ -7,7 +7,9 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
+#include <cstring>
 #include <d2d1_3.h>
 #include <limits>
 #include <utility>
@@ -2705,7 +2707,68 @@ void CandidateList::SetAppearance(Appearance appearance)
 {
     appearance_ = appearance;
     InvalidateLayoutCache();
+    textMetricCache_.clear();
     InvalidateMeasure();
+}
+
+const std::wstring &CandidateList::ResolvedFontFamily() const
+{
+    const Theme &theme = ThemeManager::GetCurrent();
+    return appearance_.fontFamily.empty() ? theme.textInputFontFamily : appearance_.fontFamily;
+}
+
+namespace
+{
+std::wstring TextMetricKey(wchar_t kind, const std::wstring &text, float fontSize, float width)
+{
+    uint32_t sizeBits = 0;
+    uint32_t widthBits = 0;
+    static_assert(sizeof(float) == sizeof(uint32_t));
+    std::memcpy(&sizeBits, &fontSize, sizeof(sizeBits));
+    std::memcpy(&widthBits, &width, sizeof(widthBits));
+    std::wstring key;
+    key.reserve(text.size() + 5);
+    key.push_back(kind);
+    key.push_back(static_cast<wchar_t>(sizeBits & 0xFFFF));
+    key.push_back(static_cast<wchar_t>(sizeBits >> 16));
+    key.push_back(static_cast<wchar_t>(widthBits & 0xFFFF));
+    key.push_back(static_cast<wchar_t>(widthBits >> 16));
+    key.append(text);
+    return key;
+}
+
+// Enough for several pages of candidates with labels, annotations and
+// translations; past it the cache simply starts over.
+constexpr size_t kMaxTextMetricEntries = 2048;
+} // namespace
+
+bool CandidateList::LookupTextMetric(wchar_t kind, const std::wstring &text, float fontSize, float width,
+                                     float &value) const
+{
+    const std::wstring &family = ResolvedFontFamily();
+    if (textMetricFamily_ != family)
+    {
+        textMetricCache_.clear();
+        textMetricFamily_ = family;
+        return false;
+    }
+    const auto found = textMetricCache_.find(TextMetricKey(kind, text, fontSize, width));
+    if (found == textMetricCache_.end())
+    {
+        return false;
+    }
+    value = found->second;
+    return true;
+}
+
+void CandidateList::StoreTextMetric(wchar_t kind, const std::wstring &text, float fontSize, float width,
+                                    float value) const
+{
+    if (textMetricCache_.size() >= kMaxTextMetricEntries)
+    {
+        textMetricCache_.clear();
+    }
+    textMetricCache_[TextMetricKey(kind, text, fontSize, width)] = value;
 }
 
 void CandidateList::SetOrientation(Orientation orientation)
@@ -2732,10 +2795,14 @@ float CandidateList::EstimateTextWidth(const std::wstring &text, float fontSize)
         return 0.0f;
     }
 
+    float cached = 0.0f;
+    if (LookupTextMetric(L'w', text, fontSize, 0.0f, cached))
+    {
+        return cached;
+    }
+
     IDWriteFactory *factory = GetSharedDWriteFactory();
-    const Theme &theme = ThemeManager::GetCurrent();
-    const std::wstring &fontFamily =
-        appearance_.fontFamily.empty() ? theme.textInputFontFamily : appearance_.fontFamily;
+    const std::wstring &fontFamily = ResolvedFontFamily();
     ComPtr<IDWriteTextLayout> layout = CreateCachedTextLayout(
         factory, fontFamily, text, fontSize, DWRITE_FONT_WEIGHT_NORMAL, 4096.0f, std::max(fontSize * 2.0f, 1.0f),
         DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_NO_WRAP,
@@ -2754,22 +2821,29 @@ float CandidateList::EstimateTextWidth(const std::wstring &text, float fontSize)
     layout->GetMetrics(&metrics);
     DWRITE_OVERHANG_METRICS overhang = {};
     layout->GetOverhangMetrics(&overhang);
-    return std::ceil(metrics.widthIncludingTrailingWhitespace + std::max(overhang.right, 0.0f) + 1.0f);
+    const float width = std::ceil(metrics.widthIncludingTrailingWhitespace + std::max(overhang.right, 0.0f) + 1.0f);
+    StoreTextMetric(L'w', text, fontSize, 0.0f, width);
+    return width;
 }
 
 float CandidateList::MeasureTextHeight(const std::wstring &text, float fontSize, float width) const
 {
     if (text.empty())
         return 0.0f;
-    const Theme &theme = ThemeManager::GetCurrent();
-    const auto &family = appearance_.fontFamily.empty() ? theme.textInputFontFamily : appearance_.fontFamily;
-    const auto layout =
-        CreateCachedTextLayout(GetSharedDWriteFactory(), family, text, fontSize, DWRITE_FONT_WEIGHT_NORMAL, width,
-                               65536.0f, DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
-                               DWRITE_WORD_WRAPPING_WRAP, appearance_.fallbackFontFamilies);
+    float cached = 0.0f;
+    if (LookupTextMetric(L'h', text, fontSize, width, cached))
+        return cached;
+    const auto layout = CreateCachedTextLayout(GetSharedDWriteFactory(), ResolvedFontFamily(), text, fontSize,
+                                               DWRITE_FONT_WEIGHT_NORMAL, width, 65536.0f,
+                                               DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_NEAR,
+                                               DWRITE_WORD_WRAPPING_WRAP, appearance_.fallbackFontFamilies);
     DWRITE_TEXT_METRICS metrics{};
     if (layout && SUCCEEDED(layout->GetMetrics(&metrics)))
-        return std::ceil(metrics.height);
+    {
+        const float height = std::ceil(metrics.height);
+        StoreTextMetric(L'h', text, fontSize, width, height);
+        return height;
+    }
     return std::ceil(EstimateTextWidth(text, fontSize) / width) * fontSize * 1.25f;
 }
 
@@ -3017,7 +3091,8 @@ void CandidateList::Render(DeviceResources &deviceResources)
             cache.textWidth = textRect.width;
             cache.fontFamily = fontFamily;
         }
-        if (cache.fontFamily != fontFamily || cache.annotationWidth != annotationRect.width)
+        if (!items_[index].annotation.empty() &&
+            (cache.fontFamily != fontFamily || cache.annotationWidth != annotationRect.width))
         {
             cache.annotationLayout = CreateCachedTextLayout(
                 factory, fontFamily, items_[index].annotation, appearance_.annotationFontSize,
@@ -3027,7 +3102,8 @@ void CandidateList::Render(DeviceResources &deviceResources)
             cache.annotationWidth = annotationRect.width;
             cache.fontFamily = fontFamily;
         }
-        if (cache.fontFamily != fontFamily || cache.translationWidth != translationRect.width)
+        if (!items_[index].translation.empty() &&
+            (cache.fontFamily != fontFamily || cache.translationWidth != translationRect.width))
         {
             cache.translationLayout = CreateCachedTextLayout(
                 factory, fontFamily, items_[index].translation, translationFontSize, DWRITE_FONT_WEIGHT_NORMAL,

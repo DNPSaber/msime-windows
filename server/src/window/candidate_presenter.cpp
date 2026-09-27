@@ -1011,9 +1011,17 @@ void CandidatePresenter::PlaceAndShow(POINT caret, float widthDip, float heightD
         SUCCEEDED(DwmGetWindowAttribute(hwnd_, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) && cloaked == 0;
     const int firstX = onScreen && x > current.left ? current.left : x;
     const int firstY = onScreen && y > current.top ? current.top : y;
+    // WM_SIZE from this resize would present the frame once more right before
+    // the explicit Present below; let it only resize the swap chain.
+    placingHost_ = true;
     SetWindowPos(hwnd_, HWND_TOPMOST, firstX, firstY, hostWidthPx, hostHeightPx, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    placingHost_ = false;
     impl_->resources.EnsureForComposition(hwnd_);
     Present();
+    // Every setter above invalidated the window, which queued a WM_PAINT that
+    // would render the whole card (shadow blur included) a second time. The
+    // frame just presented is already current.
+    ValidateRect(hwnd_, nullptr);
     if (firstX != x || firstY != y)
     {
         SetWindowPos(hwnd_, nullptr, x, y, 0, 0, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
@@ -1303,7 +1311,10 @@ bool CandidatePresenter::HandleMessage(UINT message, WPARAM wParam, LPARAM lPara
         if (::is_global_wnd_cand_shown)
         {
             impl_->resources.Resize(static_cast<UINT>(LOWORD(lParam)), static_cast<UINT>(HIWORD(lParam)));
-            Present();
+            if (!placingHost_)
+            {
+                Present();
+            }
         }
         return true;
     case WM_MOUSEMOVE:

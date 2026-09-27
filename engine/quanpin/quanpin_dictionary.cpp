@@ -1124,7 +1124,15 @@ void QuanpinDictionary::set_rescoring_context(const std::string &context)
     }
     rescoring_context_ = context;
     // 上文变了，缓存里的顺序是按旧上文重排出来的，同 set_sentence_association。
-    reset_cache();
+    // 上文只经神经重排进入候选；没有生效的神经模型时缓存与上文无关，不清。
+    // 每次上屏都会换上文，无条件清会让下一个词的前几键都变成冷查询。之后
+    // 打开神经重排会经 set_sentence_association 清缓存，不会沿用旧结果。
+    const bool rescoring_active = (sentence_association_.neural_keyboard && neural_keyboard_model_ != nullptr) ||
+                                  (sentence_association_.neural_desktop && neural_desktop_model_ != nullptr);
+    if (rescoring_active)
+    {
+        reset_cache();
+    }
 }
 
 void QuanpinDictionary::reset_cache_if_database_changed()
