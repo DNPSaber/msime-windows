@@ -202,6 +202,11 @@ else {
     if ($defaultConfig -notmatch '(?m)^settings_window_linger\s*=\s*"off"\s*$') {
         throw '出厂配置的 appearance.settings_window_linger 必须是 off（关闭后立即退出）。'
     }
+    foreach ($sentenceSwitch in @('sentence_wordlattice', 'sentence_google', 'sentence_neural_keyboard')) {
+        if ($defaultConfig -notmatch "(?m)^$sentenceSwitch\s*=\s*true\s*$") {
+            throw "出厂配置的 association.$sentenceSwitch 必须默认开启。"
+        }
+    }
     $defaultConfig = $defaultConfig.TrimEnd("`r", "`n") + "`r`n"
     Set-Content -LiteralPath $defaultConfigPath -Value $defaultConfig -Encoding utf8NoBOM -NoNewline
     foreach ($stagedUserConfig in @('config.toml', 'config.base.toml')) {
