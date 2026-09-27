@@ -78,7 +78,7 @@ class QuanpinDictionary
 
     // 光标前已上屏的文本，作为神经重排给模型看的上下文。宿主能拿到应用里的前文就给它，
     // 拿不到就不设——空上下文照样能排，只是模型只看句子本身、看不到上文。
-    // 变化时清一次缓存：同一串拼音在不同上文下的排序可以不同。
+    // 神经重排生效时，变化会清一次缓存：同一串拼音在不同上文下的排序可以不同。
     void set_rescoring_context(const std::string &context);
 
     void reset_state();
