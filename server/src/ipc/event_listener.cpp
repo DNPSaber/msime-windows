@@ -102,8 +102,15 @@ bool g_english_input_mode = false;
 // WebView2 candidate HWND — hosts (games) draw via ITfUIElementSink instead.
 bool g_activate_uiless = false;
 bool g_session_uiless = false;
+// Glosses are a cache keyed by TranslationIdentity, not the current page's
+// results: the next keystroke's page mostly repeats the same words, and
+// rebuilding it without their glosses first shrank every row, then grew it back
+// once the lookup answered. Bounded like the cloud cache, and dropped whenever
+// the provider set changes (the target language is already in the identity).
+constexpr size_t kMaxCandidateTranslationGlosses = 2048;
 std::unordered_map<std::string, std::string> g_candidate_translation_glosses;
 std::string g_candidate_translation_signature;
+std::string g_candidate_translation_scope;
 
 // 副候选框：Ctrl+Enter 在高亮候选有多条译义时，把候选框整个换成那几条译义，让空格/
 // 数字键像选普通候选一样选一条上屏。输入串一个字都没动，所以退出这个子模式时把原来的
@@ -1334,16 +1341,29 @@ void PrepareCandidateTranslationRequest()
         // 译文页不再查译文。已经取出的 glosses 也不能清，退出子模式后原候选还要用。
         return;
     }
+    if (!enabled)
+    {
+        g_candidate_translation_glosses.clear();
+    }
     if (!enabled || ui.items.empty())
     {
-        if (!g_candidate_translation_signature.empty() || !g_candidate_translation_glosses.empty())
+        // An empty page (English mode between keystrokes, or the end of a
+        // composition) only cancels the pending lookups; the cache stays for
+        // the next page.
+        if (!g_candidate_translation_signature.empty())
         {
             g_candidate_translation_signature.clear();
-            g_candidate_translation_glosses.clear();
             EnglishIme::ClearTranslations();
             CloudTranslation::Clear();
         }
         return;
+    }
+    const std::string scope = fmt::format("{}|{}|{}", GetConfiguredTencentTmt().enabled,
+                                          GetConfiguredCustomTranslation().enabled, GetConfiguredNiuTrans().enabled);
+    if (scope != g_candidate_translation_scope)
+    {
+        g_candidate_translation_scope = scope;
+        g_candidate_translation_glosses.clear();
     }
 
     std::vector<EnglishIme::TranslationQuery> queries;
@@ -1366,7 +1386,6 @@ void PrepareCandidateTranslationRequest()
     if (signature == g_candidate_translation_signature)
         return;
     g_candidate_translation_signature = std::move(signature);
-    g_candidate_translation_glosses.clear();
     CloudTranslation::Clear();
     EnglishIme::RequestTranslations(std::move(queries), GetConfiguredTencentTmt().target_language == "en");
 }
@@ -4270,19 +4289,25 @@ void ApplyCandidateTranslations(std::vector<EnglishIme::TranslationResult> resul
         (g_inputSession && g_inputSession->current_scheme_type() == SchemeType::JapaneseRomaji))
         return;
 
-    if (!merge)
-        g_candidate_translation_glosses.clear();
-
     std::vector<EnglishIme::TranslationQuery> misses;
     for (auto &result : results)
     {
         std::string gloss = std::move(result.gloss);
         if (gloss.empty() && !merge)
             gloss = CloudTranslation::LookupCache(result.key, result.direction);
+        const std::string identity = TranslationIdentity({result.key, result.direction});
         if (!gloss.empty())
-            g_candidate_translation_glosses[TranslationIdentity({result.key, result.direction})] = std::move(gloss);
+        {
+            if (g_candidate_translation_glosses.size() >= kMaxCandidateTranslationGlosses &&
+                g_candidate_translation_glosses.find(identity) == g_candidate_translation_glosses.end())
+                g_candidate_translation_glosses.clear();
+            g_candidate_translation_glosses[identity] = std::move(gloss);
+        }
         else if (!merge)
         {
+            // The authoritative lookup found nothing: drop what an earlier
+            // configuration may have cached for this word.
+            g_candidate_translation_glosses.erase(identity);
             const bool cloud_translatable = result.direction == EnglishIme::TranslationDirection::EnglishToChinese
                                                 ? CloudTranslation::IsCloudTranslatableEnglish(result.key)
                                                 : CloudTranslation::IsCloudTranslatableChinese(result.key);
@@ -5221,8 +5246,9 @@ void ClearState()
     ClearCandidateUiOwner();
     UpdateCloudInput("");
     UpdateEnglishInput("");
+    // The gloss cache survives the composition: the next one starts from the
+    // same common words, and its first frame should already carry them.
     g_candidate_translation_signature.clear();
-    g_candidate_translation_glosses.clear();
     g_translation_candidates_active = false;
     g_translation_saved_items.clear();
     g_translation_saved_page_index = 0;
