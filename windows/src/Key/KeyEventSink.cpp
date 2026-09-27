@@ -1070,8 +1070,8 @@ CMetasequoiaIME::KeyDownDispatchResult CMetasequoiaIME::_DispatchKeyDown(
         // a write success followed by a reply/edit failure takes the same
         // _FailDeferredKey path as a key that arrived behind a barrier.
         const bool healthyImmediateDispatch = _deferredKeyDowns.empty() && !_hasDeferredKeyInFlight;
-        const bool queued =
-            _QueueDeferredKeyDown(pContext, wParam, lParam, wch, capturedModifiers, KeystrokeState) != FALSE;
+        const bool queued = _QueueDeferredKeyDown(pContext, wParam, lParam, wch, capturedModifiers, KeystrokeState,
+                                                  /*scheduleDrain=*/!healthyImmediateDispatch) != FALSE;
         *pIsEaten = queued ? TRUE : FALSE;
         DebugTsfIssue47(queued ? L"keydown-owned-queued" : L"keydown-owned-queue-failed", FANY_IME_NO_REQUEST_ID, code,
                         wch, KeystrokeState.Category, KeystrokeState.Function, queued ? 1 : 0, _IsComposing(),
@@ -1091,6 +1091,12 @@ CMetasequoiaIME::KeyDownDispatchResult CMetasequoiaIME::_DispatchKeyDown(
             // not ready, _DrainOneDeferredKeyDown leaves the key queued for the
             // ordinary asynchronous drain.
             _DrainOneDeferredKeyDown();
+            // The drain is posted only when the synchronous one left the key
+            // queued (no connected focus session, or a reset opened). A key it
+            // dispatched is retired by its own completion, which schedules the
+            // next drain, so a WM_DrainDeferredKeyDown posted up front would
+            // only ever find the key in flight or gone.
+            _ScheduleDeferredKeyDownDrain();
         }
         return KeyDownDispatchResult::Complete;
     }

@@ -1267,38 +1267,6 @@ bool SendToNamedpipe(bool *deliveryAmbiguous = nullptr)
     return false;
 }
 
-/**
- * @brief Clear namedpipe data if exists, cause sometimes there may be some useless data sent by last key event from
- * server
- *
- */
-void ClearNamedpipeDataIfExists(bool force)
-{
-    // Request IDs make destructive draining both unnecessary and incorrect:
-    // an async edit session may still own any frame currently in this pipe.
-    // Mismatched replies are retained by TryReadData... in pendingReplies.
-    if (force)
-    {
-        // Compatibility path for Server-initiated candidate clicks: legacy
-        // Server builds deliver the same candidate both on the worker pipe and
-        // as one unsolicited (request_id == 0) reply. The worker payload has
-        // already been consumed by the caller, so discard exactly that one
-        // duplicate. TryRead caches every nonzero request reply it encounters
-        // and ignores PipeReady, preserving all edit-session-owned frames.
-        (void)TryReadDataFromServerPipeWithTimeout(FANY_IME_UNSOLICITED_REQUEST_ID);
-    }
-}
-
-/**
- * @brief Try to read selected candiate string data from server pipe with timeout
- *
- * @return struct FanyImeNamedpipeDataToTsf*
- */
-struct FanyImeNamedpipeDataToTsf *TryReadDataFromServerPipeWithTimeout(uint64_t expectedRequestId)
-{
-    return TryReadDataFromServerPipeWithTimeout(expectedRequestId, true);
-}
-
 static struct FanyImeNamedpipeDataToTsf *TryReadDataFromServerPipeWithDeadline(uint64_t expectedRequestId,
                                                                                bool abortTransportOnTimeout,
                                                                                DWORD timeoutMs);
@@ -1446,18 +1414,6 @@ static struct FanyImeNamedpipeDataToTsf *TryReadDataFromServerPipeWithDeadline(u
     ClosePipeHandleIfValid(hFromServerPipe);
     RequestNamedpipeReconnect();
     return transportUnavailable();
-}
-
-/**
- * @brief Read data sent by server
- *
- * TODO: Cancel when time exceed, we should set a timeout
- *
- * @return struct FanyImeNamedpipeDataToTsf*
- */
-struct FanyImeNamedpipeDataToTsf *ReadDataFromServerViaNamedPipe(uint64_t expectedRequestId)
-{
-    return TryReadDataFromServerPipeWithTimeout(expectedRequestId);
 }
 
 /**

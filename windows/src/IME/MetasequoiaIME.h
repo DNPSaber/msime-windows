@@ -547,8 +547,10 @@ class CMetasequoiaIME : public ITfTextInputProcessorEx,
     // caller already proved the keyboard is live through a non-zero
     // _IsKeyEaten out-char; otherwise the disabled compartment is queried here.
     void _NotePassthroughStatistics(UINT virtualKey, WCHAR wch, bool keyboardKnownEnabled);
+    // scheduleDrain is false only when the caller drains synchronously right
+    // after queueing and schedules a drain itself if the key stays queued.
     bool _QueueDeferredKeyDown(_In_ ITfContext *pContext, WPARAM wParam, LPARAM lParam, WCHAR translatedWch,
-                               UINT modifiersDown, const _KEYSTROKE_STATE &keyState);
+                               UINT modifiersDown, const _KEYSTROKE_STATE &keyState, bool scheduleDrain = true);
     bool _QueueDeferredPreservedKey(_In_ ITfContext *pContext, REFGUID preservedKey);
     void _ClearDeferredKeyDowns();
     void _ScheduleDeferredKeyDownDrain();

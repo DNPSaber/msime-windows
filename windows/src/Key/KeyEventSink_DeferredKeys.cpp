@@ -636,7 +636,8 @@ bool CMetasequoiaIME::_ClassifyDeferredKeyDown(_In_ ITfContext *pContext, WPARAM
 }
 
 bool CMetasequoiaIME::_QueueDeferredKeyDown(_In_ ITfContext *pContext, WPARAM wParam, LPARAM lParam,
-                                            WCHAR translatedWch, UINT modifiersDown, const _KEYSTROKE_STATE &keyState)
+                                            WCHAR translatedWch, UINT modifiersDown, const _KEYSTROKE_STATE &keyState,
+                                            bool scheduleDrain)
 {
     // Repeats are owned but do not enqueue another global configuration toggle.
     if (keyState.Function == FUNCTION_TOGGLE_CHARACTER_SET && (lParam & 0x40000000) != 0)
@@ -668,7 +669,10 @@ bool CMetasequoiaIME::_QueueDeferredKeyDown(_In_ ITfContext *pContext, WPARAM wP
     {
         _EnsureDeferredKeyProjection();
     }
-    _ScheduleDeferredKeyDownDrain();
+    if (scheduleDrain)
+    {
+        _ScheduleDeferredKeyDownDrain();
+    }
     return true;
 }
 

@@ -103,12 +103,10 @@ int SendHideCaretStateEventToUIProcessViaNamedPipe();
 int SendShowCandidateWndEventToUIProcessViaNamedPipe();
 int SendMoveCandidateWndEventToUIProcessViaNamedPipe();
 int SendLangbarRightClickEventToUIProcessViaNamedPipe(const RECT *prcArea);
-void ClearNamedpipeDataIfExists(bool force = false);
 // Best-effort read of the Server-published current candidate page (comma-
 // separated). Used in UILess mode so ITfCandidateListUIElement::GetString can
 // return real candidates after PrepareCandidateList has written shared memory.
 bool TryReadCandidatePageFromSharedMemory(_Out_ std::wstring *candidatePage);
-struct FanyImeNamedpipeDataToTsf *TryReadDataFromServerPipeWithTimeout(uint64_t expectedRequestId);
 // When abortTransportOnTimeout is false, a missed reply leaves the pipe up and
 // returns a non-TransportUnavailable empty frame for the caller to fall back.
 struct FanyImeNamedpipeDataToTsf *TryReadDataFromServerPipeWithTimeout(uint64_t expectedRequestId,
@@ -132,7 +130,6 @@ inline bool IsDeliveredServerRequestId(uint64_t requestId)
 // request was delivered. The key is dropped with the composition and never
 // sent again (DeferredKeyFailureReason::DeliveryAmbiguous).
 constexpr HRESULT FANY_E_COMMIT_REPLY_AMBIGUOUS = __HRESULT_FROM_WIN32(ERROR_TIMEOUT);
-struct FanyImeNamedpipeDataToTsf *ReadDataFromServerViaNamedPipe(uint64_t expectedRequestId);
 
 //
 // Modifiers:
