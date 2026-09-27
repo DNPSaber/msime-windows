@@ -238,16 +238,22 @@ void ApplyUiLessFromPacket(const FanyImeNamedpipeData &pipe_data)
 // task thread.
 constexpr ULONGLONG kCandidateHideBacklogMs = 24;
 
-// Dedicated English mode publishes an empty page while its dictionary query is
-// in flight (see PrepareCandidateList). Painting that page shrank the card to
-// the bare preedit, and ApplyEnglishCandidates grew it back a moment later — a
-// collapse-and-expand flash on every keystroke. The English worker answers every
-// non-empty input (no match becomes the raw fallback), and that answer requests
-// its own show, so the empty in-between page is never worth painting.
-bool IsEnglishQueryPendingOnEmptyPage()
+// Dedicated English queries (English mode, Y mode) publish a placeholder page
+// while the dictionary lookup is in flight: empty in English mode, the bare
+// typed word in Y mode (see PrepareCandidateList). Painting it collapsed the
+// card to one row, and ApplyEnglishCandidates grew it back a moment later — a
+// height flash on every keystroke. The English worker answers every non-empty
+// input (no match becomes the raw fallback) and that answer requests its own
+// show, so the placeholder is never worth painting. Set by PrepareCandidateList
+// for each dedicated query, cleared when its answer is applied.
+bool g_dedicated_english_answer_pending = false;
+
+bool IsDedicatedEnglishAnswerPending()
 {
-    return g_english_input_mode && Global::candidate_ui.items.empty() && g_inputSession &&
-           !g_inputSession->get_pinyin_sequence_with_cases().empty() && EnglishIme::IsRunning();
+    // ApplyEnglishCandidates refuses answers in these states, so nothing
+    // would ever release the show.
+    return g_dedicated_english_answer_pending && !GlobalIme::composition.creating_word.active &&
+           !g_translation_candidates_active;
 }
 
 void RequestShowCandidateWindow()
@@ -257,7 +263,7 @@ void RequestShowCandidateWindow()
         CAND_DIAG_LOGF(L"show request skipped uiless={} hwnd_present={}", IsUiLessMode(), ::global_hwnd != nullptr);
         return;
     }
-    if (IsEnglishQueryPendingOnEmptyPage())
+    if (IsDedicatedEnglishAnswerPending())
     {
         CAND_DIAG_LOGF(L"show request deferred to english query raw_units={}",
                        GlobalIme::composition.raw_input_with_cases.size());
@@ -3979,13 +3985,16 @@ void PrepareCandidateList(uint64_t client_id, uint64_t activation_epoch)
     const double uiMs = segment.Split();
 
     const SchemeType scheme = g_inputSession->current_scheme_type();
+    g_dedicated_english_answer_pending = false;
     if (g_english_input_mode)
     {
         UpdateEnglishInput(current_input, client_id, activation_epoch, true);
+        g_dedicated_english_answer_pending = !current_input.empty() && EnglishIme::IsRunning();
     }
     else if (IsYModeInput(current_input))
     {
         UpdateEnglishInput(current_input.substr(1), client_id, activation_epoch, true);
+        g_dedicated_english_answer_pending = EnglishIme::IsRunning();
     }
     else if (!IsSpecialModeCompositionActive(current_input) && GetConfiguredEnglishCandidatesEnabled() &&
              (scheme == SchemeType::Quanpin || scheme == SchemeType::Shuangpin) &&
@@ -4242,6 +4251,7 @@ void ApplyEnglishCandidates(std::vector<WordItem> candidates, const std::string 
         Global::candidate_ui.page_index = 0;
         Global::candidate_ui.select_first_on_page();
         Global::candidate_ui.clear_page();
+        g_dedicated_english_answer_pending = false;
         RefreshCandidatePageUi(true);
         return;
     }
@@ -5246,6 +5256,7 @@ void ClearState()
     ClearCandidateUiOwner();
     UpdateCloudInput("");
     UpdateEnglishInput("");
+    g_dedicated_english_answer_pending = false;
     // The gloss cache survives the composition: the next one starts from the
     // same common words, and its first frame should already carry them.
     g_candidate_translation_signature.clear();
