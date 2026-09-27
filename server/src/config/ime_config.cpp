@@ -96,6 +96,8 @@ std::string g_caret_state_indicator_position = FanyImeUi::kDefaultCaretStatePosi
 FloatingToolbarItemsConfig g_floating_toolbar_items;
 double g_floating_toolbar_scale = 1.0;
 int g_floating_toolbar_font_size = kFloatingToolbarFontSizeDefault;
+bool g_floating_toolbar_auto_hide = false;
+int g_floating_toolbar_auto_hide_delay = kFloatingToolbarAutoHideDelayDefault;
 bool g_english_candidates_enabled = false;
 bool g_candidate_translations_enabled = true;
 int g_english_mixed_input_min_chars = kEnglishMixedInputMinCharsDefault;
@@ -437,6 +439,13 @@ bool LoadImeConfig()
                 font_size >= kFloatingToolbarFontSizeMin && font_size <= kFloatingToolbarFontSizeMax
                     ? font_size
                     : kFloatingToolbarFontSizeDefault;
+            g_floating_toolbar_auto_hide = tbl["general"]["floating_toolbar_auto_hide"].value_or(false);
+            const int auto_hide_delay =
+                tbl["general"]["floating_toolbar_auto_hide_delay"].value_or(kFloatingToolbarAutoHideDelayDefault);
+            g_floating_toolbar_auto_hide_delay = auto_hide_delay >= kFloatingToolbarAutoHideDelayMin &&
+                                                         auto_hide_delay <= kFloatingToolbarAutoHideDelayMax
+                                                     ? auto_hide_delay
+                                                     : kFloatingToolbarAutoHideDelayDefault;
         }
         g_english_candidates_enabled = tbl["general"]["cn_en_mixed_input"].value_or(false);
         g_candidate_translations_enabled = tbl["general"]["candidate_translations"].value_or(true);

@@ -1,4 +1,4 @@
-import { applyDropdownValue, setupDropdownMenu, setupToggleButton } from './shared';
+import { applyDropdownValue, applyToggleState, setupDropdownMenu, setupToggleButton } from './shared';
 import { syncCaretStateIndicatorPreview } from './appearance';
 import { updateConfig } from './config-sync';
 import { syncAppearancePreviews } from './skin';
@@ -29,6 +29,12 @@ const toolbarItemState: Record<FloatingToolbarItem, boolean> = {
 let toolbarScale = 1;
 let toolbarFontSize = 24;
 
+// Mirrors kFloatingToolbarAutoHideDelay{Min,Max,Default} in the server config.
+export const AUTO_HIDE_DELAY_MIN = 1;
+export const AUTO_HIDE_DELAY_MAX = 60;
+const AUTO_HIDE_DELAY_DEFAULT = 5;
+let autoHideDelay = AUTO_HIDE_DELAY_DEFAULT;
+
 export function setupFloatingToolbar(): void {
   mountFloatingToolbarPreview();
   syncCaretStateIndicatorPreview();
@@ -38,6 +44,13 @@ export function setupFloatingToolbar(): void {
     updateConfig('general.floating_toolbar', active);
     document.getElementById('ftbToggleBtn')?.setAttribute('aria-checked', String(active));
   });
+
+  setupToggleButton('ftbAutoHideToggleBtn', (active) => {
+    updateConfig('general.floating_toolbar_auto_hide', active);
+    document.getElementById('ftbAutoHideToggleBtn')?.setAttribute('aria-checked', String(active));
+    setAutoHideDelayDisabled(!active);
+  });
+  setupAutoHideDelayStepper();
 
   setupToggleButton('caretStateIndicatorToggleBtn', (active) => {
     updateConfig('general.caret_state_indicator', active);
@@ -121,6 +134,74 @@ export function applyFloatingToolbarAppearanceConfig(scale?: number, fontSize?: 
     applyDropdownValue('ftbFontSizeBtn', 'ftbFontSizeMenu', String(fontSize));
   }
   applyPreviewAppearance();
+}
+
+export function clampAutoHideDelay(value: number): number {
+  if (!Number.isFinite(value)) return AUTO_HIDE_DELAY_DEFAULT;
+  return Math.min(AUTO_HIDE_DELAY_MAX, Math.max(AUTO_HIDE_DELAY_MIN, Math.round(value)));
+}
+
+export function applyFloatingToolbarAutoHideConfig(enabled?: boolean, delay?: number): void {
+  if (typeof enabled === 'boolean') {
+    applyToggleState('ftbAutoHideToggleBtn', enabled);
+    setAutoHideDelayDisabled(!enabled);
+  }
+  if (typeof delay === 'number') {
+    autoHideDelay = clampAutoHideDelay(delay);
+    renderAutoHideDelay();
+  }
+}
+
+function setAutoHideDelayDisabled(disabled: boolean): void {
+  document.getElementById('ftbAutoHideDelayRow')?.classList.toggle('is-disabled', disabled);
+  ['ftbAutoHideDelayDecBtn', 'ftbAutoHideDelayInput', 'ftbAutoHideDelayIncBtn'].forEach((id) => {
+    const control = document.getElementById(id);
+    if (control) control.tabIndex = disabled ? -1 : 0;
+  });
+  renderAutoHideDelay();
+}
+
+function renderAutoHideDelay(): void {
+  const input = document.getElementById('ftbAutoHideDelayInput') as HTMLInputElement | null;
+  if (input) input.value = String(autoHideDelay);
+  const decrement = document.getElementById('ftbAutoHideDelayDecBtn') as HTMLButtonElement | null;
+  const increment = document.getElementById('ftbAutoHideDelayIncBtn') as HTMLButtonElement | null;
+  if (decrement) decrement.disabled = autoHideDelay <= AUTO_HIDE_DELAY_MIN;
+  if (increment) increment.disabled = autoHideDelay >= AUTO_HIDE_DELAY_MAX;
+}
+
+function commitAutoHideDelay(value: number): void {
+  const next = clampAutoHideDelay(value);
+  const changed = next !== autoHideDelay;
+  autoHideDelay = next;
+  renderAutoHideDelay();
+  if (changed) updateConfig('general.floating_toolbar_auto_hide_delay', next);
+}
+
+function setupAutoHideDelayStepper(): void {
+  document.getElementById('ftbAutoHideDelayDecBtn')?.addEventListener('click', () => {
+    commitAutoHideDelay(autoHideDelay - 1);
+  });
+  document.getElementById('ftbAutoHideDelayIncBtn')?.addEventListener('click', () => {
+    commitAutoHideDelay(autoHideDelay + 1);
+  });
+  const input = document.getElementById('ftbAutoHideDelayInput') as HTMLInputElement | null;
+  if (!input) return;
+  // Typed values commit on Enter or blur; anything unparsable snaps back.
+  const commitTyped = () => {
+    const text = input.value.trim();
+    commitAutoHideDelay(/^\d+$/.test(text) ? Number(text) : autoHideDelay);
+  };
+  input.addEventListener('change', commitTyped);
+  input.addEventListener('keydown', (event: KeyboardEvent) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      commitTyped();
+    } else if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+      event.preventDefault();
+      commitAutoHideDelay(autoHideDelay + (event.key === 'ArrowUp' ? 1 : -1));
+    }
+  });
 }
 
 function normalizeScaleKey(scale: number): string {

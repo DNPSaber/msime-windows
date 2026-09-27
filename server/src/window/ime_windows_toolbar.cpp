@@ -264,7 +264,190 @@ void PlaceFloatingToolbarOnScreen(HWND hwnd)
 {
     LayoutFloatingToolbar(hwnd, true);
 }
+
+// Auto-hide state. All of it lives on the UI thread, like the applies.
+// g_ftb_auto_hidden survives focus changes, IME activation and config syncs on
+// purpose: only a toolbar-visible input state change or a settings change
+// brings the toolbar back, otherwise every focus switch would re-show it.
+bool g_ftb_auto_hidden = false;
+bool g_ftb_auto_hide_armed = false;
+bool g_ftb_auto_hide_fading = false;
+ULONGLONG g_ftb_auto_hide_deadline = 0;
+ULONGLONG g_ftb_auto_hide_fade_start = 0;
+
+ULONGLONG FloatingToolbarAutoHideDelayMs()
+{
+    return static_cast<ULONGLONG>(GetConfiguredFloatingToolbarAutoHideDelay()) * 1000ULL;
+}
+
+void SetFloatingToolbarAlpha(BYTE alpha)
+{
+    // Both backends share the layered host from PrepareLayeredHostWindow. A
+    // lost alpha is what the host-state trace calls an invisible toolbar, so
+    // every path that ends a fade puts 255 back.
+    SetLayeredWindowAttributes(::global_hwnd_ftb, 0, alpha, LWA_ALPHA);
+}
+
+// Set when a finished fade hid the host at alpha 0; the next show owes it 255.
+bool g_ftb_alpha_cleared = false;
+
+void RestoreFloatingToolbarAlpha()
+{
+    if (g_ftb_alpha_cleared)
+    {
+        g_ftb_alpha_cleared = false;
+        SetFloatingToolbarAlpha(255);
+    }
+}
+
+// GetCursorPos and GetWindowRect are both physical pixels under per-monitor-v2,
+// so this needs no DPI conversion. Sampling the rect instead of tracking mouse
+// messages covers the WebView2 child and the D2D caption drag area alike.
+bool IsCursorOverFloatingToolbar()
+{
+    POINT cursor{};
+    RECT rect{};
+    return GetCursorPos(&cursor) && GetWindowRect(::global_hwnd_ftb, &rect) && PtInRect(&rect, cursor);
+}
+
+void CancelFloatingToolbarAutoHideFade()
+{
+    if (!g_ftb_auto_hide_fading)
+    {
+        return;
+    }
+    KillTimer(::global_hwnd_ftb, TIMER_ID_FTB_AUTO_HIDE_FADE);
+    g_ftb_auto_hide_fading = false;
+    SetFloatingToolbarAlpha(255);
+}
+
+void DisarmFloatingToolbarAutoHide()
+{
+    if (!::global_hwnd_ftb)
+    {
+        return;
+    }
+    KillTimer(::global_hwnd_ftb, TIMER_ID_FTB_AUTO_HIDE);
+    g_ftb_auto_hide_armed = false;
+    CancelFloatingToolbarAutoHideFade();
+}
+
+// Starts a fresh countdown. Callers decide whether an already-running one
+// should be restarted; a mere re-apply (focus change) keeps it running.
+void ArmFloatingToolbarAutoHide()
+{
+    if (!::global_hwnd_ftb || !GetConfiguredFloatingToolbarAutoHide())
+    {
+        return;
+    }
+    CancelFloatingToolbarAutoHideFade();
+    g_ftb_auto_hide_deadline = GetTickCount64() + FloatingToolbarAutoHideDelayMs();
+    if (!g_ftb_auto_hide_armed)
+    {
+        SetTimer(::global_hwnd_ftb, TIMER_ID_FTB_AUTO_HIDE, kFloatingToolbarAutoHidePollMs, nullptr);
+        g_ftb_auto_hide_armed = true;
+    }
+}
+
+void PollFloatingToolbarAutoHide()
+{
+    if (!GetConfiguredFloatingToolbarAutoHide() || !IsWindowVisible(::global_hwnd_ftb))
+    {
+        DisarmFloatingToolbarAutoHide();
+        return;
+    }
+    const ULONGLONG now = GetTickCount64();
+    // Hover is interaction. Warmup and paint grace would make the hide a
+    // cloak or a no-op, so the countdown only runs on a settled toolbar.
+    if (IsCursorOverFloatingToolbar() || IsFloatingToolbarPaintGraceActive() || !IsFloatingToolbarWebviewReady() ||
+        IsHostWindowCloaked(::global_hwnd_ftb))
+    {
+        CancelFloatingToolbarAutoHideFade();
+        g_ftb_auto_hide_deadline = now + FloatingToolbarAutoHideDelayMs();
+        return;
+    }
+    if (!g_ftb_auto_hide_fading && now >= g_ftb_auto_hide_deadline)
+    {
+        FTB_DIAG_LOGF(L"ftb auto-hide fade started delay={}s", GetConfiguredFloatingToolbarAutoHideDelay());
+        g_ftb_auto_hide_fading = true;
+        g_ftb_auto_hide_fade_start = now;
+        SetTimer(::global_hwnd_ftb, TIMER_ID_FTB_AUTO_HIDE_FADE, kFloatingToolbarAutoHideFadeStepMs, nullptr);
+    }
+}
+
+void StepFloatingToolbarAutoHideFade()
+{
+    if (!g_ftb_auto_hide_fading)
+    {
+        KillTimer(::global_hwnd_ftb, TIMER_ID_FTB_AUTO_HIDE_FADE);
+        return;
+    }
+    if (!IsWindowVisible(::global_hwnd_ftb))
+    {
+        // Hidden underneath the fade by someone else (fullscreen hook).
+        CancelFloatingToolbarAutoHideFade();
+        return;
+    }
+    const ULONGLONG now = GetTickCount64();
+    if (IsCursorOverFloatingToolbar())
+    {
+        CancelFloatingToolbarAutoHideFade();
+        g_ftb_auto_hide_deadline = now + FloatingToolbarAutoHideDelayMs();
+        return;
+    }
+    const ULONGLONG elapsed = now - g_ftb_auto_hide_fade_start;
+    if (elapsed < kFloatingToolbarAutoHideFadeMs)
+    {
+        const ULONGLONG remaining = kFloatingToolbarAutoHideFadeMs - elapsed;
+        SetFloatingToolbarAlpha(static_cast<BYTE>(remaining * 255ULL / kFloatingToolbarAutoHideFadeMs));
+        return;
+    }
+    FTB_DIAG_LOGF(L"ftb auto-hide fade finished");
+    g_ftb_auto_hidden = true;
+    // Hide at alpha 0 and leave it there: restoring 255 here (directly, or via
+    // the cancel path in Disarm) paints one opaque frame before or during the
+    // DWM hide transition. The next show restores the alpha instead.
+    KillTimer(::global_hwnd_ftb, TIMER_ID_FTB_AUTO_HIDE_FADE);
+    g_ftb_auto_hide_fading = false;
+    SetFloatingToolbarAlpha(0);
+    g_ftb_alpha_cleared = true;
+    DisarmFloatingToolbarAutoHide();
+    HideFloatingToolbarHost();
+    if (IsWindowVisible(::global_hwnd_ftb) && !IsHostWindowCloaked(::global_hwnd_ftb))
+    {
+        // The hide was deferred (paint grace), so the host is still on screen.
+        RestoreFloatingToolbarAlpha();
+    }
+}
 } // namespace
+
+void RestartFloatingToolbarAutoHide(const wchar_t *reason)
+{
+    if (!::global_hwnd_ftb)
+    {
+        return;
+    }
+    g_ftb_auto_hidden = false;
+    DisarmFloatingToolbarAutoHide();
+    ApplyConfiguredFloatingToolbarVisibility(reason);
+}
+
+void RevealAutoHiddenFloatingToolbar(const wchar_t *reason)
+{
+    if (!::global_hwnd_ftb || !GetConfiguredFloatingToolbarAutoHide())
+    {
+        return;
+    }
+    if (g_ftb_auto_hidden)
+    {
+        g_ftb_auto_hidden = false;
+        ApplyConfiguredFloatingToolbarVisibility(reason);
+    }
+    if (IsWindowVisible(::global_hwnd_ftb))
+    {
+        ArmFloatingToolbarAutoHide();
+    }
+}
 
 void ApplyConfiguredFloatingToolbarVisibility(const wchar_t *reason)
 {
@@ -289,7 +472,13 @@ void ApplyConfiguredFloatingToolbarVisibility(const wchar_t *reason)
     const HWND foreground = GetForegroundWindow();
     const bool fullscreen = foreground && CheckFullscreen(foreground);
     const bool configured = GetConfiguredFloatingToolbarEnabled();
-    const bool should_show = FanyImeUi::ShouldShowFloatingToolbar(configured, fullscreen, g_is_ime_active);
+    // Switching the feature off must not leave the toolbar stuck hidden.
+    if (!GetConfiguredFloatingToolbarAutoHide())
+    {
+        g_ftb_auto_hidden = false;
+    }
+    const bool should_show =
+        FanyImeUi::ShouldShowFloatingToolbar(configured, fullscreen, g_is_ime_active, g_ftb_auto_hidden);
     const bool is_visible = IsWindowVisible(::global_hwnd_ftb) != FALSE;
     const bool paint_grace = IsFloatingToolbarPaintGraceActive();
     // First successful navigation: show briefly so cold WebView2 can paint, then
@@ -307,11 +496,11 @@ void ApplyConfiguredFloatingToolbarVisibility(const wchar_t *reason)
         // Every input of the decision, so a blank toolbar can be attributed to a
         // specific term rather than guessed at. Cloak and webview readiness
         // matter more than IsWindowVisible once the host is warmed up.
-        std::wstring decision =
-            fmt::format(L"apply reason={} active_client={} ime_active={} configured={} fullscreen={} "
-                        L"should_show={} was_visible={} was_cloaked={} webview_ready={} paint_grace={}",
-                        reason, active_client, g_is_ime_active, configured, fullscreen, should_show, is_visible,
-                        IsHostWindowCloaked(::global_hwnd_ftb), IsFloatingToolbarWebviewReady(), paint_grace);
+        std::wstring decision = fmt::format(
+            L"apply reason={} active_client={} ime_active={} configured={} fullscreen={} "
+            L"auto_hidden={} should_show={} was_visible={} was_cloaked={} webview_ready={} paint_grace={}",
+            reason, active_client, g_is_ime_active, configured, fullscreen, g_ftb_auto_hidden, should_show, is_visible,
+            IsHostWindowCloaked(::global_hwnd_ftb), IsFloatingToolbarWebviewReady(), paint_grace);
 
         // Applies are confined to the UI thread, so plain statics suffice.
         static std::wstring last_decision;
@@ -365,6 +554,8 @@ void ApplyConfiguredFloatingToolbarVisibility(const wchar_t *reason)
         {
             RaiseTrayMenuAboveSmallWindows(L"after-show-floating-toolbar");
         }
+        // Still hidden here, so putting the alpha back cannot flash.
+        RestoreFloatingToolbarAlpha();
         if (!is_visible)
         {
             ShowWindow(::global_hwnd_ftb, SW_SHOWNA);
@@ -387,10 +578,20 @@ void ApplyConfiguredFloatingToolbarVisibility(const wchar_t *reason)
             FTB_DIAG_LOGF(L"ftb paint grace started; waiting for page ready (fallback {}ms)",
                           kFloatingToolbarPaintGraceMs);
         }
+        // A toolbar coming back from hidden counts down afresh; one that was
+        // already up keeps its running countdown across repeated applies.
+        if (!is_visible || !g_ftb_auto_hide_armed)
+        {
+            ArmFloatingToolbarAutoHide();
+        }
     }
-    else if (is_visible)
+    else
     {
-        HideFloatingToolbarHost();
+        DisarmFloatingToolbarAutoHide();
+        if (is_visible)
+        {
+            HideFloatingToolbarHost();
+        }
     }
 }
 
@@ -570,6 +771,16 @@ LRESULT CALLBACK WndProcFtbWindow(HWND hwnd, UINT message, WPARAM wParam, LPARAM
         {
             KillTimer(hwnd, TIMER_ID_FTB_VISIBILITY_RECONCILE);
             ReconcileFloatingToolbarVisibilityAfterReady(L"ftb-ready-fallback-timeout");
+            break;
+        }
+        if (wParam == TIMER_ID_FTB_AUTO_HIDE)
+        {
+            PollFloatingToolbarAutoHide();
+            break;
+        }
+        if (wParam == TIMER_ID_FTB_AUTO_HIDE_FADE)
+        {
+            StepFloatingToolbarAutoHideFade();
             break;
         }
         if (wParam == TIMER_ID_FTB_DPI_REMEASURE)

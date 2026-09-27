@@ -12,6 +12,28 @@
       </div>
     </div>
 
+    <div class="section-header floating-toolbar-setting-row ftb-auto-hide-row">
+      <div>
+        <div class="section-title caret-state-option-title">自动隐藏工具栏</div>
+        <div class="floating-toolbar-description">工具栏显示一段时间无交互后淡出隐藏；鼠标悬停不隐藏，切换中英等状态变化时重新显示</div>
+      </div>
+      <div class="ftb-toggle-btn" id="ftbAutoHideToggleBtn" role="switch" aria-label="自动隐藏工具栏" aria-checked="false" tabindex="0">
+        <div class="ftb-toggle-knob"></div>
+      </div>
+    </div>
+
+    <div class="section-header floating-toolbar-setting-row ftb-auto-hide-delay-row is-disabled" id="ftbAutoHideDelayRow">
+      <div>
+        <div class="section-title caret-state-option-title">自动隐藏延时</div>
+        <div class="floating-toolbar-description">工具栏显示多久后开始淡出（秒）</div>
+      </div>
+      <div class="number-stepper">
+        <button type="button" class="number-stepper-btn" id="ftbAutoHideDelayDecBtn" aria-label="减少 1 秒" tabindex="-1">−</button>
+        <input type="text" class="number-stepper-input" id="ftbAutoHideDelayInput" inputmode="numeric" value="5" aria-label="自动隐藏延时（秒）" tabindex="-1">
+        <button type="button" class="number-stepper-btn" id="ftbAutoHideDelayIncBtn" aria-label="增加 1 秒" tabindex="-1">+</button>
+      </div>
+    </div>
+
     <div class="floating-toolbar-preview" role="img" aria-label="悬浮工具栏预览">
       <div class="floating-toolbar-preview-label">预览</div>
       <div class="ftb-preview-host" id="ftbPreviewHost"></div>

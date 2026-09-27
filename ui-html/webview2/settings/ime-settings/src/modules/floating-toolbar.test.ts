@@ -2,12 +2,22 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, it, vi } from 'vitest';
-import { applyCaretStateIndicatorPosition, setupFloatingToolbar } from './floating-toolbar';
+import {
+  applyCaretStateIndicatorPosition,
+  applyFloatingToolbarAutoHideConfig,
+  clampAutoHideDelay,
+  setupFloatingToolbar
+} from './floating-toolbar';
 import { setupDropdownMenu, applyDropdownValue, setupToggleButton } from './shared';
 import { updateConfig } from './config-sync';
 import partial from '../partials/floating-toolbar.html?raw';
 
-vi.mock('./shared', () => ({ setupDropdownMenu: vi.fn(), applyDropdownValue: vi.fn(), setupToggleButton: vi.fn() }));
+vi.mock('./shared', () => ({
+  setupDropdownMenu: vi.fn(),
+  applyDropdownValue: vi.fn(),
+  applyToggleState: vi.fn(),
+  setupToggleButton: vi.fn()
+}));
 vi.mock('./config-sync', () => ({ updateConfig: vi.fn() }));
 vi.mock('./appearance', () => ({ syncCaretStateIndicatorPreview: vi.fn() }));
 vi.mock('./skin', () => ({ syncAppearancePreviews: vi.fn() }));
@@ -132,6 +142,70 @@ it('persists the focus announcement switch under its own config key', () => {
     expect(toggle.setAttribute).toHaveBeenLastCalledWith('aria-checked', 'true');
     onToggle!(false);
     expect(updateConfig).toHaveBeenLastCalledWith('general.caret_state_indicator_on_focus', false);
+  } finally {
+    vi.unstubAllGlobals();
+  }
+});
+
+it('puts the auto-hide switch and its delay stepper in the toolbar card', () => {
+  const toolbarCard = partial.match(/<div class="section floating-toolbar-card">([\s\S]*?)<div class="section caret-state-indicator-card">/)?.[1] ?? '';
+  expect(toolbarCard).toContain('class="ftb-toggle-btn" id="ftbAutoHideToggleBtn" role="switch" aria-label="自动隐藏工具栏" aria-checked="false"');
+  expect(toolbarCard).toContain('id="ftbAutoHideDelayDecBtn"');
+  expect(toolbarCard).toContain('id="ftbAutoHideDelayInput"');
+  expect(toolbarCard).toContain('id="ftbAutoHideDelayIncBtn"');
+  // The delay row starts greyed out, matching the switch's default of off.
+  expect(toolbarCard).toMatch(/class="[^"]*ftb-auto-hide-delay-row is-disabled" id="ftbAutoHideDelayRow"/);
+  expect(toolbarCard.indexOf('id="ftbAutoHideToggleBtn"')).toBeLessThan(toolbarCard.indexOf('id="ftbPreviewHost"'));
+});
+
+it('clamps the auto-hide delay to the server range', () => {
+  expect(clampAutoHideDelay(0)).toBe(1);
+  expect(clampAutoHideDelay(5)).toBe(5);
+  expect(clampAutoHideDelay(60)).toBe(60);
+  expect(clampAutoHideDelay(61)).toBe(60);
+  expect(clampAutoHideDelay(2.6)).toBe(3);
+  expect(clampAutoHideDelay(Number.NaN)).toBe(5);
+});
+
+it('persists the auto-hide switch and steps the delay within range', () => {
+  const listeners = new Map<string, () => void>();
+  const element = (id: string) => ({
+    id,
+    value: '',
+    disabled: false,
+    tabIndex: 0,
+    setAttribute: vi.fn(),
+    classList: { toggle: vi.fn() },
+    addEventListener: (type: string, listener: () => void) => { if (type === 'click') listeners.set(id, listener); }
+  });
+  const elements = new Map(
+    ['ftbAutoHideToggleBtn', 'ftbAutoHideDelayRow', 'ftbAutoHideDelayDecBtn', 'ftbAutoHideDelayInput', 'ftbAutoHideDelayIncBtn']
+      .map((id) => [id, element(id)]));
+  vi.stubGlobal('document', {
+    getElementById: (id: string) => elements.get(id) ?? null,
+    querySelectorAll: () => []
+  });
+  try {
+    setupFloatingToolbar();
+    const onToggle = vi.mocked(setupToggleButton).mock.calls.find(([id]) => id === 'ftbAutoHideToggleBtn')?.[1];
+    onToggle!(true);
+    expect(updateConfig).toHaveBeenLastCalledWith('general.floating_toolbar_auto_hide', true);
+    expect(elements.get('ftbAutoHideDelayRow')!.classList.toggle).toHaveBeenLastCalledWith('is-disabled', false);
+
+    applyFloatingToolbarAutoHideConfig(true, 59);
+    expect(elements.get('ftbAutoHideDelayInput')!.value).toBe('59');
+    listeners.get('ftbAutoHideDelayIncBtn')!();
+    expect(updateConfig).toHaveBeenLastCalledWith('general.floating_toolbar_auto_hide_delay', 60);
+    expect(elements.get('ftbAutoHideDelayIncBtn')!.disabled).toBe(true);
+    vi.mocked(updateConfig).mockClear();
+    listeners.get('ftbAutoHideDelayIncBtn')!();
+    expect(updateConfig).not.toHaveBeenCalled();
+
+    applyFloatingToolbarAutoHideConfig(true, 1);
+    listeners.get('ftbAutoHideDelayDecBtn')!();
+    expect(updateConfig).not.toHaveBeenCalled();
+    listeners.get('ftbAutoHideDelayIncBtn')!();
+    expect(updateConfig).toHaveBeenLastCalledWith('general.floating_toolbar_auto_hide_delay', 2);
   } finally {
     vi.unstubAllGlobals();
   }

@@ -559,6 +559,7 @@ void UpdateFtbCnEnAndPuncState(ComPtr<ICoreWebView2> webview, int cnEnState, int
     if (changed)
     {
         RenderFloatingToolbarState(webview.Get());
+        RevealAutoHiddenFloatingToolbar(L"input-state-changed");
     }
 }
 
@@ -585,6 +586,7 @@ void UpdateFtbCnEnAndDoubleSingleAndPuncState( //
     if (changed)
     {
         RenderFloatingToolbarState(webview.Get());
+        RevealAutoHiddenFloatingToolbar(L"input-state-changed");
     }
 }
 
@@ -599,6 +601,7 @@ void UpdateFtbPuncState(ComPtr<ICoreWebView2> webview, int puncState)
     if (UpdateBinaryState(puncState, floatingToolbarState.punctuation))
     {
         RenderFloatingToolbarState(webview.Get());
+        RevealAutoHiddenFloatingToolbar(L"input-state-changed");
     }
 }
 
@@ -613,6 +616,7 @@ void UpdateFtbDoubleSingleByteState(ComPtr<ICoreWebView2> webview, int doubleSin
     if (UpdateBinaryState(doubleSingleByteState, floatingToolbarState.double_single_byte))
     {
         RenderFloatingToolbarState(webview.Get());
+        RevealAutoHiddenFloatingToolbar(L"input-state-changed");
     }
 }
 
@@ -621,6 +625,7 @@ void UpdateFtbEnglishInputModeState(ComPtr<ICoreWebView2> webview, int enabled)
     if (UpdateBinaryState(enabled, floatingToolbarState.english_input_mode))
     {
         RenderFloatingToolbarState(webview.Get());
+        RevealAutoHiddenFloatingToolbar(L"input-state-changed");
     }
 }
 
@@ -629,12 +634,14 @@ void UpdateFtbCapsLockState(ComPtr<ICoreWebView2> webview, int enabled)
     if (UpdateBinaryState(enabled, floatingToolbarState.caps_lock))
     {
         RenderFloatingToolbarState(webview.Get());
+        RevealAutoHiddenFloatingToolbar(L"input-state-changed");
     }
 }
 
 void UpdateFtbCharacterSetState(ComPtr<ICoreWebView2> webview)
 {
     RenderFloatingToolbarState(webview.Get());
+    RevealAutoHiddenFloatingToolbar(L"input-state-changed");
 }
 
 void UpdateFtbInputModeState(ComPtr<ICoreWebView2> webview, int japaneseMode)
@@ -643,8 +650,13 @@ void UpdateFtbInputModeState(ComPtr<ICoreWebView2> webview, int japaneseMode)
     {
         return;
     }
+    const bool changed = floatingToolbarState.japanese_input_mode != japaneseMode;
     floatingToolbarState.japanese_input_mode = japaneseMode;
     RenderFloatingToolbarState(webview.Get());
+    if (changed)
+    {
+        RevealAutoHiddenFloatingToolbar(L"input-state-changed");
+    }
 }
 
 void ApplyConfiguredFloatingToolbarItems()

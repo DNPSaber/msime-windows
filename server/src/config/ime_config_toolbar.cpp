@@ -156,3 +156,31 @@ bool SetConfiguredFloatingToolbarFontSize(int font_size)
     g_floating_toolbar_font_size = font_size;
     return true;
 }
+
+bool GetConfiguredFloatingToolbarAutoHide()
+{
+    return g_floating_toolbar_auto_hide;
+}
+
+bool SetConfiguredFloatingToolbarAutoHide(bool enabled)
+{
+    if (!WriteConfiguredValue("general", "floating_toolbar_auto_hide", enabled ? "true" : "false"))
+        return false;
+    g_floating_toolbar_auto_hide = enabled;
+    return true;
+}
+
+int GetConfiguredFloatingToolbarAutoHideDelay()
+{
+    return g_floating_toolbar_auto_hide_delay;
+}
+
+bool SetConfiguredFloatingToolbarAutoHideDelay(int seconds)
+{
+    if (seconds < kFloatingToolbarAutoHideDelayMin || seconds > kFloatingToolbarAutoHideDelayMax)
+        return false;
+    if (!WriteConfiguredValue("general", "floating_toolbar_auto_hide_delay", std::to_string(seconds)))
+        return false;
+    g_floating_toolbar_auto_hide_delay = seconds;
+    return true;
+}
