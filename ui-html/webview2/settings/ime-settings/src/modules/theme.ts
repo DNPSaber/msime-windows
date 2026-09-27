@@ -33,6 +33,7 @@ const SURFACE_THEME_LABELS: Record<SurfaceTheme, string> = {
 };
 
 let mediaQuery: MediaQueryList | null = null;
+let lastThemeConfig: ThemeConfig | null = null;
 
 function normalizeThemeMode(value: string | undefined): ThemeMode {
   if (value === 'light' || value === 'dark' || value === 'system') {
@@ -99,6 +100,7 @@ function ensureSystemThemeListener(onChange: () => void): void {
 }
 
 export function applyThemeConfig(config: ThemeConfig | undefined): void {
+  lastThemeConfig = config ?? null;
   const mode = normalizeThemeMode(config?.theme_mode);
   const settingsTheme = normalizeSurfaceTheme(config?.theme_settings);
   const candTheme = normalizeSurfaceTheme(config?.theme_cand);
@@ -157,6 +159,13 @@ export function applyThemeConfig(config: ThemeConfig | undefined): void {
   });
 
   updateSkinThemeCard(mode, settingsResolved, candResolved);
+}
+
+// Skin, screen keyboard and handwriting pages load after the first snapshot has been applied, so their previews only exist once the theme has already been resolved; they call this when their DOM is ready.
+export function reapplyThemeConfig(): void {
+  if (lastThemeConfig) {
+    applyThemeConfig(lastThemeConfig);
+  }
 }
 
 export function applyFtbPreviewTheme(theme: ResolvedTheme): void {
