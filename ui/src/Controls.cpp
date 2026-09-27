@@ -74,6 +74,8 @@ constexpr float kAccordionCornerRadius = 14.0f;
 constexpr float kAccordionHeaderHorizontalPadding = 20.0f;
 constexpr float kComboBoxItemGap = 6.0f;
 constexpr float kCandidateItemGap = 1.0f;
+constexpr float kTrayMenuFontSize = 14.0f;
+constexpr float kTrayMenuItemPad = 8.0f;
 
 RectF MakeInsetRect(const RectF &rect, float insetX, float insetY)
 {
@@ -240,16 +242,16 @@ ComPtr<IDWriteTextLayout> CreateCachedTextLayout(IDWriteFactory *factory, const 
 float EstimateTrayLabelWidth(const std::wstring &text)
 {
     ComPtr<IDWriteTextLayout> layout = CreateCachedTextLayout(
-        GetSharedDWriteFactory(), UiFontFamily(), text, 14.0f, DWRITE_FONT_WEIGHT_NORMAL, 4096.0f, 30.0f,
+        GetSharedDWriteFactory(), UiFontFamily(), text, kTrayMenuFontSize, DWRITE_FONT_WEIGHT_NORMAL, 4096.0f, 30.0f,
         DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_NO_WRAP);
     if (!layout)
     {
-        return 14.0f * static_cast<float>(text.size());
+        return kTrayMenuFontSize * static_cast<float>(text.size());
     }
     DWRITE_TEXT_METRICS metrics = {};
     if (FAILED(layout->GetMetrics(&metrics)))
     {
-        return 14.0f * static_cast<float>(text.size());
+        return kTrayMenuFontSize * static_cast<float>(text.size());
     }
     return std::ceil(metrics.widthIncludingTrailingWhitespace);
 }
@@ -988,29 +990,28 @@ RectF MenuFlyoutItem::ToggleHitRect() const
 {
     constexpr float kToggleWidth = 32.0f;
     constexpr float kToggleHeight = 16.0f;
-    return {bounds_.x + bounds_.width - 6.0f - kToggleWidth, bounds_.y + (bounds_.height - kToggleHeight) * 0.5f,
-            kToggleWidth, kToggleHeight};
+    return {bounds_.x + bounds_.width - kTrayMenuItemPad - kToggleWidth,
+            bounds_.y + (bounds_.height - kToggleHeight) * 0.5f, kToggleWidth, kToggleHeight};
 }
 
 SizeF MenuFlyoutItem::Measure(const SizeF &availableSize)
 {
     if (UsesTrayLayout())
     {
-        constexpr float kPad = 5.6f;
         constexpr float kIcon = 18.0f;
         constexpr float kIconGap = 8.0f;
         constexpr float kToggleWidth = 32.0f;
         constexpr float kToggleGap = 8.0f;
-        // HTML .menu { min-width: 12em } inherits body 16px, minus 6px item margins.
-        constexpr float kMinItemWidth = 12.0f * 16.0f - 12.0f;
-        float width = kPad + kIcon + kIconGap + EstimateTrayLabelWidth(text_);
-        width += showToggle_ ? (kToggleGap + kToggleWidth) : kPad;
+        // HTML .menu { min-width: 12em } inherits body 16px, minus 4px item margins.
+        constexpr float kMinItemWidth = 12.0f * 16.0f - 8.0f;
+        float width = kTrayMenuItemPad + kIcon + kIconGap + EstimateTrayLabelWidth(text_);
+        width += (showToggle_ ? (kToggleGap + kToggleWidth) : 0.0f) + kTrayMenuItemPad;
         width = (std::max)(width, kMinItemWidth);
         if (availableSize.width > 1.0f)
         {
             width = (std::min)(width, availableSize.width);
         }
-        return {width, 30.0f};
+        return {width, 36.0f};
     }
     const float chevron = hasSubmenu_ ? 16.0f : 0.0f;
     const float width = (std::min)((std::max)(availableSize.width, 88.0f + chevron), 220.0f);
@@ -1031,6 +1032,7 @@ void MenuFlyoutItem::Render(DeviceResources &deviceResources)
     }
 
     const bool tray = UsesTrayLayout();
+    // Tray rows are inset 4 DIP inside a 10 DIP card, so 6 keeps the corners concentric.
     const float hoverRadius = tray ? 6.0f : 4.0f;
     if (hovered_ || pressed_)
     {
@@ -1038,18 +1040,19 @@ void MenuFlyoutItem::Render(DeviceResources &deviceResources)
     }
 
     const wchar_t *fontFamily = UiFontFamily();
-    const float pad = tray ? 5.6f : 4.0f;
+    const float pad = tray ? kTrayMenuItemPad : 4.0f;
     const float iconSize = leadingSvg_.empty() ? 0.0f : 18.0f;
     const float iconGap = leadingSvg_.empty() ? 0.0f : 8.0f;
-    const float chevronReserve = hasSubmenu_ ? 16.0f : (showToggle_ ? 36.0f : (tray ? 4.0f : 4.0f));
+    const float chevronReserve =
+        hasSubmenu_ ? 16.0f : (showToggle_ ? kTrayMenuItemPad + 32.0f + 4.0f : (tray ? 4.0f : 4.0f));
     const float textX = bounds_.x + pad + iconSize + iconGap;
     const float textWidth = (std::max)(bounds_.width - (textX - bounds_.x) - chevronReserve, 1.0f);
     if (!textLayout_ || cachedLayoutWidth_ != textWidth || cachedFontFamily_ != fontFamily)
     {
-        textLayout_ =
-            CreateCachedTextLayout(deviceResources.GetDWriteFactory(), fontFamily, text_, 14.0f,
-                                   DWRITE_FONT_WEIGHT_NORMAL, textWidth, bounds_.height, DWRITE_TEXT_ALIGNMENT_LEADING,
-                                   DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_NO_WRAP);
+        textLayout_ = CreateCachedTextLayout(deviceResources.GetDWriteFactory(), fontFamily, text_,
+                                             tray ? kTrayMenuFontSize : 14.0f, DWRITE_FONT_WEIGHT_NORMAL, textWidth,
+                                             bounds_.height, DWRITE_TEXT_ALIGNMENT_LEADING,
+                                             DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_NO_WRAP);
         cachedLayoutWidth_ = textWidth;
         cachedFontFamily_ = fontFamily;
     }

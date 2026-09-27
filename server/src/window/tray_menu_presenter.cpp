@@ -158,8 +158,10 @@ void TrayMenuPresenter::RebuildScene()
     {
         return;
     }
-    impl_->items = std::make_shared<msimeui::StackPanel>(1.0f);
-    impl_->items->SetPadding({6.0f, 2.8f, 6.0f, 2.8f});
+    impl_->items = std::make_shared<msimeui::StackPanel>(2.0f);
+    // Items sit 4 DIP inside the card on every side; MenuFlyoutItem's tray hover
+    // radius (6) is the card radius (10) minus that inset, keeping corners concentric.
+    impl_->items->SetPadding({4.0f, 4.0f, 4.0f, 4.0f});
     impl_->rows.clear();
 
     auto addItem = [this](const std::wstring &label, const char *svg, bool toggle) {
@@ -205,8 +207,8 @@ void TrayMenuPresenter::RebuildScene()
     brush.fill = impl_->fill;
     brush.stroke = impl_->border;
     brush.strokeWidth = 1.0f;
-    brush.radiusX = 8.0f;
-    brush.radiusY = 8.0f;
+    brush.radiusX = 10.0f;
+    brush.radiusY = 10.0f;
     impl_->card = std::make_shared<msimeui::Card>(brush, 0.0f);
     impl_->card->AddChild(impl_->items);
     impl_->frame = std::make_shared<msimeui::Container>();
