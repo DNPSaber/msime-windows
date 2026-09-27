@@ -199,6 +199,9 @@ else {
     if ($defaultConfig -match '(?m)^diagnostic_log\s*=\s*true\s*$') {
         throw '出厂配置不应默认打开 diagnostic_log。'
     }
+    if ($defaultConfig -notmatch '(?m)^settings_window_linger\s*=\s*"off"\s*$') {
+        throw '出厂配置的 appearance.settings_window_linger 必须是 off（关闭后立即退出）。'
+    }
     $defaultConfig = $defaultConfig.TrimEnd("`r", "`n") + "`r`n"
     Set-Content -LiteralPath $defaultConfigPath -Value $defaultConfig -Encoding utf8NoBOM -NoNewline
     foreach ($stagedUserConfig in @('config.toml', 'config.base.toml')) {
