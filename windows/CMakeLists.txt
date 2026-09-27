@@ -137,6 +137,9 @@ add_library(${PROJECT_NAME} SHARED
     "./src/IPC/VoiceCompositionPipe.h"
     # Key
     "./src/Key/KeyEventSink.cpp"
+    "./src/Key/KeyEventSink_DeferredKeys.cpp"
+    "./src/Key/KeyEventSink_Hotkeys.cpp"
+    "./src/Key/KeyEventSinkInternal.h"
     "./src/Key/KeyHandler.cpp"
     "./src/Key/KeyHandlerEditSession.cpp"
     "./src/Key/KeyHandlerEditSession.h"
