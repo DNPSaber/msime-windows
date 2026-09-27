@@ -41,6 +41,8 @@ set(TEST_SOURCE_FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/test_composition_selection_history.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/test_candidate_render_sync.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/test_selection_replay_guard.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/test_serial_task_runner.cpp"
+    "${CMAKE_SOURCE_DIR}/src/utils/serial_task_runner.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/test_candidate_wheel_paging.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/test_candidate_view_model.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/test_candidate_text_policy.cpp"

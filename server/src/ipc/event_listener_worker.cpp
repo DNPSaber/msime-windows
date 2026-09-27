@@ -12,6 +12,7 @@
 #include "defines/defines.h"
 #include "defines/globals.h"
 #include "utils/common_utils.h"
+#include "utils/serial_task_runner.h"
 #include <utf8.h>
 #include "global/globals.h"
 #include "engine/user_dictionary/user_dictionary_journal.h"
@@ -125,14 +126,6 @@ struct Task
     std::string session_pinyin;
     std::string session_word;
     bool session_pinyin_is_canonical = false;
-    // AdjustCandidateRanking: session_pinyin is the entry key, session_word the picked word.
-    std::string ranking_context_key;
-    std::vector<WordItem> ranking_candidates;
-    bool ranking_english = false;
-    bool ranking_wubi = false;
-    std::string ranking_mode;
-    int ranking_linear_step = 0;
-    int ranking_trigger_count = 0;
     int candidate_one_based_index = 0;
     int fixed_position = 0;
     int page_steps = 0;
@@ -189,7 +182,7 @@ void WorkerThread()
             pipe_queueCv.wait(lock, [] { return !taskQueue.empty() || !pipe_running; });
             if (!pipe_running)
                 break;
-            task = taskQueue.front();
+            task = std::move(taskQueue.front());
             taskQueue.pop();
         }
 
@@ -410,38 +403,6 @@ void WorkerThread()
                 session->store_user_phrase(task.session_pinyin, task.session_word);
             }
             session->reset_cache();
-            break;
-        }
-
-        case TaskType::AdjustCandidateRanking: {
-            if (task.ranking_english)
-            {
-                (void)user_dictionary::adjust_english_candidate_ranking(
-                    CommonUtils::get_ime_data_path() + "\\english.db", user_dictionary::default_user_db_path(),
-                    task.ranking_context_key, task.ranking_candidates, task.session_pinyin, task.session_word,
-                    task.ranking_mode, task.ranking_linear_step, task.ranking_trigger_count, false);
-                break;
-            }
-            bool ranking_changed = false;
-            (void)user_dictionary::adjust_candidate_ranking(
-                CommonUtils::get_ime_data_path() + "\\msime.db", user_dictionary::default_user_db_path(),
-                task.ranking_context_key, task.ranking_candidates, task.session_pinyin, task.session_word,
-                task.ranking_mode, task.ranking_linear_step, task.ranking_trigger_count, false, &ranking_changed,
-                task.ranking_wubi ? user_dictionary::DictionaryKind::Wubi : user_dictionary::DictionaryKind::Pinyin);
-            if (ranking_changed)
-            {
-                if (const auto session = PersistentInputSession())
-                {
-                    session->reset_cache();
-                }
-            }
-            break;
-        }
-
-        case TaskType::LearnEnteredEnglishWord: {
-            (void)user_dictionary::learn_entered_english_word(CommonUtils::get_ime_data_path() + "\\english.db",
-                                                              user_dictionary::default_user_db_path(),
-                                                              task.session_word);
             break;
         }
 
@@ -969,10 +930,24 @@ void EnqueueStoreUserPhraseTask(const std::string &pinyin, const std::string &wo
     pipe_queueCv.notify_one();
 }
 
-// A pick's frequency write is SQLite work; done inline it sat between the selection and its reply,
-// and on a slow machine it pushed the reply past the TSF deadline. The candidates are copied
-// because the page moves on before the task runs. Called from the worker thread only, which is
-// also what serializes the replay guard.
+// Learning writes (frequency adjustments, entered English words) run on their own low-priority
+// thread. On the worker they sat in the same FIFO as the keystrokes: every commit and fsync of the
+// user journal -- plus msime.db once a pick crosses the trigger count -- was paid before the next
+// key, and a busy disk or antivirus scan turned that into a visible stall. The writes only touch
+// user_dictionary, which opens its own connection per thread, never the input session; the one
+// session effect, dropping the engine's candidate cache after a ranking change, is posted back to
+// the worker. Jobs stay in submission order, and Stop() drains them so no pick is lost at exit.
+namespace
+{
+SerialTaskRunner &DictionaryWriter()
+{
+    static SerialTaskRunner writer(/*below_normal_priority=*/true);
+    return writer;
+}
+} // namespace
+
+// The candidates are copied because the page moves on before the write runs. Called from the
+// worker thread only, which is also what serializes the replay guard.
 void EnqueueAdjustCandidateRankingTask(bool english, const std::string &context_key, const std::string &entry_key,
                                        const std::string &word, uint64_t client_id, uint64_t activation_epoch)
 {
@@ -986,36 +961,41 @@ void EnqueueAdjustCandidateRankingTask(bool english, const std::string &context_
         return;
     }
     const auto &frequency = GetConfiguredFrequencyAdjustment();
-    {
-        std::lock_guard lock(queueMutex);
-        Task task;
-        task.type = TaskType::AdjustCandidateRanking;
-        task.ranking_english = english;
-        task.ranking_wubi = wubi;
-        task.ranking_context_key = context_key;
-        task.ranking_candidates = Global::candidate_ui.items;
-        task.session_pinyin = entry_key;
-        task.session_word = word;
-        task.ranking_mode = frequency.mode;
-        task.ranking_linear_step = frequency.linear_step;
-        task.ranking_trigger_count = frequency.trigger_count;
-        taskQueue.push(std::move(task));
-    }
-    pipe_queueCv.notify_one();
+    DictionaryWriter().Post([english, wubi, context_key, candidates = Global::candidate_ui.items, entry_key, word,
+                             mode = frequency.mode, linear_step = frequency.linear_step,
+                             trigger_count = frequency.trigger_count] {
+        if (english)
+        {
+            (void)user_dictionary::adjust_english_candidate_ranking(
+                CommonUtils::get_ime_data_path() + "\\english.db", user_dictionary::default_user_db_path(), context_key,
+                candidates, entry_key, word, mode, linear_step, trigger_count, false);
+            return;
+        }
+        bool ranking_changed = false;
+        (void)user_dictionary::adjust_candidate_ranking(
+            CommonUtils::get_ime_data_path() + "\\msime.db", user_dictionary::default_user_db_path(), context_key,
+            candidates, entry_key, word, mode, linear_step, trigger_count, false, &ranking_changed,
+            wubi ? user_dictionary::DictionaryKind::Wubi : user_dictionary::DictionaryKind::Pinyin);
+        if (ranking_changed)
+        {
+            EnqueueResetInputSessionCacheTask();
+        }
+    });
 }
 
 void EnqueueLearnEnteredEnglishWordTask(const std::string &word)
 {
     if (word.empty())
         return;
-    {
-        std::lock_guard lock(queueMutex);
-        Task task;
-        task.type = TaskType::LearnEnteredEnglishWord;
-        task.session_word = word;
-        taskQueue.push(std::move(task));
-    }
-    pipe_queueCv.notify_one();
+    DictionaryWriter().Post([word] {
+        (void)user_dictionary::learn_entered_english_word(CommonUtils::get_ime_data_path() + "\\english.db",
+                                                          user_dictionary::default_user_db_path(), word);
+    });
+}
+
+void ShutdownDictionaryWriter()
+{
+    DictionaryWriter().Stop();
 }
 
 void EnqueuePinCandidateTask(const std::string &pinyin, const std::string &word)
