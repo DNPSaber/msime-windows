@@ -26,6 +26,7 @@
 #include "engine/core/word_item.h"
 
 #include <d2d1.h>
+#include <dwmapi.h>
 #include <windowsx.h>
 
 #include <algorithm>
@@ -972,16 +973,35 @@ void CandidatePresenter::PlaceAndShow(POINT caret, float widthDip, float heightD
     {
         y = monitor.top + 2 - cardTopPx;
     }
-    SetWindowPos(hwnd_, HWND_TOPMOST, x, y, widthPx, heightPx, SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    // Rendering must use the same scale the window was just sized with: the ui
+    // Rendering must use the same scale the window is sized with: the ui
     // override replaces GetDpiForWindow (144 inside RDP) so DIPs map exactly
     // onto the pixels computed above. Must land before EnsureForComposition —
-    // a freshly created target reads it through DpiForHwnd().
+    // a freshly created target reads it through DpiForHwnd() — and before the
+    // resize below, whose WM_SIZE already presents.
     const FLOAT dpiOverride = scale * 96.0f;
     impl_->window->SetDpiOverride(dpiOverride);
     impl_->resources.SetDpiOverride(dpiOverride);
+    // DWM applies the window move and the swap-chain present independently, so
+    // on a visible host one frame always shows one of them stale. Moving first
+    // put the previous card at the new origin: at the right screen edge a card
+    // that narrowed moves right, and the previous, wider picture spilled past
+    // the edge onto the next monitor before snapping back. Per axis, the stale
+    // frame stays inside the old and new cards when a host moving left/up moves before
+    // the present and one moving right/down moves after it.
+    RECT current{};
+    DWORD cloaked = 0;
+    const bool onScreen =
+        IsWindowVisible(hwnd_) && GetWindowRect(hwnd_, &current) && current.top != Global::INVALID_Y &&
+        SUCCEEDED(DwmGetWindowAttribute(hwnd_, DWMWA_CLOAKED, &cloaked, sizeof(cloaked))) && cloaked == 0;
+    const int firstX = onScreen && x > current.left ? current.left : x;
+    const int firstY = onScreen && y > current.top ? current.top : y;
+    SetWindowPos(hwnd_, HWND_TOPMOST, firstX, firstY, widthPx, heightPx, SWP_NOACTIVATE | SWP_SHOWWINDOW);
     impl_->resources.EnsureForComposition(hwnd_);
     Present();
+    if (firstX != x || firstY != y)
+    {
+        SetWindowPos(hwnd_, nullptr, x, y, 0, 0, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOSIZE);
+    }
     SetCandidateHostCloaked(false);
     // Acceptance trace for the RDP candidate-scale fix: which scale authority
     // won, and the system's own (potentially diverging) DPI values. Coordinates
