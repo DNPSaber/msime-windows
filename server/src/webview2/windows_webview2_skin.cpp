@@ -1,0 +1,744 @@
+// 皮肤与外观：读取页面 HTML、外部候选皮肤的 CSS 注入与内嵌资源、PrepareHtmlForWnds，
+// 以及候选窗、悬浮工具栏的布局 / 主题 / 字体等外观应用。
+#include "webview2/windows_webview2_internal.h"
+#include "webview2/inline_protocol.h"
+#include "webview2/skin_css_policy.h"
+#include "config/ime_config.h"
+#include "defines/globals.h"
+#include "skin/candidate_skin_catalog.h"
+#include "utils/common_utils.h"
+#include "window/candidate_presenter.h"
+#include "window/floating_toolbar_presenter.h"
+#include "fmt/xchar.h"
+#include <nlohmann/json.hpp>
+#include <algorithm>
+#include <cwctype>
+#include <filesystem>
+#include <fstream>
+#include <functional>
+#include <optional>
+#include <sstream>
+#include <string>
+#include <vector>
+
+namespace
+{
+std::optional<CandidateSkinCatalog::Package> activeExternalCandidateSkin;
+} // namespace
+
+double GetActiveCandidateSkinDecorationTopDip()
+{
+    return activeExternalCandidateSkin ? activeExternalCandidateSkin->decorationTopDip : 0.0;
+}
+
+double GetActiveCandidateSkinDecorationWidthDip()
+{
+    return activeExternalCandidateSkin ? activeExternalCandidateSkin->decorationWidthDip : 0.0;
+}
+
+std::wstring ReadHtmlFile(const std::wstring &filePath)
+{
+    std::ifstream file(filePath, std::ios::binary);
+    if (!file)
+        return L"";
+    std::ostringstream buffer;
+    buffer << file.rdbuf();
+    return string_to_wstring(buffer.str());
+}
+
+// An unreadable themed asset must never turn into an empty NavigateToString:
+// that renders a blank, title-less page which looks like a dead WebView.
+std::wstring ReadHtmlFileWithFallback(const std::wstring &primaryPath, const std::wstring &fallbackPath)
+{
+    std::wstring content = ReadHtmlFile(primaryPath);
+    if (content.empty() && primaryPath != fallbackPath)
+    {
+        content = ReadHtmlFile(fallbackPath);
+    }
+    return content;
+}
+
+namespace
+{
+std::wstring NormalizeSkinCssUrl(std::wstring url)
+{
+    while (!url.empty() && iswspace(url.front()))
+    {
+        url.erase(url.begin());
+    }
+    while (!url.empty() && iswspace(url.back()))
+    {
+        url.pop_back();
+    }
+    while (url.size() >= 2 && url[0] == L'.' && url[1] == L'/')
+    {
+        url.erase(0, 2);
+    }
+    std::replace(url.begin(), url.end(), L'\\', L'/');
+    return url;
+}
+
+std::wstring EncodeBase64(const std::vector<unsigned char> &bytes)
+{
+    static constexpr wchar_t kTable[] = L"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    std::wstring out;
+    out.reserve(((bytes.size() + 2) / 3) * 4);
+    size_t i = 0;
+    while (i + 2 < bytes.size())
+    {
+        const unsigned int triple = (static_cast<unsigned int>(bytes[i]) << 16) |
+                                    (static_cast<unsigned int>(bytes[i + 1]) << 8) |
+                                    static_cast<unsigned int>(bytes[i + 2]);
+        out.push_back(kTable[(triple >> 18) & 63]);
+        out.push_back(kTable[(triple >> 12) & 63]);
+        out.push_back(kTable[(triple >> 6) & 63]);
+        out.push_back(kTable[triple & 63]);
+        i += 3;
+    }
+    if (i < bytes.size())
+    {
+        unsigned int triple = static_cast<unsigned int>(bytes[i]) << 16;
+        if (i + 1 < bytes.size())
+        {
+            triple |= static_cast<unsigned int>(bytes[i + 1]) << 8;
+        }
+        out.push_back(kTable[(triple >> 18) & 63]);
+        out.push_back(kTable[(triple >> 12) & 63]);
+        out.push_back(i + 1 < bytes.size() ? kTable[(triple >> 6) & 63] : L'=');
+        out.push_back(L'=');
+    }
+    return out;
+}
+
+std::wstring MimeForSkinAsset(const std::wstring &relativePath)
+{
+    std::wstring lower = relativePath;
+    for (wchar_t &ch : lower)
+    {
+        ch = static_cast<wchar_t>(towlower(ch));
+    }
+    if (lower.size() >= 4 && lower.compare(lower.size() - 4, 4, L".png") == 0)
+        return L"image/png";
+    if (lower.size() >= 4 && lower.compare(lower.size() - 4, 4, L".jpg") == 0)
+        return L"image/jpeg";
+    if (lower.size() >= 5 && lower.compare(lower.size() - 5, 5, L".jpeg") == 0)
+        return L"image/jpeg";
+    if (lower.size() >= 5 && lower.compare(lower.size() - 5, 5, L".webp") == 0)
+        return L"image/webp";
+    if (lower.size() >= 4 && lower.compare(lower.size() - 4, 4, L".gif") == 0)
+        return L"image/gif";
+    if (lower.size() >= 4 && lower.compare(lower.size() - 4, 4, L".svg") == 0)
+        return L"image/svg+xml";
+    return L"application/octet-stream";
+}
+
+std::wstring EmbedSkinCssUrl(const std::wstring &skinsRoot, const std::string &skinId, const std::wstring &rawUrl)
+{
+    const std::wstring relative = NormalizeSkinCssUrl(rawUrl);
+    const std::filesystem::path filePath = std::filesystem::path(skinsRoot) / std::filesystem::u8path(skinId) /
+                                           std::filesystem::u8path(wstring_to_string(relative));
+    std::error_code ec;
+    constexpr std::uintmax_t kMaxEmbedBytes = 1500 * 1024;
+    const auto fileSize = std::filesystem::file_size(filePath, ec);
+    if (!ec && fileSize > 0 && fileSize <= kMaxEmbedBytes)
+    {
+        std::ifstream stream(filePath, std::ios::binary);
+        std::vector<unsigned char> bytes(static_cast<size_t>(fileSize));
+        if (stream && stream.read(reinterpret_cast<char *>(bytes.data()), static_cast<std::streamsize>(fileSize)))
+        {
+            return L"url(\"data:" + MimeForSkinAsset(relative) + L";base64," + EncodeBase64(bytes) + L"\")";
+        }
+    }
+    return L"url(\"https://candidate-skins/" + string_to_wstring(skinId) + L"/" + relative + L"\")";
+}
+
+std::wstring RewriteCandidateSkinCssUrls(const std::wstring &css, const std::wstring &skinsRoot,
+                                         const std::string &skinId)
+{
+    std::wstring result;
+    result.reserve(css.size() + 64);
+    size_t pos = 0;
+    while (pos < css.size())
+    {
+        size_t urlPos = std::wstring::npos;
+        for (size_t i = pos; i + 4 <= css.size(); ++i)
+        {
+            if ((css[i] == L'u' || css[i] == L'U') && (css[i + 1] == L'r' || css[i + 1] == L'R') &&
+                (css[i + 2] == L'l' || css[i + 2] == L'L') && css[i + 3] == L'(')
+            {
+                urlPos = i;
+                break;
+            }
+        }
+        if (urlPos == std::wstring::npos)
+        {
+            result.append(css, pos, std::wstring::npos);
+            break;
+        }
+        result.append(css, pos, urlPos - pos);
+        size_t cursor = urlPos + 4;
+        while (cursor < css.size() && iswspace(css[cursor]))
+        {
+            ++cursor;
+        }
+        wchar_t quote = 0;
+        if (cursor < css.size() && (css[cursor] == L'"' || css[cursor] == L'\''))
+        {
+            quote = css[cursor++];
+        }
+        const size_t valueStart = cursor;
+        while (cursor < css.size())
+        {
+            if (quote != 0)
+            {
+                if (css[cursor] == quote)
+                {
+                    break;
+                }
+            }
+            else if (css[cursor] == L')' || iswspace(css[cursor]))
+            {
+                break;
+            }
+            ++cursor;
+        }
+        const std::wstring rawUrl = css.substr(valueStart, cursor - valueStart);
+        switch (msime::skin_css::ClassifyUrl(rawUrl))
+        {
+        case msime::skin_css::UrlAction::Embed:
+            result.append(EmbedSkinCssUrl(skinsRoot, skinId, rawUrl));
+            break;
+        case msime::skin_css::UrlAction::Keep:
+            result.append(L"url(");
+            if (quote != 0)
+            {
+                result.push_back(quote);
+                result.append(rawUrl);
+                result.push_back(quote);
+            }
+            else
+            {
+                result.append(rawUrl);
+            }
+            result.push_back(L')');
+            break;
+        case msime::skin_css::UrlAction::Drop:
+            // Nothing is written. The declaration is left incomplete, so CSS discards it -- which
+            // is what should happen to `background-image: url(https://attacker/beacon.png)` in a
+            // skin someone downloaded. Passing it through, as this branch used to, meant the
+            // candidate window fetched that URL on every render.
+            break;
+        }
+        if (quote != 0 && cursor < css.size() && css[cursor] == quote)
+        {
+            ++cursor;
+        }
+        while (cursor < css.size() && iswspace(css[cursor]))
+        {
+            ++cursor;
+        }
+        if (cursor < css.size() && css[cursor] == L')')
+        {
+            ++cursor;
+        }
+        pos = cursor;
+    }
+    return result;
+}
+
+void NeutralizeEmbeddedStyleClosers(std::wstring &css)
+{
+    for (size_t i = 0; i + 7 < css.size(); ++i)
+    {
+        if (css[i] != L'<' || css[i + 1] != L'/')
+        {
+            continue;
+        }
+        std::wstring tag = css.substr(i + 2, 5);
+        for (wchar_t &ch : tag)
+        {
+            ch = static_cast<wchar_t>(towlower(ch));
+        }
+        if (tag == L"style")
+        {
+            css.insert(i + 1, 1, L' ');
+            i += 2;
+        }
+    }
+}
+
+bool InjectExternalSkinCssFile(std::wstring &html, const CandidateSkinCatalog::Package &skin,
+                               const std::wstring &skinsRoot, const std::string &stylesheet, const wchar_t *styleId)
+{
+    if (html.empty() || skinsRoot.empty() || stylesheet.empty() || !styleId)
+    {
+        return false;
+    }
+    // NavigateToString documents cannot reliably load a cross-origin <link>
+    // stylesheet (virtual-host CORS). Built-in skins are inlined for the same
+    // reason; keep external skins on that path so padding/decoration CSS is
+    // present before SetWindowRgn applies candidateWindow.decoration.
+    const std::wstring cssPath = skinsRoot + L"\\" + string_to_wstring(skin.id) + L"\\" + string_to_wstring(stylesheet);
+    std::wstring css =
+        RewriteCandidateSkinCssUrls(msime::skin_css::StripRemoteImports(ReadHtmlFile(cssPath)), skinsRoot, skin.id);
+    if (css.empty())
+    {
+        return false;
+    }
+    NeutralizeEmbeddedStyleClosers(css);
+    const size_t headEnd = html.find(L"</head>");
+    if (headEnd == std::wstring::npos)
+    {
+        return false;
+    }
+    html.insert(headEnd, std::wstring(L"<style id=\"") + styleId + L"\">" + css + L"</style>");
+    return true;
+}
+
+void AppendExternalCandidateColorCss(std::wstring &css, const CandidateSkinCatalog::CandidateColors &colors)
+{
+    auto add = [&](const std::string &value, const wchar_t *selector, const wchar_t *property) {
+        if (value.empty())
+        {
+            return;
+        }
+        css.append(selector);
+        css.append(L" { ");
+        css.append(property);
+        css.append(L": ");
+        css.append(string_to_wstring(value));
+        css.append(L"; }\n");
+    };
+    add(colors.accent, L".cursor, .first::before", L"background");
+    add(colors.selected, L".first, .cand.first", L"background-color");
+    add(colors.hover, L".hover-active .cand:not(.first):hover", L"background-color");
+    add(colors.surface, L".container", L"background");
+    add(colors.border, L".container", L"border-color");
+    add(colors.text, L".container", L"color");
+    add(colors.number, L".num, .cand-no", L"color");
+    // 翻译默认继承 .text 的颜色再叠 opacity .62；单独配色时取原值，不再叠透明度。
+    add(colors.translation, L".cand-translation", L"color");
+    if (!colors.translation.empty())
+    {
+        css.append(L".cand-translation { opacity: 1; }\n");
+    }
+    if (colors.showSelectedBar.has_value() && !*colors.showSelectedBar)
+    {
+        css.append(L".first::before { display: none; }\n");
+    }
+}
+
+std::wstring BuildExternalCandidateSkinCss(const CandidateSkinCatalog::Package &skin, const std::wstring &skinsRoot)
+{
+    std::wstring css;
+    if (skin.decorationTopDip > 0.0)
+    {
+        // skin.preview comes from the package's own skin.toml, so it gets the same treatment as a
+        // URL written inside the stylesheet rather than being trusted because it arrived through a
+        // manifest field.
+        std::wstring preview = L"none";
+        if (!skin.preview.empty() &&
+            msime::skin_css::ClassifyUrl(string_to_wstring(skin.preview)) == msime::skin_css::UrlAction::Embed)
+        {
+            preview = EmbedSkinCssUrl(skinsRoot, skin.id, string_to_wstring(skin.preview));
+        }
+        css.append(L".containerParent { padding-top: var(--msime-skin-decoration-top, 0px); "
+                   L"position: relative; box-sizing: border-box; }\n"
+                   L".containerParent:not(:empty)::before { content: \"\"; position: absolute; "
+                   L"z-index: 0; top: 0; right: 0; width: var(--msime-skin-decoration-width, 0px); "
+                   L"height: var(--msime-skin-decoration-top, 0px); background: ");
+        css.append(preview);
+        css.append(L" center / contain no-repeat; pointer-events: none; }\n"
+                   L".container { position: relative; z-index: 1; "
+                   L"min-width: max(7em, var(--msime-skin-min-width, 0px)); }\n");
+    }
+    const bool light = ResolveConfiguredTheme(GetConfiguredThemeCand()) == "light";
+    AppendExternalCandidateColorCss(css, light ? skin.light : skin.dark);
+    return css;
+}
+
+bool InjectExternalCandidateSkin(std::wstring &html, const CandidateSkinCatalog::Package &skin,
+                                 const std::wstring &skinsRoot)
+{
+    if (html.empty() || skinsRoot.empty())
+    {
+        return false;
+    }
+    const std::wstring vars =
+        fmt::format(L"<style id=\"external-candidate-skin-vars\">:root{{--msime-skin-min-width:{}px;"
+                    L"--msime-skin-decoration-top:{}px;--msime-skin-decoration-width:{}px;}}</style>",
+                    skin.minWidthDip, skin.decorationTopDip, skin.decorationWidthDip);
+    std::wstring css = BuildExternalCandidateSkinCss(skin, skinsRoot);
+    NeutralizeEmbeddedStyleClosers(css);
+    std::wstring generated;
+    if (!css.empty())
+    {
+        generated = L"<style id=\"external-candidate-skin\">" + css + L"</style>";
+    }
+    const size_t headEnd = html.find(L"</head>");
+    if (headEnd == std::wstring::npos)
+    {
+        return false;
+    }
+    html.insert(headEnd, vars + generated);
+    return true;
+}
+
+void InjectCandidateDocumentSkin(std::wstring &html, const std::wstring &builtInCss, const std::string &skin,
+                                 const std::string &base, const std::string &layout, const std::string &theme)
+{
+    if (html.empty())
+        return;
+    const size_t htmlTagEnd = html.find(L'>', html.find(L"<html"));
+    if (htmlTagEnd != std::wstring::npos)
+    {
+        html.insert(htmlTagEnd, fmt::format(L" data-candidate-skin=\"{}\" data-candidate-base=\"{}\" "
+                                            L"data-candidate-layout=\"{}\" data-candidate-theme=\"{}\"",
+                                            string_to_wstring(skin), string_to_wstring(base), string_to_wstring(layout),
+                                            string_to_wstring(theme)));
+    }
+    const size_t headEnd = html.find(L"</head>");
+    if (headEnd != std::wstring::npos && !builtInCss.empty())
+        html.insert(headEnd, L"<style id=\"built-in-candidate-skin\">" + builtInCss + L"</style>");
+}
+} // namespace
+
+int PrepareHtmlForWnds()
+{
+    // 用户数据目录，默认 %LOCALAPPDATA%\metasequoiaime，安装时可以改到别的盘。
+    std::wstring assetPath = CommonUtils::get_ime_data_path_w();
+
+    //
+    // 候选窗口
+    //
+    const bool isHorizontal = GetConfiguredCandidateWindowLayout() == "horizontal";
+    const bool candLight = ResolveConfiguredTheme(GetConfiguredThemeCand()) == "light";
+    const std::string candidateSkin = GetConfiguredCandidateSkin();
+    const std::string candidateLayout = isHorizontal ? "horizontal" : "vertical";
+    const std::string candidateTheme = candLight ? "light" : "dark";
+    activeExternalCandidateSkin.reset();
+    std::string baseCandidateSkin = candidateSkin;
+    if (!CandidateSkinCatalog::IsBuiltIn(candidateSkin))
+    {
+        const std::wstring skinsRoot = assetPath + L"\\skins";
+        activeExternalCandidateSkin = CandidateSkinCatalog::Load(skinsRoot, candidateSkin);
+        if (activeExternalCandidateSkin &&
+            !CandidateSkinCatalog::Supports(*activeExternalCandidateSkin, candidateLayout, candidateTheme))
+            activeExternalCandidateSkin.reset();
+        baseCandidateSkin = activeExternalCandidateSkin ? activeExternalCandidateSkin->base : "fluent";
+    }
+    std::wstring htmlCandWnd;
+    std::wstring bodyHtmlCandWnd;
+    std::wstring measureHtmlCandWnd;
+    if (isHorizontal)
+    {
+        htmlCandWnd = L"/html/webview2/candwnd/horizontal_candidate_window.html";
+        // Body/measure fragments are theme-agnostic markup; keep the existing dark assets.
+        bodyHtmlCandWnd = L"/html/webview2/candwnd/body/horizontal_candidate_window_dark.html";
+        measureHtmlCandWnd = L"/html/webview2/candwnd/body/horizontal_candidate_window_dark_measure.html";
+    }
+    else
+    {
+        htmlCandWnd = L"/html/webview2/candwnd/vertical_candidate_window.html";
+        bodyHtmlCandWnd = L"/html/webview2/candwnd/body/vertical_candidate_window_dark.html";
+        measureHtmlCandWnd = L"/html/webview2/candwnd/body/vertical_candidate_window_dark_measure.html";
+    }
+
+    std::wstring entireHtmlPathCandWnd = assetPath + htmlCandWnd;
+    ::HTMLStringCandWnd = ReadHtmlFile(entireHtmlPathCandWnd);
+    const std::wstring candidateStyleName =
+        fmt::format(L"{}_{}.css", string_to_wstring(candidateLayout), string_to_wstring(candidateTheme));
+    const std::wstring candidateStylePath =
+        fmt::format(L"/html/webview2/candwnd/skins/{}/{}", string_to_wstring(baseCandidateSkin), candidateStyleName);
+    std::wstring builtInCandidateCss = ReadHtmlFile(assetPath + candidateStylePath);
+    if (builtInCandidateCss.empty())
+    {
+        builtInCandidateCss = ReadHtmlFile(assetPath + L"/html/webview2/candwnd/skins/fluent/" + candidateStyleName);
+    }
+    if (builtInCandidateCss.empty() && candLight)
+    {
+        builtInCandidateCss = ReadHtmlFile(assetPath + L"/html/webview2/candwnd/skins/fluent/" +
+                                           string_to_wstring(candidateLayout) + L"_dark.css");
+    }
+    InjectCandidateDocumentSkin(::HTMLStringCandWnd, builtInCandidateCss, candidateSkin, baseCandidateSkin,
+                                candidateLayout, candidateTheme);
+    if (activeExternalCandidateSkin)
+    {
+        const std::wstring skinsRoot = assetPath + L"\\skins";
+        if (!InjectExternalCandidateSkin(::HTMLStringCandWnd, *activeExternalCandidateSkin, skinsRoot))
+        {
+            // Without the stylesheet, native decoration insets would clip the card.
+            activeExternalCandidateSkin.reset();
+        }
+    }
+    std::wstring bodyHtmlPathCandWnd = assetPath + bodyHtmlCandWnd;
+    ::BodyStringCandWnd = ReadHtmlFile(bodyHtmlPathCandWnd);
+    std::wstring measureHtmlPathCandWnd = assetPath + measureHtmlCandWnd;
+    ::MeasureStringCandWnd = ReadHtmlFile(measureHtmlPathCandWnd);
+    (void)0;
+
+    //
+    // 托盘语言区菜单窗口
+    //
+    const bool menuLight = ResolveConfiguredTheme(GetConfiguredThemeMenu()) == "light";
+    std::wstring htmlMenuWnd =
+        menuLight ? L"/html/webview2/menu/default_light.html" : L"/html/webview2/menu/default.html";
+    std::wstring entireHtmlPathMenuWnd = assetPath + htmlMenuWnd;
+    ::HTMLStringMenuWnd =
+        ReadHtmlFileWithFallback(entireHtmlPathMenuWnd, assetPath + L"/html/webview2/menu/default.html");
+
+    //
+    // settings 窗口
+    // 这里暂时没有用到，因为 settings 窗口使用的是映射 url 导航
+    //
+    /*
+    std::wstring htmlSettingsWnd = L"/html/webview2/settings/default.html";
+    std::wstring entireHtmlPathSettingsWnd = assetPath + htmlSettingsWnd;
+    ::HTMLStringSettingsWnd = ReadHtmlFile(entireHtmlPathSettingsWnd);
+    */
+
+    //
+    // floating toolbar 窗口
+    //
+    const bool ftbLight = ResolveConfiguredTheme(GetConfiguredThemeFtb()) == "light";
+    std::wstring htmlFtbWnd;
+    if (baseCandidateSkin == "wechat")
+    {
+        htmlFtbWnd = ftbLight ? L"/html/webview2/ftb/wechat_light.html" : L"/html/webview2/ftb/wechat.html";
+    }
+    else if (baseCandidateSkin == "graphite")
+    {
+        htmlFtbWnd = ftbLight ? L"/html/webview2/ftb/graphite_light.html" : L"/html/webview2/ftb/graphite.html";
+    }
+    else if (baseCandidateSkin == "willow_green")
+    {
+        htmlFtbWnd = ftbLight ? L"/html/webview2/ftb/willow_green_light.html" : L"/html/webview2/ftb/willow_green.html";
+    }
+    else if (baseCandidateSkin == "autumn_osmanthus")
+    {
+        htmlFtbWnd =
+            ftbLight ? L"/html/webview2/ftb/autumn_osmanthus_light.html" : L"/html/webview2/ftb/autumn_osmanthus.html";
+    }
+    else
+    {
+        htmlFtbWnd = ftbLight ? L"/html/webview2/ftb/default_light.html" : L"/html/webview2/ftb/default.html";
+    }
+    std::wstring entireHtmlPathFtbWnd = assetPath + htmlFtbWnd;
+    ::HTMLStringFtbWnd = ReadHtmlFileWithFallback(entireHtmlPathFtbWnd, assetPath + L"/html/webview2/ftb/default.html");
+    if (activeExternalCandidateSkin && !::HTMLStringFtbWnd.empty())
+    {
+        const size_t htmlTag = ::HTMLStringFtbWnd.find(L"<html");
+        const size_t htmlTagEnd =
+            htmlTag == std::wstring::npos ? std::wstring::npos : ::HTMLStringFtbWnd.find(L'>', htmlTag);
+        if (htmlTagEnd != std::wstring::npos)
+        {
+            ::HTMLStringFtbWnd.insert(htmlTagEnd,
+                                      fmt::format(L" data-candidate-skin=\"{}\" data-candidate-base=\"{}\" "
+                                                  L"data-candidate-theme=\"{}\"",
+                                                  string_to_wstring(candidateSkin),
+                                                  string_to_wstring(baseCandidateSkin), ftbLight ? L"light" : L"dark"));
+        }
+        if (!activeExternalCandidateSkin->toolbarStylesheet.empty())
+        {
+            const std::wstring skinsRoot = assetPath + L"\\skins";
+            InjectExternalSkinCssFile(::HTMLStringFtbWnd, *activeExternalCandidateSkin, skinsRoot,
+                                      activeExternalCandidateSkin->toolbarStylesheet, L"external-toolbar-skin");
+        }
+    }
+    // The small windows navigate from strings. Inline the pinned local runtime
+    // before navigation instead of blocking first paint on two virtual-host loads.
+    // Immutable for this process, like the executable's protocol contract.
+    static const std::wstring protocolSchema = ReadHtmlFile(assetPath + L"/html/webview2/shared/schema.js");
+    static const std::wstring protocolRuntime = ReadHtmlFile(assetPath + L"/html/webview2/shared/runtime.js");
+    InlineWebViewProtocolScripts(::HTMLStringCandWnd, protocolSchema, protocolRuntime);
+    InlineWebViewProtocolScripts(::HTMLStringMenuWnd, protocolSchema, protocolRuntime);
+    InlineWebViewProtocolScripts(::HTMLStringFtbWnd, protocolSchema, protocolRuntime);
+    preparedCandidateSkin = candidateSkin;
+
+    return 0;
+}
+
+bool ApplyConfiguredCandidateWindowLayout()
+{
+    PrepareHtmlForWnds();
+    if (CandidatePresenter::Instance().IsBound() && !webviewCandWnd)
+    {
+        return true;
+    }
+    if (!webviewCandWnd || HTMLStringCandWnd.empty())
+    {
+        return false;
+    }
+    const bool ok = SUCCEEDED(webviewCandWnd->NavigateToString(HTMLStringCandWnd.c_str()));
+    if (ok)
+    {
+        loadedCandidateSkin = preparedCandidateSkin;
+    }
+    return ok;
+}
+
+bool ApplyConfiguredUiThemes()
+{
+    if (FloatingToolbarPresenter::Instance().IsBound())
+    {
+        FloatingToolbarPresenter::Instance().ApplyTheme();
+    }
+    const std::string candidateSkin = GetConfiguredCandidateSkin();
+    PrepareHtmlForWnds();
+    bool ok = true;
+    if (webviewCandWnd && !HTMLStringCandWnd.empty())
+    {
+        const bool candidateOk = SUCCEEDED(webviewCandWnd->NavigateToString(HTMLStringCandWnd.c_str()));
+        if (candidateOk)
+        {
+            loadedCandidateSkin = candidateSkin;
+        }
+        ok = candidateOk && ok;
+    }
+    if (webviewFtbWnd && !HTMLStringFtbWnd.empty())
+    {
+        ClearFloatingToolbarNavigationState();
+        const bool floatingToolbarOk = SUCCEEDED(webviewFtbWnd->NavigateToString(HTMLStringFtbWnd.c_str()));
+        if (floatingToolbarOk)
+        {
+            loadedFloatingToolbarSkin = candidateSkin;
+        }
+        ok = floatingToolbarOk && ok;
+    }
+    if (webviewMenuWnd && !HTMLStringMenuWnd.empty())
+    {
+        ok = SUCCEEDED(webviewMenuWnd->NavigateToString(HTMLStringMenuWnd.c_str())) && ok;
+    }
+    return ok;
+}
+
+bool ApplyConfiguredCandidateSkinIfChanged()
+{
+    const std::string &candidateSkin = GetConfiguredCandidateSkin();
+    const bool candidateCurrent = !webviewCandWnd || loadedCandidateSkin == candidateSkin;
+    const bool floatingToolbarCurrent = !webviewFtbWnd || loadedFloatingToolbarSkin == candidateSkin;
+    if (candidateCurrent && floatingToolbarCurrent)
+    {
+        return true;
+    }
+    return ApplyConfiguredUiThemes();
+}
+
+uint64_t GetCandidateSkinReloadRevision()
+{
+    return candidateSkinReloadRevision;
+}
+
+bool ForceReloadConfiguredCandidateSkin()
+{
+    ++candidateSkinReloadRevision;
+    loadedCandidateSkin.clear();
+    loadedFloatingToolbarSkin.clear();
+    const bool cloakCandidate = ::is_global_wnd_cand_shown && ::global_hwnd && IsWindow(::global_hwnd) &&
+                                !CandidatePresenter::Instance().IsBound();
+    if (cloakCandidate)
+        SetCandidateHostCloaked(true);
+    const bool ok = ApplyConfiguredUiThemes();
+    if (!ok && cloakCandidate)
+        SetCandidateHostCloaked(false);
+    return ok;
+}
+
+bool ApplyConfiguredCandidateAppearance()
+{
+    if (CandidatePresenter::Instance().IsBound() && !webviewCandWnd)
+    {
+        return true;
+    }
+    if (!webviewCandWnd)
+    {
+        return false;
+    }
+
+    nlohmann::json cfg = {{"font", ResolveSystemFontFamilyForCss(GetConfiguredCandidateFont())},
+                          {"english_font", ResolveSystemFontFamilyForCss(GetConfiguredCandidateEnglishFont())},
+                          {"fallback_fonts", GetConfiguredCandidateFallbackFontFamilies()},
+                          {"font_size", GetConfiguredCandidateFontSize()},
+                          {"preedit_font_size", GetConfiguredCandidateWindowPreeditFontSize()},
+                          {"cand_text_color", GetConfiguredCandidateTextColor()}};
+    std::string family;
+    auto appendFont = [&](const std::string &font) {
+        // JSON quoting also escapes CSS quotes/backslashes; font names exclude control characters.
+        if (!family.empty())
+            family += ", ";
+        family += nlohmann::json(font).dump(-1, ' ', false);
+    };
+    appendFont(ResolveSystemFontFamilyForCss(GetConfiguredCandidateEnglishFont()));
+    for (const auto &font : GetConfiguredCandidateFallbackFontFamilies())
+        appendFont(font);
+    cfg["font_family"] = family + ", sans-serif";
+    const std::wstring script =
+        L"(function(c){"
+        L"const root=document.documentElement;"
+        L"const family=c.font_family;"
+        L"root.style.setProperty('--cand-font-family', family);"
+        L"root.style.setProperty('--cand-font-size', String(c.font_size||16)+'px');"
+        L"root.style.setProperty('--preedit-font-size', String(c.preedit_font_size||c.font_size||16)+'px');"
+        L"const color=(c.cand_text_color||'auto');"
+        L"if(color&&color!=='auto'){"
+        L"root.style.setProperty('--cand-text', color);"
+        L"root.style.setProperty('--cand-num', color.length===7?color+'9d':color);"
+        L"}else{"
+        L"root.style.removeProperty('--cand-text');"
+        L"root.style.removeProperty('--cand-num');"
+        L"}"
+        // Drop any stale nowrap fast-layout sheet so the skin's wrap-at-max-width
+        // rules apply; forcing a single line makes the card overflow the cap and
+        // get clipped by .container{overflow-x:hidden}.
+        L"document.getElementById('msime-fast-layout')?.remove();"
+        L"})(" +
+        string_to_wstring(cfg.dump()) + L");";
+    return SUCCEEDED(webviewCandWnd->ExecuteScript(script.c_str(), nullptr));
+}
+
+bool ApplyConfiguredFloatingToolbarAppearance()
+{
+    return ApplyConfiguredFloatingToolbarAppearance(nullptr);
+}
+
+bool ApplyConfiguredFloatingToolbarAppearance(std::function<void()> onComplete)
+{
+    if (FloatingToolbarPresenter::Instance().IsBound())
+    {
+        FloatingToolbarPresenter::Instance().ApplyAppearance();
+        if (onComplete)
+        {
+            onComplete();
+        }
+        return true;
+    }
+    if (!webviewFtbWnd)
+    {
+        if (onComplete)
+        {
+            onComplete();
+        }
+        return false;
+    }
+
+    nlohmann::json cfg = {{"scale", GetConfiguredFloatingToolbarScale()},
+                          {"font_size", GetConfiguredFloatingToolbarFontSize()}};
+    const std::wstring script = L"(function(c){"
+                                L"const root=document.documentElement;"
+                                L"const scale=(typeof c.scale==='number'&&c.scale>0)?c.scale:1;"
+                                L"const icon=(typeof c.font_size==='number'&&c.font_size>0)?c.font_size:24;"
+                                L"root.style.setProperty('--ftb-scale', String(scale));"
+                                L"root.style.setProperty('--ftb-icon-size', String(icon)+'px');"
+                                L"return true;"
+                                L"})(" +
+                                string_to_wstring(cfg.dump()) + L");";
+    if (!onComplete)
+    {
+        return SUCCEEDED(webviewFtbWnd->ExecuteScript(script.c_str(), nullptr));
+    }
+    return SUCCEEDED(webviewFtbWnd->ExecuteScript(
+        script.c_str(), Callback<ICoreWebView2ExecuteScriptCompletedHandler>([onComplete](HRESULT, LPCWSTR) -> HRESULT {
+                            onComplete();
+                            return S_OK;
+                        }).Get()));
+}
