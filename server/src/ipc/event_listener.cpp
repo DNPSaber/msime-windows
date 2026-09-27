@@ -1262,9 +1262,10 @@ std::string BuildCurrentCandidatePage()
             view.badge = " 🤖";
         // 整句来源标签与设置页名称保持一致，方便同时比较四个来源。两家选中同一句时只剩一行，
         // 标签归先保留下来的来源；开启去重补位后，其余来源会改为显示自己的下一条不同结果。
-        else if (item.source == CandidateSource::Generated)
+        // Generated/Fallback 也被原样上屏、英文、日期等合成候选借用，只有引擎标了整句联想的才挂标签。
+        else if (item.source == CandidateSource::Generated && item.sentence_association)
             view.badge = " 〔Trigram〕";
-        else if (item.source == CandidateSource::Fallback)
+        else if (item.source == CandidateSource::Fallback && item.sentence_association)
             view.badge = " 〔Unigram〕";
         else if (item.source == CandidateSource::NeuralDesktop)
             view.badge = " 〔神经D〕";

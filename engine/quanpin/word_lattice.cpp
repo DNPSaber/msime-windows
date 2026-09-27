@@ -390,7 +390,9 @@ void merge_lattice_candidates(std::vector<WordItem> &candidates, const Segments 
         already.insert(path->sentence);
         // Often negative (log-space). Ranking is insert order, not weight.
         const auto weight = static_cast<std::int64_t>(path->log_prob * 1000.0);
-        return WordItem(typed_pinyin, path->sentence, weight, source, path->key);
+        WordItem item(typed_pinyin, path->sentence, weight, source, path->key);
+        item.sentence_association = true;
+        return item;
     };
 
     // Existing rows include Unigram, so Trigram avoids it before the neural models choose their rows.

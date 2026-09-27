@@ -176,6 +176,7 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generateSeries( //
                     // 整句 fallback 必须带上 canonical quanpin，否则以它结尾的造词无法落库：
                     // update_creating_word_progress 依赖 canonical_pinyin 才能拼出完整读音。
                     candidate_list.emplace_back(_pinyin_sequence, res, 1, CandidateSource::Fallback, quanpin_str);
+                    candidate_list.back().sentence_association = true;
                 }
             }
         }
@@ -219,9 +220,11 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generateSeries( //
             {
                 // 整句 fallback 必须带上 canonical quanpin，否则以它结尾的造词无法落库。
                 const size_t insert_at = quanpin::generated_sentence_insert_position(candidate_list, quanpin_syllables);
-                candidate_list.insert(
-                    candidate_list.begin() + static_cast<std::ptrdiff_t>(insert_at),
-                    WordItem(_pinyin_sequence, google_sentence, 1, CandidateSource::Fallback, quanpin_segmentation));
+                WordItem sentence(_pinyin_sequence, google_sentence, 1, CandidateSource::Fallback,
+                                  quanpin_segmentation);
+                sentence.sentence_association = true;
+                candidate_list.insert(candidate_list.begin() + static_cast<std::ptrdiff_t>(insert_at),
+                                      std::move(sentence));
             }
         }
         // 词格给 Trigram 候选和神经模型共用；只开神经时仍在内部解出 n-best，但不显示词格首选。
