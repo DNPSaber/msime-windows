@@ -422,10 +422,10 @@ class CMetasequoiaIME : public ITfTextInputProcessorEx,
     bool _IsDeferredKeyReplayCurrent(uint64_t replayToken, uint64_t focusGeneration,
                                      _In_opt_ ITfContext *expectedContext) const;
     void _CompleteDeferredKeyReplay(uint64_t replayToken);
-    void _RetryDeferredKeyReplay(uint64_t replayToken);
-    // A committing key whose reply was lost after delivery: rebuild the
-    // composition from the applied prefix, but never replay the key itself.
-    void _DropAmbiguousDeferredKey(uint64_t replayToken);
+    // The in-flight key could not be applied: drop it (never hand it back or
+    // resend it) and discard what DeferredKeyFailurePolicy.h says the reason
+    // costs.
+    void _FailDeferredKey(uint64_t replayToken, DeferredKeyFailureReason reason);
 
     // comless helpers
     static HRESULT CMetasequoiaIME::CreateInstance(REFCLSID rclsid, REFIID riid, _Outptr_result_maybenull_ LPVOID *ppv,
@@ -523,13 +523,14 @@ class CMetasequoiaIME : public ITfTextInputProcessorEx,
         GUID preservedKey = {};
         uint64_t focusGeneration = 0;
         ULONGLONG queuedAtMs = 0;
-        UINT replayAttempts = 0;
-        bool preservedApplied = false;
     };
     enum class KeyDownDispatchResult
     {
         Complete,
-        Retry,
+        // A reset opened while the key was being dispatched.
+        Superseded,
+        // The key could not be written, or its delivery is ambiguous.
+        TransportFailed,
         AwaitingCompletion
     };
     bool _HasDeferredKeyBarrier() const;
@@ -537,8 +538,6 @@ class CMetasequoiaIME : public ITfTextInputProcessorEx,
     void _EnsureDeferredKeyProjection();
     void _ApplyDeferredKeyProjection(const _KEYSTROKE_STATE &keyState, WCHAR wch);
     void _ApplyDeferredPreservedKeyProjection(REFGUID preservedKey);
-    bool _RefreshDeferredRecoveryPrefix(_In_ ITfContext *pContext);
-    void _ArmDeferredRecoveryForTransport(_In_opt_ ITfContext *pContext);
     bool _ClassifyDeferredKeyDown(_In_ ITfContext *pContext, WPARAM wParam, LPARAM lParam,
                                   _In_opt_ const WCHAR *translatedWch, _In_opt_ const UINT *modifiersDown,
                                   _Out_ WCHAR *classifiedWch, _Out_ UINT *classifiedCode,
@@ -846,7 +845,6 @@ class CMetasequoiaIME : public ITfTextInputProcessorEx,
     std::wstring _pendingServerCandidateString;
     std::deque<CCandidateListUIPresenter *> _pendingCandidatePresenterCleanup;
     std::deque<DeferredKeyDown> _deferredKeyDowns;
-    std::deque<DeferredKeyDown> _deferredAppliedPrefix;
     DeferredKeyDown _deferredKeyInFlight;
     bool _hasDeferredKeyInFlight;
     uint64_t _deferredKeyReplayToken;

@@ -29,7 +29,11 @@ STDAPI CKeyHandlerEditSession::DoEditSession(TfEditCookie ec)
         CMetasequoiaIME *textService;
         uint64_t token;
         bool applied = false;
+        // Until the key handler runs, a return means the session was rejected
+        // as belonging to an older focus token, composition epoch or reset.
+        bool superseded = true;
         bool deliveryAmbiguous = false;
+        bool transportBroken = false;
         ~DeferredReplayCompletion()
         {
             if (textService && token != 0)
@@ -38,13 +42,10 @@ STDAPI CKeyHandlerEditSession::DoEditSession(TfEditCookie ec)
                 {
                     textService->_CompleteDeferredKeyReplay(token);
                 }
-                else if (deliveryAmbiguous)
-                {
-                    textService->_DropAmbiguousDeferredKey(token);
-                }
                 else
                 {
-                    textService->_RetryDeferredKeyReplay(token);
+                    textService->_FailDeferredKey(
+                        token, ClassifyEditSessionFailure(superseded, deliveryAmbiguous, transportBroken));
                 }
             }
         }
@@ -80,6 +81,7 @@ STDAPI CKeyHandlerEditSession::DoEditSession(TfEditCookie ec)
         return S_FALSE;
     }
 
+    deferredReplayCompletion.superseded = false;
     HRESULT hResult = S_OK;
     PerfTimer doEditSessionTimer;
     LARGE_INTEGER freq, nowQpc;
@@ -101,6 +103,7 @@ STDAPI CKeyHandlerEditSession::DoEditSession(TfEditCookie ec)
         hResult = pKeyStateCategory->KeyStateHandler(_KeyState.Function, keyHandlerEditSessioDTO);
         deferredReplayCompletion.applied = hResult == S_OK;
         deferredReplayCompletion.deliveryAmbiguous = hResult == FANY_E_COMMIT_REPLY_AMBIGUOUS;
+        deferredReplayCompletion.transportBroken = hResult == HRESULT_FROM_WIN32(ERROR_BROKEN_PIPE);
 
         pKeyStateCategory->Release();
     }

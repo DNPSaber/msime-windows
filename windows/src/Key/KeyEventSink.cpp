@@ -1037,11 +1037,11 @@ CMetasequoiaIME::KeyDownDispatchResult CMetasequoiaIME::_DispatchKeyDown(
     {
         if (!canDefer)
         {
-            DebugTsfIssue47(L"keydown-reset-retry", FANY_IME_NO_REQUEST_ID, code, wch, KeystrokeState.Category,
+            DebugTsfIssue47(L"keydown-reset-superseded", FANY_IME_NO_REQUEST_ID, code, wch, KeystrokeState.Category,
                             KeystrokeState.Function, 1, _IsComposing(),
                             _pCompositionProcessorEngine ? _pCompositionProcessorEngine->GetVirtualKeyLength() : 0,
                             S_FALSE, deferredReplayToken);
-            return KeyDownDispatchResult::Retry;
+            return KeyDownDispatchResult::Superseded;
         }
 
         // The reset gate may have closed concurrently with normal
@@ -1065,10 +1065,10 @@ CMetasequoiaIME::KeyDownDispatchResult CMetasequoiaIME::_DispatchKeyDown(
 
     if (canDefer && *pIsEaten && (KeystrokeState.Category != CATEGORY_NONE || KeystrokeState.Function != FUNCTION_NONE))
     {
-        // Give every IME-owned key a member-owned replay token before any IPC
-        // write or asynchronous TSF edit session is started.  Consequently a
-        // write success followed by a reply/edit failure follows the same
-        // exact retry path as a key that arrived behind a reconnect barrier.
+        // Give every IME-owned key a member-owned dispatch token before any
+        // IPC write or asynchronous TSF edit session is started.  Consequently
+        // a write success followed by a reply/edit failure takes the same
+        // _FailDeferredKey path as a key that arrived behind a barrier.
         const bool healthyImmediateDispatch = _deferredKeyDowns.empty() && !_hasDeferredKeyInFlight;
         const bool queued =
             _QueueDeferredKeyDown(pContext, wParam, lParam, wch, capturedModifiers, KeystrokeState) != FALSE;
@@ -1086,10 +1086,10 @@ CMetasequoiaIME::KeyDownDispatchResult CMetasequoiaIME::_DispatchKeyDown(
             // context during that same message, and OnPushContext clears the
             // deferred queue before the posted drain could run, swallowing
             // the first key.  Dispatching immediately restores the
-            // reference-sample timing while retaining the replay-token
-            // machinery for IPC/edit-session failures.  If the transport or
-            // focus session is not ready, _DrainOneDeferredKeyDown leaves the
-            // key queued for the ordinary asynchronous retry path.
+            // reference-sample timing while retaining the dispatch token for
+            // IPC/edit-session failures.  If the transport or focus session is
+            // not ready, _DrainOneDeferredKeyDown leaves the key queued for the
+            // ordinary asynchronous drain.
             _DrainOneDeferredKeyDown();
         }
         return KeyDownDispatchResult::Complete;
@@ -1167,24 +1167,15 @@ CMetasequoiaIME::KeyDownDispatchResult CMetasequoiaIME::_DispatchKeyDown(
                         sendResult == KeyEventSendResult::Sent ? S_OK : E_FAIL, deferredReplayToken);
         if (sendResult != KeyEventSendResult::Sent)
         {
+            // DefinitelyNotSent or DeliveryAmbiguous: the key stays eaten and is
+            // dropped. An ambiguous frame may already be on the Server, so it
+            // is never written a second time; the transport reset clears both
+            // sides and the user retypes.
             if (!canDefer)
             {
-                return KeyDownDispatchResult::Retry;
+                return KeyDownDispatchResult::TransportFailed;
             }
-            const bool queued = _QueueDeferredKeyDown(pContext, wParam, lParam, wch, capturedModifiers, KeystrokeState);
-            if (!queued)
-            {
-                // This path is defensive now that every normal eaten key is
-                // tokenized before dispatch.  If it is ever reached, handing
-                // the key back is preferable to silently dropping an
-                // ambiguous delivery.
-                *pIsEaten = FALSE;
-            }
-            // A failed write dirties the session and forces a new activation
-            // token. If the old Server epoch did receive the ambiguous frame,
-            // that epoch is rejected/cleared before this queued key is replayed.
-            // Thus retrying after the exact FocusSessionReady fence cannot
-            // apply the same key twice to one Server composition.
+            _ResetSessionAfterFailure(DeferredKeyFailureKind::Transport);
             return KeyDownDispatchResult::Complete;
         }
 
@@ -1490,13 +1481,13 @@ void CMetasequoiaIME::_DispatchPreservedKey(_In_ ITfContext *pContext, REFGUID p
     if (pNeedToggleIMEMode && expectedFocusGeneration == _deferredKeyFocusGeneration)
     {
         // The preserved-key implementation also sends the Shift event to the
-        // Server.  A failed/ambiguous send marks the local session dirty.  Do
-        // not let the subsequent local edit falsely Complete this token; the
-        // replacement epoch receives the authoritative status snapshot and
-        // then retries only the already-applied local toggle phase.
+        // Server.  A failed/ambiguous send marks the local session dirty.  The
+        // compartment toggle has already been applied and stays; the commit
+        // phase is dropped and the transport reset cancels the composition.
+        // The replacement epoch receives the authoritative status snapshot.
         if (deferredReplayToken != 0 && _localSessionResetPending.load(std::memory_order_acquire))
         {
-            _RetryDeferredKeyReplay(deferredReplayToken);
+            _FailDeferredKey(deferredReplayToken, DeferredKeyFailureReason::TransportBroken);
             return;
         }
         _KEYSTROKE_STATE KeystrokeState = {};

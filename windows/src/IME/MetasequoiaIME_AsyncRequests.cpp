@@ -53,6 +53,8 @@ class CPunctuationCommitEditSession : public CEditSessionBase
             CMetasequoiaIME *textService;
             uint64_t token;
             bool applied = false;
+            bool superseded = true;
+            HRESULT result = S_OK;
             ~Completion()
             {
                 if (textService && token != 0)
@@ -63,7 +65,9 @@ class CPunctuationCommitEditSession : public CEditSessionBase
                     }
                     else
                     {
-                        textService->_RetryDeferredKeyReplay(token);
+                        textService->_FailDeferredKey(
+                            token, ClassifyEditSessionFailure(superseded, result == FANY_E_COMMIT_REPLY_AMBIGUOUS,
+                                                              result == HRESULT_FROM_WIN32(ERROR_BROKEN_PIPE)));
                     }
                 }
             }
@@ -74,9 +78,11 @@ class CPunctuationCommitEditSession : public CEditSessionBase
         {
             return S_FALSE;
         }
+        completion.superseded = false;
         HRESULT hr =
             _pTextService->_HandleCompositionPunctuation(ec, _pContext, _code, _wch, _requestId, _prefetchedText);
         completion.applied = hr == S_OK;
+        completion.result = hr;
         return hr;
     }
 
@@ -165,7 +171,7 @@ class CDeferredApplicationTextEditSession : public CEditSessionBase
         const bool focusCurrent = _pTextService->_IsFocusSessionCurrent(_focusToken, _pContext);
         if (!replayCurrent || (!fallbackActive && !focusCurrent))
         {
-            _pTextService->_RetryDeferredKeyReplay(_replayToken);
+            _pTextService->_FailDeferredKey(_replayToken, DeferredKeyFailureReason::Superseded);
             return S_FALSE;
         }
 
@@ -198,7 +204,7 @@ class CDeferredApplicationTextEditSession : public CEditSessionBase
         }
         else
         {
-            _pTextService->_RetryDeferredKeyReplay(_replayToken);
+            _pTextService->_FailDeferredKey(_replayToken, DeferredKeyFailureReason::HostEditRejected);
         }
         return hr;
     }
@@ -227,7 +233,7 @@ HRESULT CMetasequoiaIME::_RequestDeferredApplicationTextEditSession(_In_ ITfCont
         this, pContext, wch, expectedFocusToken, expectedFocusGeneration, deferredReplayToken);
     if (editSession == nullptr)
     {
-        _RetryDeferredKeyReplay(deferredReplayToken);
+        _FailDeferredKey(deferredReplayToken, DeferredKeyFailureReason::EditSessionRequestFailed);
         return E_OUTOFMEMORY;
     }
 
@@ -237,7 +243,7 @@ HRESULT CMetasequoiaIME::_RequestDeferredApplicationTextEditSession(_In_ ITfCont
     editSession->Release();
     if (FAILED(requestHr) || FAILED(editSessionHr))
     {
-        _RetryDeferredKeyReplay(deferredReplayToken);
+        _FailDeferredKey(deferredReplayToken, DeferredKeyFailureReason::EditSessionRequestFailed);
     }
     return FAILED(requestHr) ? requestHr : editSessionHr;
 }
@@ -262,7 +268,7 @@ HRESULT CMetasequoiaIME::_RequestDirectPunctuationEditSession(_In_ ITfContext *p
         expectedCompositionEpoch != 0 ? expectedCompositionEpoch : _CaptureCompositionEpoch(), deferredReplayToken);
     if (pEditSession == nullptr)
     {
-        _RetryDeferredKeyReplay(deferredReplayToken);
+        _FailDeferredKey(deferredReplayToken, DeferredKeyFailureReason::EditSessionRequestFailed);
         return E_OUTOFMEMORY;
     }
 
@@ -273,7 +279,7 @@ HRESULT CMetasequoiaIME::_RequestDirectPunctuationEditSession(_In_ ITfContext *p
     pEditSession->Release();
     if (FAILED(requestHr) || FAILED(editSessionHr))
     {
-        _RetryDeferredKeyReplay(deferredReplayToken);
+        _FailDeferredKey(deferredReplayToken, DeferredKeyFailureReason::EditSessionRequestFailed);
     }
     return FAILED(requestHr) ? requestHr : editSessionHr;
 }
@@ -373,7 +379,7 @@ bool CMetasequoiaIME::_PostAsyncKeyRequest(UINT message, UINT code, WCHAR wch, u
     case WM_AsyncNumberCandidateCommit:
         break;
     default:
-        _RetryDeferredKeyReplay(deferredReplayToken);
+        _FailDeferredKey(deferredReplayToken, DeferredKeyFailureReason::AsyncPostFailed);
         return false;
     }
 
@@ -386,11 +392,11 @@ bool CMetasequoiaIME::_PostAsyncKeyRequest(UINT message, UINT code, WCHAR wch, u
     {
         if (deferredReplayToken != 0)
         {
-            _RetryDeferredKeyReplay(deferredReplayToken);
+            _FailDeferredKey(deferredReplayToken, DeferredKeyFailureReason::AsyncPostFailed);
         }
         else
         {
-            MarkNamedpipeSessionDirtyForOwner(this);
+            _ResetSessionAfterFailure(DeferredKeyFailureKind::Resync);
         }
         return false;
     }
@@ -413,11 +419,11 @@ bool CMetasequoiaIME::_PostAsyncKeyRequest(UINT message, UINT code, WCHAR wch, u
     {
         if (deferredReplayToken != 0)
         {
-            _RetryDeferredKeyReplay(deferredReplayToken);
+            _FailDeferredKey(deferredReplayToken, DeferredKeyFailureReason::AsyncPostFailed);
         }
         else
         {
-            MarkNamedpipeSessionDirtyForOwner(this);
+            _ResetSessionAfterFailure(DeferredKeyFailureKind::Resync);
         }
         return false;
     }
@@ -429,11 +435,11 @@ bool CMetasequoiaIME::_PostAsyncKeyRequest(UINT message, UINT code, WCHAR wch, u
         }
         if (deferredReplayToken != 0)
         {
-            _RetryDeferredKeyReplay(deferredReplayToken);
+            _FailDeferredKey(deferredReplayToken, DeferredKeyFailureReason::AsyncPostFailed);
         }
         else
         {
-            MarkNamedpipeSessionDirtyForOwner(this);
+            _ResetSessionAfterFailure(DeferredKeyFailureKind::Resync);
         }
         return false;
     }
@@ -469,7 +475,7 @@ void CMetasequoiaIME::_ClearAsyncKeyRequests()
     }
     for (uint64_t replayToken : deferredReplayTokens)
     {
-        _RetryDeferredKeyReplay(replayToken);
+        _FailDeferredKey(replayToken, DeferredKeyFailureReason::Superseded);
     }
 }
 
