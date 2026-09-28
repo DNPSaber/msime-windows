@@ -511,6 +511,18 @@ std::vector<WordItem> QuanpinDictionary::query_series(const std::string &raw_inp
         const std::string partial_segmentation = quanpin::join_segments(partial_segments);
         const std::string partial_input = remove_delimiters(partial_segmentation);
         auto partial_result = query_single_path(partial_input, partial_segmentation, partial_segments);
+        // 整句联想只对完整输入出一句。前缀查不到词时 query_single_path 会补一条 Google 整句，
+        // 留着就会在长句后面缀上一串越来越短的子串整句；前缀只取词库里真有的词，
+        // 查不到就交给更短的前缀。
+        if (count < segments.size())
+        {
+            partial_result.erase(std::remove_if(partial_result.begin(), partial_result.end(),
+                                                [](const WordItem &item) {
+                                                    return item.source == CandidateSource::Fallback &&
+                                                           item.sentence_association;
+                                                }),
+                                 partial_result.end());
+        }
         result.insert(result.end(), partial_result.begin(), partial_result.end());
     }
 
