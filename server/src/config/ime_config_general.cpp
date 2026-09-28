@@ -222,6 +222,21 @@ bool SetConfiguredAssocSentenceShowNextOnDuplicate(bool enabled)
     return true;
 }
 
+// 只影响候选窗展示，组页时读取，不需要重建引擎会话。
+bool GetConfiguredAssocSentenceSourceBadge()
+{
+    return g_assoc_sentence_source_badge;
+}
+bool SetConfiguredAssocSentenceSourceBadge(bool enabled)
+{
+    if (!WriteConfiguredValue("association", "sentence_source_badge", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_assoc_sentence_source_badge = enabled;
+    return true;
+}
+
 bool GetConfiguredUnicodeModeEnabled()
 {
     return g_unicode_mode_enabled;

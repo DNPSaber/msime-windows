@@ -314,6 +314,8 @@ bool GetConfiguredAssocSentenceNeuralKeyboard();
 bool SetConfiguredAssocSentenceNeuralKeyboard(bool enabled);
 bool GetConfiguredAssocSentenceShowNextOnDuplicate();
 bool SetConfiguredAssocSentenceShowNextOnDuplicate(bool enabled);
+bool GetConfiguredAssocSentenceSourceBadge();
+bool SetConfiguredAssocSentenceSourceBadge(bool enabled);
 bool GetConfiguredUnicodeModeEnabled();
 bool SetConfiguredUnicodeModeEnabled(bool enabled);
 bool GetConfiguredQuickPhraseEnabled();
