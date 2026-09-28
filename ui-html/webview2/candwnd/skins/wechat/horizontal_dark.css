@@ -174,7 +174,8 @@
     body { border-radius: 5px; }
     .container {
       background: #151515;
-      padding: 2px;
+      /* 加上 .row 的上 2px、下 1px 外边距后，高亮与外框内缘上下左右都留 2px。 */
+      padding: 0 2px 1px;
       border: 1px solid #292929;
       border-radius: 5px;
       box-shadow: 8px 10px 24px rgba(0, 0, 0, .34), 2px 3px 8px rgba(0, 0, 0, .22);
@@ -193,3 +194,8 @@
     .context-menu,
     .context-submenu { background: #1f1f1f; border-color: #343434; color: #d0d0d0; }
     .context-menu-item:hover { background: #2a2a2a; }
+    /* 首项、尾项落在外框四角上的那几个高亮角（含悬停）与外框同为 5px（同 D2D 的 outerItemRadius）。 */
+    .container > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: 5px; }
+    .container.preedit-hidden > .pinyin + .row-wrapper > .cand { border-top-left-radius: 5px; }
+    .container > .row-wrapper:is(:last-child, .last-visible) > .cand { border-bottom-right-radius: 5px; }
+    .container.preedit-hidden > .row-wrapper:is(:last-child, .last-visible) > .cand { border-top-right-radius: 5px; }

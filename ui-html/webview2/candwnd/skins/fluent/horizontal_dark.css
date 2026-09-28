@@ -29,7 +29,8 @@
       margin-left: 0px;
       background: #202020;
       /* background: url("https://appassets/background.jpg"); */
-      padding: 2px 1px;
+      /* 加上 .row 的上 2px、下 1px 外边距后，高亮与外框内缘上下左右都留 3px。 */
+      padding: 1px 3px 2px;
       border-radius: 6px;
       box-shadow: 8px 10px 24px rgba(0, 0, 0, 0.34), 2px 3px 8px rgba(0, 0, 0, 0.22);
       min-width: 7em;
@@ -170,3 +171,10 @@
     .context-submenu .context-menu-item { padding-right: 8px; }
     .context-menu-parent:hover>.context-submenu { display:block; }
     .context-menu-separator { height:1px; margin:3px 5px; background:#ffffff20; }
+
+    /* 首项、尾项落在外框四角上的那几个高亮角与外框同为 6px，其余角保持 4px（同 D2D 的 outerItemRadius）。
+       last-visible: ApplyCandidateFrame hides unused candidates instead of removing them. */
+    .container > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: 6px; }
+    .container.preedit-hidden > .pinyin + .row-wrapper > .cand { border-top-left-radius: 6px; }
+    .container > .row-wrapper:is(:last-child, .last-visible) > .cand { border-bottom-right-radius: 6px; }
+    .container.preedit-hidden > .row-wrapper:is(:last-child, .last-visible) > .cand { border-top-right-radius: 6px; }
