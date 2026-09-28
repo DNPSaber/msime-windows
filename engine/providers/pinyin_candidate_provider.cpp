@@ -16,17 +16,26 @@ std::vector<WordItem> PinyinCandidateProvider::query(const QueryRequest &request
         return {};
     }
 
+    std::vector<WordItem> candidates;
     if (request.scheme == SchemeType::Shuangpin)
     {
-        return shuangpin_engine_.query(request);
+        candidates = shuangpin_engine_.query(request);
     }
-
-    if (request.scheme == SchemeType::Quanpin)
+    else if (request.scheme == SchemeType::Quanpin)
     {
-        return quanpin_engine_.query(request);
+        candidates = quanpin_engine_.query(request);
+    }
+    else
+    {
+        return {};
     }
 
-    return {};
+    // 候选带上产出它的方案：混输组合里五笔与拼音候选共存，删除与调频按候选自己的方案路由。
+    for (WordItem &item : candidates)
+    {
+        item.scheme = request.scheme;
+    }
+    return candidates;
 }
 
 bool PinyinCandidateProvider::expand_initial_candidates(const QueryRequest &request, std::vector<WordItem> &candidates)

@@ -208,6 +208,12 @@ const std::string &GetConfiguredShuangpinSchema();
 bool SetConfiguredShuangpinSchema(const std::string &schema);
 const std::string &GetConfiguredWubiSchema();
 bool SetConfiguredWubiSchema(const std::string &schema);
+// 五笔拼音混输：独立开关，同一串字母同时给五笔码表和全拼。
+bool GetConfiguredWubiMixedPinyin();
+bool SetConfiguredWubiMixedPinyin(bool enabled);
+// 五笔 z 键角色："off" | "wildcard"。混输已拆成独立开关，这里只剩通配两态。
+const std::string &GetConfiguredWubiZMode();
+bool SetConfiguredWubiZMode(const std::string &mode);
 const std::string &GetConfiguredShuangpinPreeditMode();
 const std::string &GetConfiguredTsfPreeditStyle();
 bool SetConfiguredTsfPreeditStyle(const std::string &style);

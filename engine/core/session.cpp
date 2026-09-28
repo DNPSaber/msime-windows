@@ -174,7 +174,6 @@ SessionSnapshot Session::snapshot() const
                          session.dedicated_english_mode(),
                          session.editing_text(),
                          session.caret_position()};
-    view.answered_by_pinyin_fallback = session.answered_by_pinyin_fallback();
     return view;
 }
 std::optional<OnlineQuery> Session::online_query() const

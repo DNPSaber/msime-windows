@@ -48,6 +48,12 @@ void EngineInputSession::ApplyConfiguration()
     association.show_next_on_duplicate = GetConfiguredAssocSentenceShowNextOnDuplicate();
     session_.set_sentence_association(association);
     session_.set_shuangpin_preedit_uses_raw(GetConfiguredShuangpinPreeditMode() == "shuangpin");
+    // 五笔拼音混输与 z 键角色是两个独立设置：混输是「同时给五笔和拼音候选」，z 键角色只管
+    // z 是普通字母还是通配。每次击键重读，设置页改动对下一键立即生效。
+    metasequoia::WubiInputOptions wubi_options;
+    wubi_options.mixed_pinyin = GetConfiguredWubiMixedPinyin();
+    wubi_options.z_wildcard = GetConfiguredWubiZMode() == "wildcard";
+    session_.set_wubi_input_options(wubi_options);
 }
 
 void EngineInputSession::handle_key(UINT vk, UINT modifiers_down, WCHAR wch)
@@ -193,14 +199,9 @@ int EngineInputSession::store_user_phrase_from_canonical_pinyin(std::string piny
     return session_.store_user_phrase_from_canonical_pinyin(pinyin, word);
 }
 
-int EngineInputSession::pin_candidate(std::string pinyin, std::string word)
+int EngineInputSession::remove_candidate(std::string pinyin, std::string word, SchemeType scheme)
 {
-    return session_.pin_candidate(pinyin, word);
-}
-
-int EngineInputSession::remove_candidate(std::string pinyin, std::string word)
-{
-    return session_.remove_candidate(pinyin, word);
+    return session_.remove_candidate(pinyin, word, scheme);
 }
 
 int EngineInputSession::cache_dynamic_candidate(const std::string &pinyin, const std::string &word,
@@ -210,9 +211,11 @@ int EngineInputSession::cache_dynamic_candidate(const std::string &pinyin, const
 }
 
 IInputSession::SelectionTransition EngineInputSession::advance_composition_after_selection(
-    const std::string &selected_pinyin, const std::string &selected_word, const std::string &selected_canonical_pinyin)
+    const std::string &selected_pinyin, const std::string &selected_word, const std::string &selected_canonical_pinyin,
+    SchemeType selected_scheme)
 {
-    return session_.advance_composition_after_selection(selected_pinyin, selected_word, selected_canonical_pinyin);
+    return session_.advance_composition_after_selection(selected_pinyin, selected_word, selected_canonical_pinyin,
+                                                        selected_scheme);
 }
 
 IInputSession::CloudQueryState EngineInputSession::get_cloud_query_state() const

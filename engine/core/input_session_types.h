@@ -94,10 +94,12 @@ struct MixedExpressiveOptions
 
 struct WubiInputOptions
 {
-    // Answer an unmatched wubi code with quanpin candidates for the same letters. A code that the
-    // table does know keeps its own candidates untouched, so this only ever appears where nothing
-    // could be typed at all, and a fluent wubi typist never sees it.
+    // 五笔拼音混输：同一串字母同时交给五笔码表和全拼，五笔候选在前、拼音候选按权重追加在后，
+    // 两个表都答得出的词只留五笔那份。与 z 键角色是两个独立设置。
     bool mixed_pinyin = false;
+    // Treat z as a wildcard in the code (any letter at that position, first position included).
+    // Independent of mixed input: there z is an ordinary pinyin letter, here it is a wildcard.
+    bool z_wildcard = false;
 };
 
 // Immutable description of the current composition for asynchronous providers. Frontends copy

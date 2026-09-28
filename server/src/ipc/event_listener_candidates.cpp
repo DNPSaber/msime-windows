@@ -493,14 +493,12 @@ std::string CandidateDatabaseKey(const WordItem &item, const std::string &contex
     return quanpin::join_segments(segments);
 }
 
-bool IsWubiRankingScheme()
-{
-    return g_inputSession && g_inputSession->current_scheme_type() == SchemeType::Wubi;
-}
-
 std::pair<std::string, std::string> RankingKeysForCandidate(const WordItem &item)
 {
-    if (IsWubiRankingScheme())
+    // 混输组合里五笔候选与拼音候选共存，按候选自己的方案选键：五笔候选写码表（context 与
+    // entry 都是码），拼音候选写拼音词典。此时 CurrentRankingContextKey() 从 get_quanpin()
+    // 取到的正是那串字母的拼音上下文，可以直接用。
+    if (item.scheme == SchemeType::Wubi)
     {
         const std::string key =
             item.pinyin.empty() && g_inputSession ? g_inputSession->get_pinyin_sequence() : item.pinyin;

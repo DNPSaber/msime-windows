@@ -212,6 +212,40 @@ bool SetConfiguredWubiSchema(const std::string &schema)
     return true;
 }
 
+const std::string &GetConfiguredWubiZMode()
+{
+    return g_wubi_z_mode;
+}
+
+bool SetConfiguredWubiZMode(const std::string &mode)
+{
+    if (mode != "off" && mode != "wildcard")
+    {
+        return false;
+    }
+    if (!WriteConfiguredValue("input", "wubi_z_mode", EscapeTomlBasicString(mode)))
+    {
+        return false;
+    }
+    g_wubi_z_mode = mode;
+    return true;
+}
+
+bool GetConfiguredWubiMixedPinyin()
+{
+    return g_wubi_mixed_pinyin;
+}
+
+bool SetConfiguredWubiMixedPinyin(bool enabled)
+{
+    if (!WriteConfiguredValue("input", "wubi_mixed_pinyin", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_wubi_mixed_pinyin = enabled;
+    return true;
+}
+
 const std::string &GetConfiguredShuangpinPreeditMode()
 {
     return g_shuangpin_preedit_mode;

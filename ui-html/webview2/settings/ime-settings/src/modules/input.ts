@@ -26,6 +26,8 @@ export function applyInputConfig(
   characterSet: string | undefined,
   shuangpinSchema: string | undefined,
   wubiSchema: string | undefined,
+  wubiMixedPinyin?: boolean | undefined,
+  wubiZMode?: string | undefined,
   defaultImeMode?: string | undefined,
   imeModeScope?: string | undefined,
   japaneseSchema?: string | undefined
@@ -48,6 +50,12 @@ export function applyInputConfig(
   applyDropdownValue('characterSetBtn', 'characterSetMenu', characterSet);
   applyDropdownValue('shuangpinSchemeBtn', 'shuangpinSchemeMenu', shuangpinSchema);
   applyDropdownValue('wubiSchemeBtn', 'wubiSchemeMenu', wubiSchema);
+  if (typeof wubiMixedPinyin === 'boolean') {
+    applyToggleState('wubiMixedPinyinToggleBtn', wubiMixedPinyin);
+  }
+  if (typeof wubiZMode === 'string') {
+    applyToggleState('wubiZModeToggleBtn', wubiZMode === 'wildcard');
+  }
   applyDropdownValue('defaultImeModeBtn', 'defaultImeModeMenu', defaultImeMode);
   applyDropdownValue('imeModeScopeBtn', 'imeModeScopeMenu', imeModeScope);
   const japaneseRadio = document.querySelector<HTMLInputElement>(
@@ -241,6 +249,13 @@ export function setupInput(): void {
     'input.shuangpin_schema'
   );
   setupDropdownMenu('wubiSchemeBtn', 'wubiSchemeMenu', 'changeWubiScheme', true, 'input.wubi_schema');
+  setupToggleButton('wubiMixedPinyinToggleBtn', (active) => {
+    updateConfig('input.wubi_mixed_pinyin', active);
+  });
+  // z 键只剩通配两态，配置值仍是字符串 off | wildcard，开关只负责在这两者间选一个写回。
+  setupToggleButton('wubiZModeToggleBtn', (active) => {
+    updateConfig('input.wubi_z_mode', active ? 'wildcard' : 'off');
+  });
 
   setupPageOptions();
   setupFrequencyOptions();

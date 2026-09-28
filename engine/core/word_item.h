@@ -1,5 +1,6 @@
 #pragma once
 
+#include "scheme_type.h"
 #include <string>
 #include <cstdint>
 #include <utility>
@@ -38,6 +39,11 @@ struct WordItem
     std::string word;
     std::int64_t weight = 0;
     CandidateSource source = CandidateSource::Database;
+    // 产出该候选的输入方案。五笔拼音混输时同一个组合里既有五笔码表候选又有拼音候选，
+    // 调频、删除、固定位置和上屏后的组合推进都必须按候选自己的方案走，不能按会话方案
+    // 一刀切。默认 Quanpin：拼音、英文、云、本地模式候选共用拼音侧的读写路径，只有
+    // 五笔与日语候选需要显式标成自己的方案。
+    SchemeType scheme = SchemeType::Quanpin;
     int fixed_position = 0;
     bool fuzzy = false; // Matched typed code may differ from canonical pronunciation.
     // 非空表示该候选来自纠错解释（scheme 别名层或纠错表改写了输入字母），值为纠错前的

@@ -208,8 +208,8 @@ void ProcessSelectionKey(UINT keycode, uint64_t client_id, uint64_t activation_e
             AppendAiContext(curWord);
             if (curWordItem.source == CandidateSource::EnglishDictionary && isNeedUpdateWeight)
             {
-                EnqueueAdjustCandidateRankingTask(/*english=*/true, EnglishRankingContextKey(), curWordItem.pinyin,
-                                                  curWordItem.word, client_id, activation_epoch);
+                EnqueueAdjustCandidateRankingTask(/*english=*/true, /*wubi=*/false, EnglishRankingContextKey(),
+                                                  curWordItem.pinyin, curWordItem.word, client_id, activation_epoch);
             }
             UpdateCloudInput("");
             UpdateEnglishInput("");
@@ -292,8 +292,8 @@ void ProcessSelectionKey(UINT keycode, uint64_t client_id, uint64_t activation_e
             g_inputSession->get_pinyin_sequence_with_cases(), g_inputSession->prefix_end());
         const bool caret_prefix_selection =
             g_inputSession->prefix_end() < g_inputSession->get_pinyin_sequence_with_cases().size();
-        auto selection_transition =
-            g_inputSession->advance_composition_after_selection(curWordPinyin, curWord, curWordItem.canonical_pinyin);
+        auto selection_transition = g_inputSession->advance_composition_after_selection(
+            curWordPinyin, curWord, curWordItem.canonical_pinyin, curWordItem.scheme);
         if (caret_prefix_selection)
         {
             g_inputSession->set_caret(std::nullopt);
@@ -427,8 +427,9 @@ void ProcessSelectionKey(UINT keycode, uint64_t client_id, uint64_t activation_e
             // changes the order, the worker drops its candidate cache and the next lookup sees
             // the new order; a lookup that lands before the write finishes still shows the old
             // one.
-            EnqueueAdjustCandidateRankingTask(/*english=*/false, ranking_context_key, ranking_entry_key, curWord,
-                                              client_id, activation_epoch);
+            EnqueueAdjustCandidateRankingTask(/*english=*/false, /*wubi=*/curWordItem.scheme == SchemeType::Wubi,
+                                              ranking_context_key, ranking_entry_key, curWord, client_id,
+                                              activation_epoch);
         }
     }
     else
