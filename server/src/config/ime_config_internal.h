@@ -156,6 +156,7 @@ extern bool g_assoc_sentence_google;
 extern bool g_assoc_sentence_neural_desktop;
 extern bool g_assoc_sentence_neural_keyboard;
 extern bool g_assoc_sentence_show_next_on_duplicate;
+extern bool g_assoc_sentence_source_badge;
 extern bool g_emoji_mixed_input_enabled;
 extern bool g_kaomoji_mixed_input_enabled;
 extern bool g_unicode_mode_enabled;

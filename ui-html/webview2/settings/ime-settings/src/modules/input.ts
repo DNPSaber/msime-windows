@@ -362,6 +362,10 @@ export function setupInput(): void {
   setupToggleButton('sentenceShowNextOnDuplicateToggleBtn', (active) => {
     updateConfig('association.sentence_show_next_on_duplicate', active);
   });
+  // 只控制候选窗里整句候选后的来源标签，不影响候选本身。
+  setupToggleButton('sentenceSourceBadgeToggleBtn', (active) => {
+    updateConfig('association.sentence_source_badge', active);
+  });
 }
 
 function setupFrequencyOptions(): void {

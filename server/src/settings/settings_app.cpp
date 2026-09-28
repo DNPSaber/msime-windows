@@ -430,7 +430,8 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"sentence_google", GetConfiguredAssocSentenceGoogle()},
             {"sentence_neural_desktop", GetConfiguredAssocSentenceNeuralDesktop()},
             {"sentence_neural_keyboard", GetConfiguredAssocSentenceNeuralKeyboard()},
-            {"sentence_show_next_on_duplicate", GetConfiguredAssocSentenceShowNextOnDuplicate()}}},
+            {"sentence_show_next_on_duplicate", GetConfiguredAssocSentenceShowNextOnDuplicate()},
+            {"sentence_source_badge", GetConfiguredAssocSentenceSourceBadge()}}},
           {"keybindings",
            {{"switch_language_shift", GetConfiguredSwitchLanguageShiftEnabled()},
             {"switch_language_ctrl", GetConfiguredSwitchLanguageCtrlEnabled()},
@@ -780,6 +781,8 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredAssocSentenceNeuralKeyboard(json::value_to<bool>(data.at("value")));
     if (path == "association.sentence_show_next_on_duplicate")
         return SetConfiguredAssocSentenceShowNextOnDuplicate(json::value_to<bool>(data.at("value")));
+    if (path == "association.sentence_source_badge")
+        return SetConfiguredAssocSentenceSourceBadge(json::value_to<bool>(data.at("value")));
     if (path == "utility.unicode_mode")
         return SetConfiguredUnicodeModeEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.quick_phrase")

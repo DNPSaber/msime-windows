@@ -205,6 +205,9 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (typeof data?.association?.sentence_show_next_on_duplicate === 'boolean') {
     applyToggleState('sentenceShowNextOnDuplicateToggleBtn', data.association.sentence_show_next_on_duplicate);
   }
+  if (typeof data?.association?.sentence_source_badge === 'boolean') {
+    applyToggleState('sentenceSourceBadgeToggleBtn', data.association.sentence_source_badge);
+  }
   if (typeof data?.utility?.unicode_mode === 'boolean') {
     applyToggleState('unicodeModeToggleBtn', data.utility.unicode_mode);
   }

@@ -983,6 +983,14 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                                     PostSettingsConfig();
                                 }
                             }
+                            else if (path == "association.sentence_source_badge")
+                            {
+                                const bool value = json::value_to<bool>(data.at("value"));
+                                if (SetConfiguredAssocSentenceSourceBadge(value))
+                                {
+                                    PostSettingsConfig();
+                                }
+                            }
                             else if (path == "utility.unicode_mode")
                             {
                                 const bool value = json::value_to<bool>(data.at("value"));
@@ -1335,7 +1343,8 @@ void PostSettingsConfig()
             {"sentence_google", GetConfiguredAssocSentenceGoogle()},
             {"sentence_neural_desktop", GetConfiguredAssocSentenceNeuralDesktop()},
             {"sentence_neural_keyboard", GetConfiguredAssocSentenceNeuralKeyboard()},
-            {"sentence_show_next_on_duplicate", GetConfiguredAssocSentenceShowNextOnDuplicate()}}},
+            {"sentence_show_next_on_duplicate", GetConfiguredAssocSentenceShowNextOnDuplicate()},
+            {"sentence_source_badge", GetConfiguredAssocSentenceSourceBadge()}}},
           {"keybindings",
            {{"switch_language_shift", GetConfiguredSwitchLanguageShiftEnabled()},
             {"switch_language_ctrl", GetConfiguredSwitchLanguageCtrlEnabled()},
