@@ -155,6 +155,9 @@ PipeClientActivation ActivatePipeClient(uint64_t client_id, uint64_t main_regist
 uint64_t DeactivatePipeClient(uint64_t client_id, uint64_t main_registration_id);
 uint64_t DeactivatePipeClientByFocusToken(uint64_t client_id, uint64_t focus_token);
 uint64_t ResolvePipeClientTerminalDeactivationEpoch(uint64_t client_id, uint64_t transition_epoch = 0);
+// Terminal deactivation from a client that does not own routing, accepted only
+// because it comes from the user's foreground thread. See the call site.
+uint64_t DeactivatePipeRouteForForegroundClient(uint64_t client_id, uint64_t main_registration_id);
 PipeClientActivation GetActivePipeClient();
 bool IsActivePipeClient(uint64_t client_id, uint64_t activation_epoch = 0);
 bool IsPipeActivationCurrent(uint64_t client_id, uint64_t activation_epoch);

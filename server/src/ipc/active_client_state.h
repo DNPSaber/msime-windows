@@ -93,6 +93,23 @@ class ActiveClientState
         return client_id != 0 && active_client_id_ == 0 && inactive_owner_client_id_ == client_id ? epoch_ : 0;
     }
 
+    // The caller has proven that client_id owns the user's foreground thread,
+    // so its terminal deactivation is authoritative even though routing belongs
+    // to another client (one that never suspended, e.g. TextInputHost) or to
+    // nobody after another client's suspension. Retire whatever route is left
+    // and make client_id the inactive owner, so the duplicate event the TIP
+    // sends from Deactivate() resolves to this same epoch.
+    uint64_t retire_for_terminal_deactivation(uint64_t client_id)
+    {
+        if (client_id == 0)
+        {
+            return 0;
+        }
+        active_client_id_ = 0;
+        inactive_owner_client_id_ = client_id;
+        return advance_epoch();
+    }
+
     ActiveClientTransition snapshot() const
     {
         return {active_client_id_, epoch_, false};
