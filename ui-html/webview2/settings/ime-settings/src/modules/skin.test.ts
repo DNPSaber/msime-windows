@@ -123,9 +123,34 @@ it('previews decoration placement, background image and corner radius from the s
   expect(generatedCss).toContain('top: 0; left: 0;');
   expect(generatedCss).toContain('height: var(--msime-skin-decoration-top, 0px)');
   expect(generatedCss).toContain('/custom-art/assets/character.png');
-  expect(generatedCss).toContain('/custom-art/assets/paper.png?v=3") center / contain no-repeat; opacity: 0.5;');
+  // The image sits in the card's own border-box background so the border is drawn over it, as in the D2D renderer;
+  // the opacity becomes a veil of the surface over it.
+  const veil = 'color-mix(in srgb, var(--cand-bg) 50%, transparent)';
+  expect(generatedCss).toContain(
+    `:scope .container:not(:empty) { background-image: linear-gradient(${veil}, ${veil}), url("https://candidate-skins.example/custom-art/assets/paper.png?v=3"); background-size: auto, contain;`);
+  expect(generatedCss).toContain('background-origin: border-box; background-clip: border-box; }');
+  expect(generatedCss).not.toContain('::before {\n  content: ""; position: absolute; inset: 0');
   expect(generatedCss).toContain(':scope .container { border-radius: 12px; --wg-radius: 12px; --ao-radius: 12px; }');
   expect(generatedCss).toContain(':scope.wnd-h .container > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: 12px; }');
+});
+
+it('veils the background image with the surface the card is painted with in each theme', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-veil', name: 'Custom Veil', version: '1', base: 'willow_green', layouts: ['horizontal'],
+      themes: ['dark', 'light'], compatible: true, backgroundImage: 'paper.png', backgroundOpacity: 0.9,
+      candidate: { light: { surface: '#fff7fa' } }
+    }
+  ], [], '', true, 8);
+  applyCandidateSkin('custom-veil');
+
+  expect(generatedCss).toContain(
+    ':scope .container:not(:empty) { background-image: linear-gradient(color-mix(in srgb, var(--wg-surface) 10%, transparent)');
+  expect(generatedCss).toContain(
+    ':scope.theme-light .container:not(:empty) { background-image: linear-gradient(color-mix(in srgb, #fff7fa 10%, transparent)');
+  // The image rules come after the surface rules, whose `background` shorthand would otherwise reset the layers.
+  expect(generatedCss.indexOf('.container:not(:empty) { background-image'))
+    .toBeGreaterThan(generatedCss.indexOf(':scope.theme-light .container { background: #fff7fa; }'));
 });
 
 it('ignores out-of-range numbers instead of pasting them into preview css', () => {
@@ -138,7 +163,8 @@ it('ignores out-of-range numbers instead of pasting them into preview css', () =
   ], [], '', true, 4);
   applyCandidateSkin('custom-bad');
 
-  expect(generatedCss).toContain('opacity: 1;');
+  // A bad opacity falls back to 1, which leaves no veil over the image.
+  expect(generatedCss).toContain('color-mix(in srgb, var(--cand-bg) 0%, transparent)');
   expect(generatedCss).not.toContain('display: none');
   expect(generatedCss).not.toContain('border-radius: 4px');
 });

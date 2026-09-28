@@ -144,15 +144,23 @@ ${h}.preedit-hidden > .row-wrapper:is(:last-child, .last-visible) > .cand { bord
   return css;
 }
 
+// Mirrors the candidate window: the image covers the whole card including the area under its border, which is drawn on
+// top, as in D2D. A ::before cannot reach there because the card is a scroll container that clips to its padding box, so
+// the translucent border showed a ring of bare surface. A layer has no opacity of its own, so a veil of the surface at
+// (1 - opacity) over the image gives the same result as the image at that opacity over the surface.
 function backgroundPreviewCss(skin: ExternalSkin): string {
   if (!skin.backgroundImage) return '';
   const size = skin.backgroundFit === 'contain' ? 'contain' : skin.backgroundFit === 'stretch' ? '100% 100%' : 'cover';
   const opacity = boundedNumber(skin.backgroundOpacity, 1) ?? 1;
-  return `.container { position: relative; isolation: isolate; }
-.container:not(:empty)::before {
-  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
-  background: url("${resourceUrl(skin.id, skin.backgroundImage)}") center / ${size} no-repeat; opacity: ${opacity};
-}\n`;
+  const veilPercent = Math.round((1 - opacity) * 1000) / 10;
+  const image = `url("${resourceUrl(skin.id, skin.backgroundImage)}")`;
+  const rule = (scope: string, colors: CandidateColors) => {
+    // The same surface the card is painted with: the manifest's, else the base preview's variable.
+    const surface = skinColor(colors.surface) ?? (skin.base === 'willow_green' ? 'var(--wg-surface)' : 'var(--cand-bg)');
+    const veil = `color-mix(in srgb, ${surface} ${veilPercent}%, transparent)`;
+    return `:scope${scope} .container:not(:empty) { background-image: linear-gradient(${veil}, ${veil}), ${image}; background-size: auto, ${size}; background-position: center; background-repeat: no-repeat; background-origin: border-box; background-clip: border-box; }\n`;
+  };
+  return rule('', skin.candidate?.dark || {}) + rule('.theme-light', skin.candidate?.light || {});
 }
 
 function decorationHorizontalCss(align: string | undefined): string {
@@ -208,10 +216,11 @@ function candidatePreviewCss(skin: ExternalSkin): string {
 }
 .container { position: relative; z-index: 1; }\n`;
   }
-  css += backgroundPreviewCss(skin);
   css += cornerPreviewCss(skin);
   css += themeRules('', dark);
   css += themeRules('.theme-light', light);
+  // After the theme rules: their `background` shorthand for the surface would otherwise reset the image layers.
+  css += backgroundPreviewCss(skin);
   css += toolbarPreviewCss(skin);
   return css;
 }
