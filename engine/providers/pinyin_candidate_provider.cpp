@@ -40,15 +40,25 @@ std::vector<WordItem> PinyinCandidateProvider::query(const QueryRequest &request
 
 bool PinyinCandidateProvider::expand_initial_candidates(const QueryRequest &request, std::vector<WordItem> &candidates)
 {
+    bool expanded = false;
     if (request.scheme == SchemeType::Shuangpin)
     {
-        return shuangpin_engine_.expand_initial_candidates(request, candidates);
+        expanded = shuangpin_engine_.expand_initial_candidates(request, candidates);
     }
-    if (request.scheme == SchemeType::Quanpin)
+    else if (request.scheme == SchemeType::Quanpin)
     {
-        return quanpin_engine_.expand_initial_candidates(request, candidates);
+        expanded = quanpin_engine_.expand_initial_candidates(request, candidates);
     }
-    return false;
+    // 展开出来的候选同样要带上方案，否则双拼会话选中/删除它们时会按默认 Quanpin 路由到全拼引擎，
+    // 跳过双拼到全拼的键归一化。
+    if (expanded)
+    {
+        for (WordItem &item : candidates)
+        {
+            item.scheme = request.scheme;
+        }
+    }
+    return expanded;
 }
 
 void PinyinCandidateProvider::reset_cache()
@@ -97,8 +107,14 @@ int PinyinCandidateProvider::cache_dynamic_candidate(SchemeType scheme, const st
 std::optional<WordItem> PinyinCandidateProvider::find_candidate(SchemeType scheme, const std::string &key,
                                                                 const std::string &value)
 {
-    return scheme == SchemeType::Shuangpin ? shuangpin_engine_.find_candidate(key, value)
-                                           : quanpin_engine_.find_candidate(key, value);
+    std::optional<WordItem> found = scheme == SchemeType::Shuangpin ? shuangpin_engine_.find_candidate(key, value)
+                                                                    : quanpin_engine_.find_candidate(key, value);
+    // 固定位置补入的候选不经过 query()，同样按查它的方案打标，调频与删除才会回到同一个引擎。
+    if (found)
+    {
+        found->scheme = scheme == SchemeType::Shuangpin ? SchemeType::Shuangpin : SchemeType::Quanpin;
+    }
+    return found;
 }
 
 int PinyinCandidateProvider::cache_dynamic_candidate_for_request(const QueryRequest &request, const std::string &word,

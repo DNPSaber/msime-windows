@@ -5,6 +5,7 @@
 #include "../../english/english_dictionary.h"
 #include "../../core/input_session.h"
 #include "../../core/runtime_paths.h"
+#include "../../user_dictionary/user_dictionary_journal.h"
 #include "test_directory_cleanup.h"
 
 #include <sqlite3.h>
@@ -84,7 +85,7 @@ std::filesystem::path prepare_resources(const std::filesystem::path &root)
             "CREATE TABLE tbl_1_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
             "INSERT INTO tbl_1_n VALUES('ni','n','你',10000);"
             "CREATE TABLE tbl_1_z(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
-            "INSERT INTO tbl_1_z VALUES('zi','z','子',10000);"
+            "INSERT INTO tbl_1_z VALUES('zi','z','子',10000),('zu','z','组',10000);"
             "CREATE TABLE tbl_2_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
             "INSERT INTO tbl_2_n VALUES('ni''hao','nh','你好',10000),('ni''hao','nh','拟好',9000);"
             "CREATE TABLE tbl_1_x(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
@@ -93,11 +94,13 @@ std::filesystem::path prepare_resources(const std::filesystem::path &root)
             "INSERT INTO tbl_1_t VALUES('ta','t','他',10000);"
             "CREATE TABLE tbl_1_h(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
             "INSERT INTO tbl_1_h VALUES('hao','h','好',9500),('hao','h','号',9000);"
+            "CREATE TABLE tbl_1_a(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+            "INSERT INTO tbl_1_a VALUES('a','a','啊',9000),('a','a','工',100);"
             "CREATE TABLE wubi86(key TEXT,value TEXT,weight INTEGER);"
             "INSERT INTO wubi86 VALUES('wq','你好',10000),('wqaa','众人',9000),"
             "('wqab','甲',8000),('wqab','乙',7000),('taaa','笔',6000),"
             "('a','工',10000),('aaaa','工',5000),('aaab','苛',4000),"
-            "('hao','号',9000);");
+            "('hao','号',9000),('au','乐',20000);");
     require(EnglishDictionary::ensure_schema(path_to_utf8(resources / assets::english_dictionary)),
             "English schema failed");
     return resources;
@@ -272,6 +275,49 @@ int main()
             type(limit, "wqaa");
             limit.handle_character('a');
             require(limit.preedit() == "wqaa", "Wildcard mode accepted a fifth letter.");
+
+            // With both on, a z code is also a pinyin spelling: the wildcard rows (zu matches au) are
+            // guesses and must not push the spelling's answer off the first slot.
+            InputSession both(SchemeType::Wubi, GetXiaoheShuangpinProfile(), paths_for(resources, root, next()));
+            both.set_wubi_input_options(WubiInputOptions{true, true});
+            const auto both_candidates = type(both, "zu");
+            require(!both_candidates.empty() && both_candidates.front() == "组",
+                    "Wildcard rows were ranked ahead of the pinyin spelling in mixed input.");
+            require(std::find(both_candidates.begin(), both_candidates.end(), "乐") != both_candidates.end(),
+                    "Mixed input dropped the wildcard rows instead of ranking them after pinyin.");
+        }
+
+        // A pinyin word pinned under the pinyin context is pulled back in by include_missing; when the
+        // wubi half already lists that word it must still appear only once.
+        {
+            const auto paths = paths_for(resources, root, next());
+            InputSession session(SchemeType::Wubi, GetXiaoheShuangpinProfile(), paths);
+            session.set_wubi_input_options(WubiInputOptions{true});
+            require(
+                user_dictionary::set_fixed_position(path_to_utf8(paths.user(assets::user_journal)), "a", "a", "工", 1),
+                "Pinning the fixture word failed.");
+            session.enable_fixed_positions();
+            const auto candidates = type(session, "a");
+            require(std::count(candidates.begin(), candidates.end(), "工") == 1,
+                    "A pinned pinyin word duplicated the same word from the wubi table.");
+        }
+
+        // Pinyin candidates that bypass query() still carry their scheme, so a shuangpin session's
+        // learning and removal reach the shuangpin engine instead of the default quanpin one.
+        {
+            InputSession shuangpin(SchemeType::Shuangpin, GetXiaoheShuangpinProfile(),
+                                   paths_for(resources, root, next()));
+            const auto found = shuangpin.find_candidate("ni", "你");
+            require(found.has_value(), "The fixture did not find ni in shuangpin.");
+            require(found->scheme == SchemeType::Shuangpin, "A looked-up shuangpin candidate was tagged as quanpin.");
+
+            type(shuangpin, "n");
+            if (shuangpin.expand_initial_candidates())
+            {
+                require(std::all_of(shuangpin.candidates().begin(), shuangpin.candidates().end(),
+                                    [](const WordItem &item) { return item.scheme == SchemeType::Shuangpin; }),
+                        "An expanded shuangpin candidate was tagged as quanpin.");
+            }
         }
 
         // The four-letter limit holds until the table has failed the code in hand.

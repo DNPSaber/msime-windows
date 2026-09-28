@@ -349,19 +349,30 @@ void ImeSession::refresh_candidates()
         return;
     }
 
+    // 通配与混输同时开启时，含 z 的编码既可能是通配猜码也可能是拼音拼写（zi、zai、zhong）。
+    // 通配查询按权重返回整页无关码行，放在前面会把拼音的正解挤到后几页，所以这种组合里拼音
+    // 在前、通配结果在后；同词只留拼音那份。
+    std::vector<WordItem> leading = std::move(state_.candidates);
+    std::vector<WordItem> trailing = std::move(pinyin_candidates);
+    if (state_.request.wubi_z_wildcard)
+    {
+        std::swap(leading, trailing);
+    }
+
     std::unordered_set<std::string> seen_words;
-    seen_words.reserve(state_.candidates.size() + pinyin_candidates.size());
-    for (const WordItem &item : state_.candidates)
+    seen_words.reserve(leading.size() + trailing.size());
+    for (const WordItem &item : leading)
     {
         seen_words.insert(item.word);
     }
-    for (WordItem &item : pinyin_candidates)
+    for (WordItem &item : trailing)
     {
         if (seen_words.insert(item.word).second)
         {
-            state_.candidates.push_back(std::move(item));
+            leading.push_back(std::move(item));
         }
     }
+    state_.candidates = std::move(leading);
 }
 
 std::unique_ptr<IInputScheme> ImeSession::create_scheme(SchemeType scheme_type) const

@@ -81,6 +81,16 @@ void InputSession::apply_candidate_positions(std::vector<WordItem> &items)
                 },
                 has_active_helpcode());
         }
+        // include_missing 会把固定在拼音上下文的词从词库补回来，它可能正是五笔分区已经列出的词。
+        // 合并时同词只留五笔那份，和 ImeSession::refresh_candidates 的去重规则一致。
+        pinyin_items.erase(std::remove_if(pinyin_items.begin(), pinyin_items.end(),
+                                          [&wubi_items](const WordItem &pinyin_item) {
+                                              return std::any_of(wubi_items.begin(), wubi_items.end(),
+                                                                 [&pinyin_item](const WordItem &wubi_item) {
+                                                                     return wubi_item.word == pinyin_item.word;
+                                                                 });
+                                          }),
+                           pinyin_items.end());
         items.clear();
         items.insert(items.end(), std::make_move_iterator(wubi_items.begin()),
                      std::make_move_iterator(wubi_items.end()));

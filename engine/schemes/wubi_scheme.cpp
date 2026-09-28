@@ -115,8 +115,8 @@ QueryRequest WubiScheme::build_request() const
     request.segmentation = raw_input_;
     request.key_strokes = key_strokes_;
     // Wildcard mode only: the provider switches from a range scan to a pattern match when the
-    // code actually holds a z. Set here rather than in the provider so the pattern path stays
-    // unreachable for mixed input, where z is an ordinary letter the table simply has no rows for.
+    // code actually holds a z. Set here rather than in the provider so mixed input alone never
+    // reaches the pattern path; with both on, the session ranks pinyin ahead of the wildcard rows.
     request.wubi_z_wildcard = z_wildcard_ && raw_input_.find('z') != std::string::npos;
     request.valid = !raw_input_.empty();
     return request;
