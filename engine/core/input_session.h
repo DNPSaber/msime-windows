@@ -68,6 +68,9 @@ class InputSession
     const EnglishInputOptions &english_input_options() const;
     void set_mixed_expressive_options(MixedExpressiveOptions options);
     void set_wubi_input_options(metasequoia::WubiInputOptions options);
+    // 读回当前五笔设置：公开 Session 的运行期开关要按字段改，不能整份覆盖（否则会把另一个
+    // 独立开关复位）。
+    const metasequoia::WubiInputOptions &wubi_input_options() const;
     const MixedExpressiveOptions &mixed_expressive_options() const;
     void set_dedicated_english_mode(bool enabled);
     bool dedicated_english_mode() const;
@@ -93,14 +96,15 @@ class InputSession
     const std::string &raw_segmentation() const;
     const std::string &normalized_segmentation() const;
     const std::vector<WordItem> &candidates() const;
-    // True while the current composition is answered by the wubi mixed-pinyin fallback.
-    bool answered_by_pinyin_fallback() const;
-
     // Advanced composition operations for hosts with their own asynchronous text insertion.
     // They share the same engine/configuration as the portable character/command API.
     struct SelectionTransition
     {
         bool continues_composition = false;
+        // 刚选中的候选由五笔码表产出。上屏推进与造词都按它决定：五笔候选一次消耗整串编码，
+        // 拼音候选则只消耗自己那段、把剩余字母继续留在组合里。混输组合里两类候选共存，
+        // 不能再按会话方案一刀切。
+        bool wubi_native = false;
         std::string full_pure_pinyin;
         std::string current_segmentation;
         std::string current_segmentation_with_cases;
@@ -173,17 +177,17 @@ class InputSession
     std::vector<std::size_t> segment_raw_boundaries() const;
     std::string get_quanpin() const;
     bool is_all_complete_pure_pinyin() const;
-    // The current composition is a complete four-letter wubi code answered by the wubi table with
-    // exactly one candidate. Hosts decide whether to auto-commit on this; the engine only reports
-    // the fact. A four-letter spelling answered by the pinyin fallback is deliberately not one:
-    // session.h's answered_by_pinyin_fallback comment explains that a code the table did not answer
-    // is not a unique wubi code, and committing it would take away the fifth letter mixed input
-    // exists to allow.
+    // The current composition is a complete four-letter wubi code the wubi table answered with
+    // exactly one row. Hosts decide whether to auto-commit on this; the engine only reports the fact.
+    // The pinyin candidates mixed input appends are deliberately not counted: a code the table did
+    // not answer is not a unique wubi code, and committing a pinyin answer as one would take away
+    // the extra letters mixed input exists to allow.
     bool wubi_unique_four_code() const;
-    // The current composition is a complete four-letter wubi code the wubi table answered (not a
-    // pinyin fallback), regardless of how many candidates it has. Hosts use it to commit the first
-    // candidate when the user types past the fourth letter: a complete code that keeps growing must
-    // not silently swallow the extra letters. See wubi_unique_four_code for the uniqueness part.
+    // The current composition is a complete four-letter wubi code the wubi table answered, regardless
+    // of how many candidates it has. Hosts use it to commit the first candidate when the user types
+    // past the fourth letter: a complete code that keeps growing must not silently swallow the extra
+    // letters. In mixed input the appended pinyin candidates do not count; only the code's own rows
+    // make it complete. See wubi_unique_four_code for the uniqueness part.
     bool wubi_four_code_is_complete() const;
     bool has_active_helpcode() const;
 
@@ -192,12 +196,13 @@ class InputSession
 
     int store_user_phrase(std::string pinyin, std::string word);
     int store_user_phrase_from_canonical_pinyin(std::string pinyin, std::string word);
-    int pin_candidate(std::string pinyin, std::string word);
-    int remove_candidate(std::string pinyin, std::string word);
+    // 混输组合里五笔与拼音候选共存，删除必须由调用方指明候选自己的方案，不能按会话方案。
+    int remove_candidate(std::string pinyin, std::string word, SchemeType scheme);
     int cache_dynamic_candidate(const std::string &pinyin, const std::string &word, CandidateSource source);
     SelectionTransition advance_composition_after_selection(const std::string &selected_pinyin,
                                                             const std::string &selected_word,
-                                                            const std::string &selected_canonical_pinyin);
+                                                            const std::string &selected_canonical_pinyin,
+                                                            SchemeType selected_scheme = SchemeType::Quanpin);
     CloudQueryState get_cloud_query_state() const;
     CreatingWordProgress update_creating_word_progress(const std::string &current_pinyin,
                                                        const std::string &current_word,
@@ -234,14 +239,11 @@ class InputSession
     const QueryRequest &request() const;
     bool is_shuangpin() const;
     bool is_wubi() const;
-    // Wubi whose candidates came from the wubi table. A code answered by the quanpin
-    // fallback carries pinyin words, so ranking, fixed positions and removal have to key
-    // off the pinyin rather than off the code that produced them.
-    bool wubi_candidates_are_native() const;
-    // The candidates on offer behave like pinyin: quanpin, shuangpin, or a wubi code the
-    // table could not answer. Committing one of these commits a spelling out of a longer
-    // one, so the rest of the composition has to survive the selection.
-    bool candidates_follow_pinyin() const;
+    // 候选是否由五笔码表产出。混输组合里五笔候选在前、拼音候选追加在后，调频、删除、固定
+    // 位置与上屏推进都按候选自己的方案走，不再按会话方案一刀切。
+    static bool is_wubi_native_candidate(const WordItem &item);
+    // 当前列表里五笔码表候选的条数；顶字与四码自动上屏只认它，追加的拼音候选不算。
+    std::size_t wubi_native_candidate_count() const;
     bool is_japanese() const;
     void clear_pending_sequence();
     void apply_pending_sequence();
@@ -267,7 +269,7 @@ class InputSession
     std::optional<std::string> update_local_candidates();
     void update_mixed_candidates();
     void apply_candidate_positions(std::vector<WordItem> &items);
-    std::string position_context(bool english) const;
+    std::string position_context(bool english, bool wubi) const;
     bool fixed_positions_enabled_ = false;
     void update_dedicated_english_candidates();
     void reset_composition();

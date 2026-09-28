@@ -233,6 +233,12 @@ shuangpin_preedit_mode = "shuangpin"
 shuangpin_schema = "xiaohe"
 # 五笔方案，当前仅支持 "wubi86"；98 版待词库发布后另开任务接线
 wubi_schema = "wubi86"
+# 五笔拼音混输：同一串字母同时给五笔码表和全拼，五笔候选在前、拼音候选按权重追加在后
+wubi_mixed_pinyin = false
+# 五笔 z 键角色，可选："off", "wildcard"：
+#   off      -> z 不进码（默认）
+#   wildcard -> z 匹配码表中该位置的任意一个字母（含首位）
+wubi_z_mode = "off"
 # 日语方案，当前支持："romaji"
 japanese_schema = "romaji"
 # 模糊音，全拼与双拼均生效；默认全部关闭，升级用户零行为变化

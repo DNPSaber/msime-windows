@@ -37,5 +37,10 @@ struct QueryRequest
     // 到底是上海还是伤害就只能靠词格自己的静态分。词典层只取末尾若干字（RerankOptions::
     // context_chars），所以这里给多了也无妨。
     std::string rescoring_context;
+    // Wubi wildcard mode and the code in hand holds a z: the provider matches the code as a
+    // pattern (z = one arbitrary letter) instead of a prefix range. Never set for other schemes.
+    // With mixed input also on, the same z is offered to pinyin as a plain letter and those
+    // candidates are placed ahead of the wildcard rows (see ImeSession::refresh_candidates).
+    bool wubi_z_wildcard = false;
     bool valid = false;
 };

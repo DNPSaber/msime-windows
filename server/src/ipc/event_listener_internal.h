@@ -126,7 +126,6 @@ enum class TaskType
     ApplyEmojiCandidates,
     ApplyKaomojiCandidates,
     StoreUserPhrase,
-    PinCandidate,
     ClientActivated,
     ClientDeactivated,
     ClientSuspended,
@@ -161,14 +160,15 @@ std::string CurrentRankingContextKey();
 std::string EnglishRankingContextKey();
 bool ExpandCandidatesKeepingPagePosition();
 PageMoveResult MoveCandidatePage(int offset);
-bool IsWubiRankingScheme();
 std::pair<std::string, std::string> RankingKeysForCandidate(const WordItem &item);
 
 // event_listener_worker.cpp
 void NoteTopCommitPushed(uint64_t client_id, uint64_t activation_epoch);
 void EnqueueTask(TaskType type, const FanyImeNamedpipeData &pipeData, uint64_t activation_epoch);
-void EnqueueAdjustCandidateRankingTask(bool english, const std::string &context_key, const std::string &entry_key,
-                                       const std::string &word, uint64_t client_id, uint64_t activation_epoch);
+// wubi 指明目标候选来自五笔码表；混输组合里拼音候选写拼音词典、五笔候选写码表，不能按会话方案判断。
+void EnqueueAdjustCandidateRankingTask(bool english, bool wubi, const std::string &context_key,
+                                       const std::string &entry_key, const std::string &word, uint64_t client_id,
+                                       uint64_t activation_epoch);
 void EnqueueLearnEnteredEnglishWordTask(const std::string &word);
 
 // event_listener.cpp
@@ -190,7 +190,6 @@ void ApplyCandidateTranslations(std::vector<EnglishIme::TranslationResult> resul
 void ApplyEmojiCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation);
 void ApplyKaomojiCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation);
 void EnqueueStoreUserPhraseTask(const std::string &pinyin, const std::string &word, bool pinyin_is_canonical = false);
-void EnqueuePinCandidateTask(const std::string &pinyin, const std::string &word);
 bool ResolveCandidateItem(int one_based_index, WordItem &item);
 bool SendCurrentDataToClient(uint64_t client_id, uint64_t activation_epoch, uint64_t request_id);
 } // namespace FanyNamedPipe

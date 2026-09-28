@@ -68,6 +68,10 @@ std::string g_statistics_retention = "forever";
 std::string g_candidate_text_color = "auto";
 std::string g_shuangpin_schema = "xiaohe";
 std::string g_wubi_schema = "wubi86";
+// 五笔拼音混输是独立开关：同一串字母同时给五笔码表和全拼，五笔候选在前。与 z 键角色无关。
+bool g_wubi_mixed_pinyin = false;
+// 五笔 z 键角色两态：off | wildcard。非法值回落 off（升级用户零变化）。
+std::string g_wubi_z_mode = "off";
 std::string g_shuangpin_preedit_mode = "quanpin";
 std::string g_tsf_preedit_style = "raw";
 bool g_shuangpin_helpcode_enabled = true;
@@ -379,6 +383,9 @@ bool LoadImeConfig()
         }
         g_shuangpin_schema = tbl["input"]["shuangpin_schema"].value_or(std::string("xiaohe"));
         g_wubi_schema = tbl["input"]["wubi_schema"].value_or(std::string("wubi86"));
+        g_wubi_mixed_pinyin = tbl["input"]["wubi_mixed_pinyin"].value_or(false);
+        const std::string z_mode = tbl["input"]["wubi_z_mode"].value_or(std::string("off"));
+        g_wubi_z_mode = z_mode == "wildcard" ? "wildcard" : "off";
         g_shuangpin_preedit_mode = tbl["input"]["shuangpin_preedit_mode"].value_or(std::string("quanpin"));
         g_shuangpin_helpcode_enabled = tbl["helpcode"]["shuangpin_helpcode"].value_or(true);
         g_quanpin_helpcode_enabled = tbl["helpcode"]["quanpin_helpcode"].value_or(true);

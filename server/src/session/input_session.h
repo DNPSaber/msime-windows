@@ -73,12 +73,13 @@ class IInputSession
 
     virtual int store_user_phrase(std::string pinyin, std::string word) = 0;
     virtual int store_user_phrase_from_canonical_pinyin(std::string pinyin, std::string word) = 0;
-    virtual int pin_candidate(std::string pinyin, std::string word) = 0;
-    virtual int remove_candidate(std::string pinyin, std::string word) = 0;
+    // 混输组合里五笔与拼音候选共存，删除必须带上候选自己的方案。
+    virtual int remove_candidate(std::string pinyin, std::string word, SchemeType scheme) = 0;
     virtual int cache_dynamic_candidate(const std::string &pinyin, const std::string &word, CandidateSource source) = 0;
-    virtual SelectionTransition advance_composition_after_selection(const std::string &selected_pinyin,
-                                                                    const std::string &selected_word,
-                                                                    const std::string &selected_canonical_pinyin) = 0;
+    // SchemeType 标明被选中候选由哪个方案产出，五笔与拼音混输时上屏推进按它分流。
+    virtual SelectionTransition advance_composition_after_selection(
+        const std::string &selected_pinyin, const std::string &selected_word,
+        const std::string &selected_canonical_pinyin, SchemeType selected_scheme = SchemeType::Quanpin) = 0;
     virtual CloudQueryState get_cloud_query_state() const = 0;
     virtual std::optional<metasequoia::OnlineQuery> online_query() const = 0;
     virtual bool apply_online_candidate(const metasequoia::OnlineQuery &query, std::string candidate,

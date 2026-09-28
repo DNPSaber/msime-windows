@@ -45,12 +45,12 @@ class EngineInputSession : public IInputSession
 
     int store_user_phrase(std::string pinyin, std::string word) override;
     int store_user_phrase_from_canonical_pinyin(std::string pinyin, std::string word) override;
-    int pin_candidate(std::string pinyin, std::string word) override;
-    int remove_candidate(std::string pinyin, std::string word) override;
+    int remove_candidate(std::string pinyin, std::string word, SchemeType scheme) override;
     int cache_dynamic_candidate(const std::string &pinyin, const std::string &word, CandidateSource source) override;
     SelectionTransition advance_composition_after_selection(const std::string &selected_pinyin,
                                                             const std::string &selected_word,
-                                                            const std::string &selected_canonical_pinyin) override;
+                                                            const std::string &selected_canonical_pinyin,
+                                                            SchemeType selected_scheme = SchemeType::Quanpin) override;
     CloudQueryState get_cloud_query_state() const override;
     std::optional<metasequoia::OnlineQuery> online_query() const override;
     bool apply_online_candidate(const metasequoia::OnlineQuery &query, std::string candidate,

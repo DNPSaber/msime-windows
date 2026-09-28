@@ -33,6 +33,8 @@ class WubiCandidateProvider : public ICandidateProvider
 
   private:
     bool ensure_query_statement();
+    // 走完 statement 并按既有去重规则收敛候选；调用前由 query() 负责 reset 与绑定。
+    std::vector<WordItem> collect_rows(sqlite3_stmt *statement);
     void close_database();
     std::string journal_db_path() const;
 
@@ -40,4 +42,6 @@ class WubiCandidateProvider : public ICandidateProvider
     metasequoia::RuntimePaths paths_;
     sqlite3 *db_ = nullptr;
     sqlite3_stmt *query_statement_ = nullptr;
+    // 通配码（含 z）专用：WHERE 是 GLOB 而非范围，语句与参数个数都不同，单独 prepared。
+    sqlite3_stmt *wildcard_statement_ = nullptr;
 };

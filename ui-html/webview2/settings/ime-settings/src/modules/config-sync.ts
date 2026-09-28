@@ -342,6 +342,8 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
         data?.input?.character_set,
         data?.input?.shuangpin_schema,
         data?.input?.wubi_schema,
+        data?.input?.wubi_mixed_pinyin,
+        data?.input?.wubi_z_mode,
         data?.input?.default_ime_mode,
         data?.input?.ime_mode_scope,
         data?.input?.japanese_schema

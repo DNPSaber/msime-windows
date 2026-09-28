@@ -16,7 +16,7 @@ void InputSession::enable_fixed_positions()
     update_mixed_candidates();
 }
 
-std::string InputSession::position_context(bool english) const
+std::string InputSession::position_context(bool english, bool wubi) const
 {
     if (english)
     {
@@ -30,7 +30,7 @@ std::string InputSession::position_context(bool english) const
     }
     if (local_input_mode_ == LocalInputMode::SuperJianpin)
         return local_modes::jianpin_ranking_context(local_preedit_.substr(1), scheme(), shuangpin_profile_);
-    if (wubi_candidates_are_native())
+    if (wubi)
         return engine_.get_request().raw_input;
     std::string context = get_quanpin();
     if (context.empty())
@@ -48,16 +48,71 @@ void InputSession::apply_candidate_positions(std::vector<WordItem> &items)
     if (!fixed_positions_enabled_ || items.empty())
         return;
     const auto journal = path_to_utf8(paths_.user(assets::user_journal));
-    if (local_input_mode_ == LocalInputMode::None && !dedicated_english_mode_ && scheme() != SchemeType::JapaneseRomaji)
+    const bool super_jianpin = local_input_mode_ == LocalInputMode::SuperJianpin;
+    const bool regular =
+        local_input_mode_ == LocalInputMode::None && !dedicated_english_mode_ && scheme() != SchemeType::JapaneseRomaji;
+    if (regular && is_wubi())
+    {
+        // 混输组合里五笔与拼音候选共存，固定位置必须按候选自己的上下文分别结算：五笔候选
+        // 写的是码，拼音候选写的是全拼，混进一个 context 会互相错配。两个分区各自排序后按
+        // 「五笔在前、拼音在后」拼回，主方案（五笔）的位置语义原样保留。
+        std::vector<WordItem> wubi_items;
+        std::vector<WordItem> pinyin_items;
+        for (auto &item : items)
+        {
+            (is_wubi_native_candidate(item) ? wubi_items : pinyin_items).push_back(std::move(item));
+        }
+        const bool include_missing = engine_.get_request().raw_input.size() == 1;
+        if (!wubi_items.empty())
+        {
+            user_dictionary::apply_fixed_positions(
+                journal, position_context(false, true), wubi_items, include_missing,
+                [this](const std::string &key, const std::string &word) {
+                    return engine_.find_candidate(SchemeType::Wubi, key, word);
+                },
+                has_active_helpcode());
+        }
+        if (!pinyin_items.empty())
+        {
+            user_dictionary::apply_fixed_positions(
+                journal, position_context(false, false), pinyin_items, include_missing,
+                [this](const std::string &key, const std::string &word) {
+                    return engine_.find_candidate(SchemeType::Quanpin, key, word);
+                },
+                has_active_helpcode());
+        }
+        // include_missing 会把固定在拼音上下文的词从词库补回来，它可能正是五笔分区已经列出的词。
+        // 合并时同词只留五笔那份，和 ImeSession::refresh_candidates 的去重规则一致。
+        pinyin_items.erase(std::remove_if(pinyin_items.begin(), pinyin_items.end(),
+                                          [&wubi_items](const WordItem &pinyin_item) {
+                                              return std::any_of(wubi_items.begin(), wubi_items.end(),
+                                                                 [&pinyin_item](const WordItem &wubi_item) {
+                                                                     return wubi_item.word == pinyin_item.word;
+                                                                 });
+                                          }),
+                           pinyin_items.end());
+        items.clear();
+        items.insert(items.end(), std::make_move_iterator(wubi_items.begin()),
+                     std::make_move_iterator(wubi_items.end()));
+        items.insert(items.end(), std::make_move_iterator(pinyin_items.begin()),
+                     std::make_move_iterator(pinyin_items.end()));
+    }
+    else if (regular)
+    {
         user_dictionary::apply_fixed_positions(
-            journal, position_context(false), items, engine_.get_request().raw_input.size() == 1,
-            [this](const std::string &key, const std::string &word) { return engine_.find_candidate(key, word); },
+            journal, position_context(false, false), items, engine_.get_request().raw_input.size() == 1,
+            [this](const std::string &key, const std::string &word) {
+                return engine_.find_candidate(scheme(), key, word);
+            },
             has_active_helpcode());
-    else if (local_input_mode_ == LocalInputMode::SuperJianpin)
-        user_dictionary::apply_fixed_positions(journal, position_context(false), items, false);
+    }
+    else if (super_jianpin)
+    {
+        user_dictionary::apply_fixed_positions(journal, position_context(false, false), items, false);
+    }
     if (std::any_of(items.begin(), items.end(),
                     [](const auto &item) { return item.source == CandidateSource::EnglishDictionary; }))
-        user_dictionary::apply_fixed_positions(journal, position_context(true), items, false, {}, true);
+        user_dictionary::apply_fixed_positions(journal, position_context(true, false), items, false, {}, true);
 }
 
 KeyResult InputSession::set_candidate_position(std::size_t index, int position)
@@ -70,8 +125,8 @@ KeyResult InputSession::set_candidate_position(std::size_t index, int position)
         ((selected.source != CandidateSource::Database && selected.source != CandidateSource::UserDatabase) ||
          scheme() == SchemeType::JapaneseRomaji))
         return {};
-    const auto context = position_context(english);
-    const bool wubi = wubi_candidates_are_native() && local_input_mode_ != LocalInputMode::SuperJianpin;
+    const bool wubi = is_wubi_native_candidate(selected) && local_input_mode_ != LocalInputMode::SuperJianpin;
+    const auto context = position_context(english, wubi);
     const auto key = english || wubi
                          ? selected.pinyin
                          : (selected.canonical_pinyin.empty() ? selected.pinyin : selected.canonical_pinyin);
@@ -103,7 +158,7 @@ KeyResult InputSession::remove_candidate(std::size_t index)
          scheme() == SchemeType::JapaneseRomaji || HelpcodeUtils::count_utf8_chars(selected.word) <= 1))
         return {};
 
-    const bool wubi = wubi_candidates_are_native() && local_input_mode_ != LocalInputMode::SuperJianpin;
+    const bool wubi = is_wubi_native_candidate(selected) && local_input_mode_ != LocalInputMode::SuperJianpin;
     const auto kind = english
                           ? user_dictionary::DictionaryKind::English
                           : (wubi ? user_dictionary::DictionaryKind::Wubi : user_dictionary::DictionaryKind::Pinyin);

@@ -125,6 +125,8 @@ extern std::string g_statistics_retention;
 extern std::string g_candidate_text_color;
 extern std::string g_shuangpin_schema;
 extern std::string g_wubi_schema;
+extern bool g_wubi_mixed_pinyin;
+extern std::string g_wubi_z_mode;
 extern std::string g_shuangpin_preedit_mode;
 extern std::string g_tsf_preedit_style;
 extern bool g_shuangpin_helpcode_enabled;

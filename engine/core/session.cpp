@@ -158,7 +158,10 @@ void Session::set_dedicated_english(bool enabled)
 }
 void Session::set_wubi_mixed_pinyin(bool enabled)
 {
-    impl_->session.set_wubi_input_options(WubiInputOptions{enabled});
+    // 只改混输这一个开关：整份构造 WubiInputOptions 会把运行期已生效的 z 通配一起复位。
+    metasequoia::WubiInputOptions options = impl_->session.wubi_input_options();
+    options.mixed_pinyin = enabled;
+    impl_->session.set_wubi_input_options(options);
 }
 SessionSnapshot Session::snapshot() const
 {
@@ -174,7 +177,6 @@ SessionSnapshot Session::snapshot() const
                          session.dedicated_english_mode(),
                          session.editing_text(),
                          session.caret_position()};
-    view.answered_by_pinyin_fallback = session.answered_by_pinyin_fallback();
     return view;
 }
 std::optional<OnlineQuery> Session::online_query() const

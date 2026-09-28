@@ -359,7 +359,7 @@ bool InputSession::expand_initial_candidates()
 
 std::optional<WordItem> InputSession::find_candidate(const std::string &key, const std::string &value)
 {
-    return engine_.find_candidate(key, value);
+    return engine_.find_candidate(scheme(), key, value);
 }
 
 const QueryRequest &InputSession::request() const
@@ -455,35 +455,46 @@ bool InputSession::is_all_complete_pure_pinyin() const
 
 bool InputSession::wubi_unique_four_code() const
 {
-    // Both modes spell words rather than codes. No host sets either one on a wubi session today, so
-    // this pair is here for a future host that does, the same shape as the guard in
-    // create_position_context's neighbourhood (input_session.cpp:471).
+    // Both modes spell words rather than codes; a wubi code is not composed inside them. No host
+    // sets either one on a wubi session today, but the guard keeps the pair meaningful if one does.
     if (dedicated_english_mode_ || local_input_mode_ != LocalInputMode::None)
     {
         return false;
     }
-    // wubi_candidates_are_native() already covers "this is a wubi session", and
-    // engine_.wubi_code_is_complete() is false for every other scheme.
-    if (!wubi_candidates_are_native() || !engine_.wubi_code_is_complete())
+    // A code holding z is a wildcard guess, not a code the typist committed to: the "only
+    // candidate" behind it is one arbitrary letter away from several others, and committing it
+    // silently takes away the one thing the key exists for -- seeing what matched. Same reason
+    // mixed input never reaches here (no table row contains z, so its z codes stay empty).
+    if (engine_.get_request().raw_input.find('z') != std::string::npos)
     {
         return false;
     }
-    // candidates() is the wubi table rows for this code plus any joined user dictionary entries, so
-    // size one is a genuinely unique code.
-    return candidates().size() == 1;
+    // is_wubi() covers "this is a wubi session", and engine_.wubi_code_is_complete() is false for
+    // every other scheme.
+    if (!is_wubi() || !engine_.wubi_code_is_complete())
+    {
+        return false;
+    }
+    // Only the code's own rows count: the pinyin candidates mixed input appends are not the answer
+    // the auto-commit looks for. A code the table answered with exactly one row is genuinely unique.
+    return wubi_native_candidate_count() == 1;
 }
 
 bool InputSession::wubi_four_code_is_complete() const
 {
     // Same guards as wubi_unique_four_code minus the candidate count: hosts commit the first
-    // candidate on the next key whether or not the code has one candidate or many. The candidate
-    // list must not be empty: a four-letter spelling no table row matched was not answered by the
-    // table at all, and committing the raw fallback as text would be worse than leaving it.
+    // candidate on the next key whether or not the code has one candidate or many. The pinyin
+    // candidates mixed input appends do not make a code the table never answered complete.
     if (dedicated_english_mode_ || local_input_mode_ != LocalInputMode::None)
     {
         return false;
     }
-    return wubi_candidates_are_native() && engine_.wubi_code_is_complete() && !candidates().empty();
+    // Wildcard codes neither auto-commit nor top-commit: see wubi_unique_four_code.
+    if (engine_.get_request().raw_input.find('z') != std::string::npos)
+    {
+        return false;
+    }
+    return is_wubi() && engine_.wubi_code_is_complete() && wubi_native_candidate_count() > 0;
 }
 
 bool InputSession::has_active_helpcode() const
@@ -536,9 +547,10 @@ int InputSession::store_user_phrase_from_canonical_pinyin(std::string pinyin, st
 std::optional<std::string> InputSession::learn_sentence_candidate(const WordItem &selected)
 {
     // 本地模式（U/K/E/M/J/Y/R、日期时间）和英文模式也用 Generated 装自己的候选，
-    // 那些不是拼音整句，不能往拼音用户词库里塞。
+    // 那些不是拼音整句，不能往拼音用户词库里塞。五笔码表候选也不进这里：混输追加的整句
+    // 候选自带 Quanpin 方案，按候选自己的方案判断，不看会话方案。
     if (local_input_mode_ != LocalInputMode::None || dedicated_english_mode_ || is_japanese() ||
-        !candidates_follow_pinyin())
+        is_wubi_native_candidate(selected))
     {
         return std::nullopt;
     }
@@ -558,18 +570,13 @@ std::optional<std::string> InputSession::learn_sentence_candidate(const WordItem
     return std::nullopt;
 }
 
-int InputSession::pin_candidate(std::string pinyin, std::string word)
-{
-    return engine_.update_weight_by_pinyin_and_word(std::move(pinyin), std::move(word));
-}
-
-int InputSession::remove_candidate(std::string pinyin, std::string word)
+int InputSession::remove_candidate(std::string pinyin, std::string word, SchemeType scheme)
 {
     if (!is_wubi() && remove_delimiters(request().raw_input).size() == 1)
     {
         return -1;
     }
-    return engine_.delete_by_pinyin_and_word(std::move(pinyin), std::move(word));
+    return engine_.delete_by_pinyin_and_word(scheme, std::move(pinyin), std::move(word));
 }
 
 int InputSession::cache_dynamic_candidate(const std::string &pinyin, const std::string &word, CandidateSource source)
@@ -580,10 +587,12 @@ int InputSession::cache_dynamic_candidate(const std::string &pinyin, const std::
 }
 
 InputSession::SelectionTransition InputSession::advance_composition_after_selection(
-    const std::string &selected_pinyin, const std::string &selected_word, const std::string &selected_canonical_pinyin)
+    const std::string &selected_pinyin, const std::string &selected_word, const std::string &selected_canonical_pinyin,
+    SchemeType selected_scheme)
 {
     SelectionTransition transition;
     transition.selected_canonical_pinyin = selected_canonical_pinyin;
+    transition.wubi_native = selected_scheme == SchemeType::Wubi;
     if (is_japanese())
     {
         transition.full_pure_pinyin = request().raw_input;
@@ -591,7 +600,7 @@ InputSession::SelectionTransition InputSession::advance_composition_after_select
         transition.current_segmentation_with_cases = request().raw_input_with_cases;
         return transition;
     }
-    if (wubi_candidates_are_native())
+    if (transition.wubi_native)
     {
         transition.full_pure_pinyin = request().normalized_input;
         transition.current_segmentation = request().normalized_input;
@@ -774,7 +783,7 @@ InputSession::CreatingWordProgress InputSession::update_creating_word_progress(
     const SelectionTransition &selection_transition) const
 {
     CreatingWordProgress progress;
-    if (wubi_candidates_are_native())
+    if (selection_transition.wubi_native)
     {
         progress.pinyin = current_pinyin.empty() ? selection_transition.full_pure_pinyin : current_pinyin;
         progress.word = current_word + selected_word;
@@ -809,20 +818,15 @@ bool InputSession::is_wubi() const
     return current_scheme_type() == SchemeType::Wubi;
 }
 
-bool InputSession::answered_by_pinyin_fallback() const
+bool InputSession::is_wubi_native_candidate(const WordItem &item)
 {
-    return engine_.answered_by_pinyin_fallback();
+    return item.scheme == SchemeType::Wubi;
 }
 
-bool InputSession::wubi_candidates_are_native() const
+std::size_t InputSession::wubi_native_candidate_count() const
 {
-    return is_wubi() && !engine_.answered_by_pinyin_fallback();
-}
-
-bool InputSession::candidates_follow_pinyin() const
-{
-    return current_scheme_type() == SchemeType::Quanpin || current_scheme_type() == SchemeType::Shuangpin ||
-           engine_.answered_by_pinyin_fallback();
+    return static_cast<std::size_t>(std::count_if(candidates().begin(), candidates().end(),
+                                                  [](const WordItem &item) { return is_wubi_native_candidate(item); }));
 }
 
 bool InputSession::is_japanese() const

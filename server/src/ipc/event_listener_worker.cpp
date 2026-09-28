@@ -406,13 +406,6 @@ void WorkerThread()
             break;
         }
 
-        case TaskType::PinCandidate: {
-            const auto session = PersistentInputSession();
-            session->pin_candidate(task.session_pinyin, task.session_word);
-            session->reset_cache();
-            break;
-        }
-
         case TaskType::ClientActivated: {
             CAND_DIAG_LOGF(L"client activated client={} epoch={} hwnd_present={}", task.client_id,
                            task.activation_epoch, ::global_hwnd != nullptr);
@@ -620,8 +613,8 @@ void WorkerThread()
                     (void)user_dictionary::adjust_candidate_ranking(
                         CommonUtils::get_ime_data_path() + "\\msime.db", user_dictionary::default_user_db_path(),
                         context_key, Global::candidate_ui.items, entry_key, item.word, "pin", 1, 1, true, nullptr,
-                        IsWubiRankingScheme() ? user_dictionary::DictionaryKind::Wubi
-                                              : user_dictionary::DictionaryKind::Pinyin);
+                        item.scheme == SchemeType::Wubi ? user_dictionary::DictionaryKind::Wubi
+                                                        : user_dictionary::DictionaryKind::Pinyin);
             }
             else if (task.type == TaskType::UiDeleteCandidate)
             {
@@ -641,7 +634,7 @@ void WorkerThread()
                     // not mistaken for an equally valid quanpin spelling.
                     const std::string delete_pinyin =
                         item.canonical_pinyin.empty() ? item.pinyin : item.canonical_pinyin;
-                    g_inputSession->remove_candidate(delete_pinyin, item.word);
+                    g_inputSession->remove_candidate(delete_pinyin, item.word, item.scheme);
                 }
             }
             else if (task.type == TaskType::UiFixCandidatePosition)
@@ -948,11 +941,11 @@ SerialTaskRunner &DictionaryWriter()
 
 // The candidates are copied because the page moves on before the write runs. Called from the
 // worker thread only, which is also what serializes the replay guard.
-void EnqueueAdjustCandidateRankingTask(bool english, const std::string &context_key, const std::string &entry_key,
-                                       const std::string &word, uint64_t client_id, uint64_t activation_epoch)
+void EnqueueAdjustCandidateRankingTask(bool english, bool wubi, const std::string &context_key,
+                                       const std::string &entry_key, const std::string &word, uint64_t client_id,
+                                       uint64_t activation_epoch)
 {
     static FanyImeIpc::SelectionRankingReplayGuard replay_guard;
-    const bool wubi = !english && IsWubiRankingScheme();
     const std::string replay_key =
         std::string(english ? "e" : (wubi ? "w" : "p")) + '\x1f' + context_key + '\x1f' + entry_key + '\x1f' + word;
     if (!replay_guard.should_apply(replay_key, client_id, activation_epoch, GetTickCount64()))
@@ -996,19 +989,6 @@ void EnqueueLearnEnteredEnglishWordTask(const std::string &word)
 void ShutdownDictionaryWriter()
 {
     DictionaryWriter().Stop();
-}
-
-void EnqueuePinCandidateTask(const std::string &pinyin, const std::string &word)
-{
-    {
-        std::lock_guard lock(queueMutex);
-        Task task;
-        task.type = TaskType::PinCandidate;
-        task.session_pinyin = pinyin;
-        task.session_word = word;
-        taskQueue.push(std::move(task));
-    }
-    pipe_queueCv.notify_one();
 }
 
 void EnqueuePipeSessionInvalidatedTask(uint64_t client_id, uint64_t invalidation_epoch)

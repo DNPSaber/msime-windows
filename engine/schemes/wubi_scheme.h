@@ -23,10 +23,15 @@ class WubiScheme : public IInputScheme
     // into a different one -- zhongguo would arrive as hongguo and zi as i. Unlike the length, this
     // follows the setting rather than the last query, since the letter can open a composition.
     void set_mixed_pinyin_allowed(bool allowed);
+    // The wildcard mode wants the same key for the opposite reason: no code contains z, so a z
+    // stands for a letter the typist does not know. Same acceptance, different query -- see
+    // QueryRequest::wubi_z_wildcard. Independent of mixed input: a host can enable either, both or
+    // neither.
+    void set_z_wildcard(bool enabled);
     // A complete wubi code is the four letters the table is indexed by. Mixed input only lifts the
     // length limit after the table has already failed the code in hand, so "complete" stays the
     // fixed four letters rather than max_code_length() (32 while extended input is on): a longer
-    // spelling is a pinyin fallback and is never a complete wubi code.
+    // spelling is a pinyin answer and is never a complete wubi code.
     bool has_complete_code() const
     {
         return raw_input_.size() == kMaxCodeLength;
@@ -43,4 +48,5 @@ class WubiScheme : public IInputScheme
     std::vector<KeyStroke> key_strokes_;
     bool extended_length_allowed_ = false;
     bool mixed_pinyin_allowed_ = false;
+    bool z_wildcard_ = false;
 };

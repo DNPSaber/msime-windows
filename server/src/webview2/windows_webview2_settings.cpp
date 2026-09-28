@@ -430,6 +430,22 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                                     PostSettingsConfig();
                                 }
                             }
+                            else if (path == "input.wubi_mixed_pinyin")
+                            {
+                                const bool value = json::value_to<bool>(data.at("value"));
+                                if (SetConfiguredWubiMixedPinyin(value))
+                                {
+                                    PostSettingsConfig();
+                                }
+                            }
+                            else if (path == "input.wubi_z_mode")
+                            {
+                                const std::string value = json::value_to<std::string>(data.at("value"));
+                                if (SetConfiguredWubiZMode(value))
+                                {
+                                    PostSettingsConfig();
+                                }
+                            }
                             else if (path == "appearance.tsf_preedit_style")
                             {
                                 const std::string value = json::value_to<std::string>(data.at("value"));
@@ -1298,6 +1314,8 @@ void PostSettingsConfig()
             {"ime_mode_scope", GetConfiguredImeModeScope()},
             {"shuangpin_schema", GetConfiguredShuangpinSchema()},
             {"wubi_schema", GetConfiguredWubiSchema()},
+            {"wubi_mixed_pinyin", GetConfiguredWubiMixedPinyin()},
+            {"wubi_z_mode", GetConfiguredWubiZMode()},
             {"word_to_character", GetConfiguredWordToCharacterEnabled()},
             {"word_to_character_keys", GetConfiguredWordToCharacterKeys()},
             {"smart_punctuation", GetConfiguredSmartPunctuationEnabled()},
