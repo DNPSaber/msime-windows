@@ -8,10 +8,12 @@
 #include "skin/candidate_skin_catalog.h"
 #include "utils/common_utils.h"
 #include "window/candidate_presenter.h"
+#include "window/candidate_skin_palette.h"
 #include "window/floating_toolbar_presenter.h"
 #include "fmt/xchar.h"
 #include <nlohmann/json.hpp>
 #include <algorithm>
+#include <cmath>
 #include <cwctype>
 #include <filesystem>
 #include <fstream>
@@ -276,23 +278,32 @@ std::wstring BuildExternalCandidateSkinCss(const CandidateSkinCatalog::Package &
         css.append(L" center / contain no-repeat; pointer-events: none; }\n"
                    L".container { position: relative; z-index: 1; }\n");
     }
+    AppendExternalCandidateCornerCss(css, skin);
+    const bool light = ResolveConfiguredTheme(GetConfiguredThemeCand()) == "light";
+    const CandidateSkinCatalog::CandidateColors &colors = light ? skin.light : skin.dark;
+    AppendExternalCandidateColorCss(css, colors);
     if (!skin.backgroundImage.empty())
     {
-        // 背景图垫在卡片底色之上、候选内容之下；卡片的 overflow 裁剪让它跟随外框圆角。
+        // 与 D2D 一致：背景图铺满整个卡片（含边框下方），边框画在它上面。不能用 ::before 垫图——
+        // 卡片是 overflow 滚动容器，子元素只能画到内边距盒，半透明边框下会露出一圈底色。
+        // 图层不能单独设 opacity，于是在图上再盖一层 (1 - opacity) 的底色，效果等同于把图按 opacity 叠在底色上。
         const wchar_t *size = L"cover";
         if (skin.backgroundFit == "contain")
             size = L"contain";
         else if (skin.backgroundFit == "stretch")
             size = L"100% 100%";
-        css.append(L".container { position: relative; isolation: isolate; }\n"
-                   L".container:not(:empty)::before { content: \"\"; position: absolute; inset: 0; z-index: -1; "
-                   L"pointer-events: none; border-radius: inherit; background: ");
+        const D2D1_COLOR_F surface = ResolveCandidateSkinPalette(skin.base, light, {}, &colors, skin.base).surface;
+        const std::wstring veil =
+            fmt::format(L"rgba({}, {}, {}, {:.3f})", static_cast<int>(std::lround(surface.r * 255.0f)),
+                        static_cast<int>(std::lround(surface.g * 255.0f)),
+                        static_cast<int>(std::lround(surface.b * 255.0f)), surface.a * (1.0 - skin.backgroundOpacity));
+        css.append(L".container:not(:empty) { background-image: linear-gradient(" + veil + L", " + veil + L"), ");
         css.append(ManifestImageCssUrl(skinsRoot, skin.id, skin.backgroundImage));
-        css.append(fmt::format(L" center / {} no-repeat; opacity: {}; }}\n", size, skin.backgroundOpacity));
+        css.append(fmt::format(L"; background-size: auto, {}; background-position: center; "
+                               L"background-repeat: no-repeat; background-origin: border-box; "
+                               L"background-clip: border-box; }}\n",
+                               size));
     }
-    AppendExternalCandidateCornerCss(css, skin);
-    const bool light = ResolveConfiguredTheme(GetConfiguredThemeCand()) == "light";
-    AppendExternalCandidateColorCss(css, light ? skin.light : skin.dark);
     return css;
 }
 
