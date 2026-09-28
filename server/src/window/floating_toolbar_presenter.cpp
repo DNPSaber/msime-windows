@@ -26,6 +26,7 @@
 #include <dwrite.h>
 #include <filesystem>
 #include <functional>
+#include <optional>
 #include <string>
 #include <windowsx.h>
 #include <wrl/client.h>
@@ -561,15 +562,20 @@ void FloatingToolbarPresenter::ApplyTheme()
         return;
     }
     const bool light = ResolveConfiguredTheme(GetConfiguredThemeFtb()) == "light";
-    // 与 WebView2 端选工具栏页面的规则一致：跟随候选窗皮肤，外部皮肤用其 base。
+    // 与 WebView2 端选工具栏页面的规则一致：跟随候选窗皮肤，外部皮肤用其 base，再叠上 [toolbar] 的覆盖。
     std::string skinId = GetConfiguredCandidateSkin();
+    std::optional<CandidateSkinCatalog::Package> package;
     if (!CandidateSkinCatalog::IsBuiltIn(skinId))
     {
-        const auto package =
+        package =
             CandidateSkinCatalog::Load(std::filesystem::path(CommonUtils::get_ime_data_path_w()) / L"skins", skinId);
         skinId = package ? package->base : "fluent";
     }
-    const FloatingToolbarSkin skin = ResolveFloatingToolbarSkin(skinId, light);
+    FloatingToolbarSkin skin = ResolveFloatingToolbarSkin(skinId, light);
+    if (package)
+    {
+        ApplyFloatingToolbarSkinOverrides(skin, *package, light);
+    }
     impl_->fill = skin.fill;
     impl_->border = skin.border;
     impl_->glyph = skin.glyph;

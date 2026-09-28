@@ -21,17 +21,6 @@ void SetError(std::string *error, const std::string &message)
     }
 }
 
-bool IsSafeFileName(const std::string &name, const std::string &extension)
-{
-    if (name.empty() || name.size() > 128 || name.size() <= extension.size() ||
-        name.substr(name.size() - extension.size()) != extension)
-    {
-        return false;
-    }
-    return std::all_of(name.begin(), name.end(),
-                       [](unsigned char ch) { return std::isalnum(ch) || ch == '.' || ch == '_' || ch == '-'; });
-}
-
 bool IsSafeRelativeResource(const std::string &name)
 {
     if (name.empty() || name.size() > 256 || name.front() == '/' || name.front() == '\\' ||
@@ -175,6 +164,27 @@ bool ReadColors(const toml::table *table, CandidateColors &out)
     }
     return true;
 }
+
+// 工具栏颜色会被拼进 WebView2 的 CSS 声明，只放行颜色值会用到的字符，挡住 `;`、`{}` 之类能跳出声明的写法。
+bool ReadCssColor(const toml::table &table, const char *key, std::string &out)
+{
+    return ReadString(table, key, out, 80, false) && std::all_of(out.begin(), out.end(), [](unsigned char ch) {
+               return std::isalnum(ch) || ch == '#' || ch == '(' || ch == ')' || ch == ',' || ch == '.' || ch == '%' ||
+                      ch == ' ' || ch == '-' || ch == '/';
+           });
+}
+
+bool ReadToolbarColors(const toml::node *node, ToolbarColors &out)
+{
+    if (!node)
+    {
+        return true;
+    }
+    const auto *table = node->as_table();
+    return table && ReadCssColor(*table, "background", out.background) && ReadCssColor(*table, "border", out.border) &&
+           ReadCssColor(*table, "handle", out.handle) && ReadCssColor(*table, "divider", out.divider) &&
+           ReadCssColor(*table, "icon", out.icon) && ReadCssColor(*table, "hover", out.hover);
+}
 } // namespace
 
 bool IsBuiltIn(const std::string &id)
@@ -236,13 +246,6 @@ std::optional<Package> Load(const std::filesystem::path &skinsRoot, const std::s
             !ReadString(root, "base", package.base, 32, true) || !IsBuiltIn(package.base))
         {
             SetError(error, "manifest 的基本信息无效");
-            return std::nullopt;
-        }
-        if (root.contains("toolbar_stylesheet") &&
-            (!ReadString(root, "toolbar_stylesheet", package.toolbarStylesheet, 128, true) ||
-             !IsSafeFileName(package.toolbarStylesheet, ".css")))
-        {
-            SetError(error, "toolbar_stylesheet 文件名无效");
             return std::nullopt;
         }
         const auto *supports = root["supports"].as_table();
@@ -320,13 +323,27 @@ std::optional<Package> Load(const std::filesystem::path &skinsRoot, const std::s
             SetError(error, "candidate 配色无效");
             return std::nullopt;
         }
-        std::error_code ec;
-        if (!package.toolbarStylesheet.empty() &&
-            !std::filesystem::is_regular_file(directory / std::filesystem::u8path(package.toolbarStylesheet), ec))
+        if (const toml::node *toolbarNode = root.get("toolbar"))
         {
-            SetError(error, "找不到 toolbar_stylesheet 文件");
-            return std::nullopt;
+            const auto *toolbar = toolbarNode->as_table();
+            if (!toolbar || !ReadToolbarColors(toolbar->get("dark"), package.toolbarDark) ||
+                !ReadToolbarColors(toolbar->get("light"), package.toolbarLight))
+            {
+                SetError(error, "toolbar 配色无效");
+                return std::nullopt;
+            }
+            if (toolbar->contains("corner_radius_dip"))
+            {
+                const double radius = BoundedNumber(*toolbar, "corner_radius_dip", 32.0);
+                if (radius < 0.0)
+                {
+                    SetError(error, "toolbar.corner_radius_dip 超出范围");
+                    return std::nullopt;
+                }
+                package.toolbarCornerRadiusDip = radius;
+            }
         }
+        std::error_code ec;
         if (!package.decorationImage.empty() &&
             !std::filesystem::is_regular_file(directory / std::filesystem::u8path(package.decorationImage), ec))
         {

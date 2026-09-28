@@ -21,6 +21,17 @@ struct CandidateColors
     std::optional<bool> showSelectedBar;
 };
 
+// 悬浮工具栏的配色覆盖，D2D 与 WebView2 两个渲染器都读这一份。留空的项沿用基础皮肤。
+struct ToolbarColors
+{
+    std::string background;
+    std::string border;
+    std::string handle;
+    std::string divider;
+    std::string icon;
+    std::string hover;
+};
+
 struct Package
 {
     std::string id;
@@ -29,7 +40,6 @@ struct Package
     std::string author;
     std::string description;
     std::string base = "fluent";
-    std::string toolbarStylesheet;
     std::vector<std::string> layouts;
     std::vector<std::string> themes;
     double minWidthDip = 0.0;
@@ -46,6 +56,10 @@ struct Package
     std::string decorationAlign = "right"; // left / center / right，相对卡片
     CandidateColors dark;
     CandidateColors light;
+    // 覆盖基础皮肤的悬浮工具栏外框圆角；未设置时沿用基础皮肤。
+    std::optional<double> toolbarCornerRadiusDip;
+    ToolbarColors toolbarDark;
+    ToolbarColors toolbarLight;
 };
 
 struct Issue

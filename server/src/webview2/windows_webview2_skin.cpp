@@ -152,100 +152,6 @@ std::wstring EmbedSkinCssUrl(const std::wstring &skinsRoot, const std::string &s
     return L"url(\"https://candidate-skins/" + string_to_wstring(skinId) + L"/" + relative + L"\")";
 }
 
-std::wstring RewriteCandidateSkinCssUrls(const std::wstring &css, const std::wstring &skinsRoot,
-                                         const std::string &skinId)
-{
-    std::wstring result;
-    result.reserve(css.size() + 64);
-    size_t pos = 0;
-    while (pos < css.size())
-    {
-        size_t urlPos = std::wstring::npos;
-        for (size_t i = pos; i + 4 <= css.size(); ++i)
-        {
-            if ((css[i] == L'u' || css[i] == L'U') && (css[i + 1] == L'r' || css[i + 1] == L'R') &&
-                (css[i + 2] == L'l' || css[i + 2] == L'L') && css[i + 3] == L'(')
-            {
-                urlPos = i;
-                break;
-            }
-        }
-        if (urlPos == std::wstring::npos)
-        {
-            result.append(css, pos, std::wstring::npos);
-            break;
-        }
-        result.append(css, pos, urlPos - pos);
-        size_t cursor = urlPos + 4;
-        while (cursor < css.size() && iswspace(css[cursor]))
-        {
-            ++cursor;
-        }
-        wchar_t quote = 0;
-        if (cursor < css.size() && (css[cursor] == L'"' || css[cursor] == L'\''))
-        {
-            quote = css[cursor++];
-        }
-        const size_t valueStart = cursor;
-        while (cursor < css.size())
-        {
-            if (quote != 0)
-            {
-                if (css[cursor] == quote)
-                {
-                    break;
-                }
-            }
-            else if (css[cursor] == L')' || iswspace(css[cursor]))
-            {
-                break;
-            }
-            ++cursor;
-        }
-        const std::wstring rawUrl = css.substr(valueStart, cursor - valueStart);
-        switch (msime::skin_css::ClassifyUrl(rawUrl))
-        {
-        case msime::skin_css::UrlAction::Embed:
-            result.append(EmbedSkinCssUrl(skinsRoot, skinId, rawUrl));
-            break;
-        case msime::skin_css::UrlAction::Keep:
-            result.append(L"url(");
-            if (quote != 0)
-            {
-                result.push_back(quote);
-                result.append(rawUrl);
-                result.push_back(quote);
-            }
-            else
-            {
-                result.append(rawUrl);
-            }
-            result.push_back(L')');
-            break;
-        case msime::skin_css::UrlAction::Drop:
-            // Nothing is written. The declaration is left incomplete, so CSS discards it -- which
-            // is what should happen to `background-image: url(https://attacker/beacon.png)` in a
-            // skin someone downloaded. Passing it through, as this branch used to, meant the
-            // candidate window fetched that URL on every render.
-            break;
-        }
-        if (quote != 0 && cursor < css.size() && css[cursor] == quote)
-        {
-            ++cursor;
-        }
-        while (cursor < css.size() && iswspace(css[cursor]))
-        {
-            ++cursor;
-        }
-        if (cursor < css.size() && css[cursor] == L')')
-        {
-            ++cursor;
-        }
-        pos = cursor;
-    }
-    return result;
-}
-
 void NeutralizeEmbeddedStyleClosers(std::wstring &css)
 {
     for (size_t i = 0; i + 7 < css.size(); ++i)
@@ -265,34 +171,6 @@ void NeutralizeEmbeddedStyleClosers(std::wstring &css)
             i += 2;
         }
     }
-}
-
-bool InjectExternalSkinCssFile(std::wstring &html, const CandidateSkinCatalog::Package &skin,
-                               const std::wstring &skinsRoot, const std::string &stylesheet, const wchar_t *styleId)
-{
-    if (html.empty() || skinsRoot.empty() || stylesheet.empty() || !styleId)
-    {
-        return false;
-    }
-    // NavigateToString documents cannot reliably load a cross-origin <link>
-    // stylesheet (virtual-host CORS). Built-in skins are inlined for the same
-    // reason; keep external skins on that path so padding/decoration CSS is
-    // present before SetWindowRgn applies candidateWindow.decoration.
-    const std::wstring cssPath = skinsRoot + L"\\" + string_to_wstring(skin.id) + L"\\" + string_to_wstring(stylesheet);
-    std::wstring css =
-        RewriteCandidateSkinCssUrls(msime::skin_css::StripRemoteImports(ReadHtmlFile(cssPath)), skinsRoot, skin.id);
-    if (css.empty())
-    {
-        return false;
-    }
-    NeutralizeEmbeddedStyleClosers(css);
-    const size_t headEnd = html.find(L"</head>");
-    if (headEnd == std::wstring::npos)
-    {
-        return false;
-    }
-    html.insert(headEnd, std::wstring(L"<style id=\"") + styleId + L"\">" + css + L"</style>");
-    return true;
 }
 
 void AppendExternalCandidateColorCss(std::wstring &css, const CandidateSkinCatalog::CandidateColors &colors)
@@ -442,6 +320,51 @@ bool InjectExternalCandidateSkin(std::wstring &html, const CandidateSkinCatalog:
         return false;
     }
     html.insert(headEnd, vars + generated);
+    return true;
+}
+
+// 工具栏页面是按深浅主题各一张的，这里只生成当前主题的覆盖；D2D 端由 ApplyFloatingToolbarSkinOverrides 读同一份值。
+std::wstring BuildExternalToolbarSkinCss(const CandidateSkinCatalog::Package &skin, bool light)
+{
+    std::wstring css;
+    auto add = [&](const std::string &value, const wchar_t *selector, const wchar_t *property) {
+        if (value.empty())
+        {
+            return;
+        }
+        css.append(selector);
+        css.append(L" { ");
+        css.append(property);
+        css.append(L": ");
+        css.append(string_to_wstring(value));
+        css.append(L"; }\n");
+    };
+    const CandidateSkinCatalog::ToolbarColors &colors = light ? skin.toolbarLight : skin.toolbarDark;
+    add(colors.background, L".status-bar", L"background-color");
+    add(colors.border, L".status-bar", L"border-color");
+    add(colors.handle, L".drag-handle", L"background");
+    add(colors.divider, L".divider", L"background-color");
+    add(colors.icon, L".icon", L"color");
+    add(colors.hover, L".icon:hover", L"background-color");
+    if (skin.toolbarCornerRadiusDip)
+    {
+        // 部分 base 页面把圆角直接写成 calc(Npx * var(--ftb-scale))，所以覆盖 border-radius 本身而不是 --ftb-radius。
+        css.append(fmt::format(L".status-bar {{ border-radius: calc({}px * var(--ftb-scale)); }}\n",
+                               *skin.toolbarCornerRadiusDip));
+    }
+    return css;
+}
+
+bool InjectExternalToolbarSkin(std::wstring &html, const CandidateSkinCatalog::Package &skin, bool light)
+{
+    std::wstring css = BuildExternalToolbarSkinCss(skin, light);
+    const size_t headEnd = html.find(L"</head>");
+    if (css.empty() || headEnd == std::wstring::npos)
+    {
+        return false;
+    }
+    NeutralizeEmbeddedStyleClosers(css);
+    html.insert(headEnd, L"<style id=\"external-toolbar-skin\">" + css + L"</style>");
     return true;
 }
 
@@ -599,12 +522,7 @@ int PrepareHtmlForWnds()
                                                   string_to_wstring(candidateSkin),
                                                   string_to_wstring(baseCandidateSkin), ftbLight ? L"light" : L"dark"));
         }
-        if (!activeExternalCandidateSkin->toolbarStylesheet.empty())
-        {
-            const std::wstring skinsRoot = assetPath + L"\\skins";
-            InjectExternalSkinCssFile(::HTMLStringFtbWnd, *activeExternalCandidateSkin, skinsRoot,
-                                      activeExternalCandidateSkin->toolbarStylesheet, L"external-toolbar-skin");
-        }
+        InjectExternalToolbarSkin(::HTMLStringFtbWnd, *activeExternalCandidateSkin, ftbLight);
     }
     // The small windows navigate from strings. Inline the pinned local runtime
     // before navigation instead of blocking first paint on two virtual-host loads.

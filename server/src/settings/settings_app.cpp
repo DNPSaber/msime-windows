@@ -148,6 +148,24 @@ nlohmann::json CandidateColorsToJson(const CandidateSkinCatalog::CandidateColors
     return json;
 }
 
+nlohmann::json ToolbarColorsToJson(const CandidateSkinCatalog::ToolbarColors &colors)
+{
+    nlohmann::json json = nlohmann::json::object();
+    if (!colors.background.empty())
+        json["background"] = colors.background;
+    if (!colors.border.empty())
+        json["border"] = colors.border;
+    if (!colors.handle.empty())
+        json["handle"] = colors.handle;
+    if (!colors.divider.empty())
+        json["divider"] = colors.divider;
+    if (!colors.icon.empty())
+        json["icon"] = colors.icon;
+    if (!colors.hover.empty())
+        json["hover"] = colors.hover;
+    return json;
+}
+
 void ShowAboutSection()
 {
     if (!g_webview)
@@ -333,7 +351,6 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
                  {"author", skin.author},
                  {"description", skin.description},
                  {"base", skin.base},
-                 {"toolbarStylesheet", skin.toolbarStylesheet},
                  {"layouts", skin.layouts},
                  {"themes", skin.themes},
                  {"minWidthDip", skin.minWidthDip},
@@ -347,6 +364,10 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
                  {"backgroundOpacity", skin.backgroundOpacity},
                  {"candidate",
                   {{"dark", CandidateColorsToJson(skin.dark)}, {"light", CandidateColorsToJson(skin.light)}}},
+                 {"toolbar",
+                  {{"dark", ToolbarColorsToJson(skin.toolbarDark)}, {"light", ToolbarColorsToJson(skin.toolbarLight)}}},
+                 {"toolbarCornerRadiusDip",
+                  skin.toolbarCornerRadiusDip ? nlohmann::json(*skin.toolbarCornerRadiusDip) : nlohmann::json()},
                  {"compatible", CandidateSkinCatalog::Supports(skin, skin_layout, skin_theme)}});
         }
     }
