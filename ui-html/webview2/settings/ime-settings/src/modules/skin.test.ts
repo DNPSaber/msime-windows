@@ -64,9 +64,9 @@ it('applies built-in and custom candidate skins to the caret preview consumer', 
   expect(preview.classList.toggle).toHaveBeenCalledWith('skin-graphite', true);
   expect(preview.dataset.externalCaretSkinPreview).toBe('custom-blue');
   expect(preview.dataset.externalSkinPreview).toBeUndefined();
-  expect(generatedCss).toContain(':scope.candidate.theme-dark { --cand-bg: #102030; --cand-border: #405060; --cand-text: #708090; }');
+  expect(generatedCss).toContain(':is(:scope.candidate, :scope .candidate).theme-dark { --cand-bg: #102030; --cand-border: #405060; --cand-text: #708090; }');
   expect(generatedCss).toContain(':scope.caret-state-preview-host.theme-dark { --cand-bg: #102030; --cand-border: #405060; --cand-text: #708090; }');
-  expect(generatedCss).toContain(':scope.candidate.theme-light { --cand-bg: #f0f1f2; --cand-border: #d0d1d2; --cand-text: #202122; }');
+  expect(generatedCss).toContain(':is(:scope.candidate, :scope .candidate).theme-light { --cand-bg: #f0f1f2; --cand-border: #d0d1d2; --cand-text: #202122; }');
   expect(generatedCss).toContain(':scope.caret-state-preview-host.theme-light { --cand-bg: #f0f1f2; --cand-border: #d0d1d2; --cand-text: #202122; }');
 });
 
@@ -83,8 +83,8 @@ it('previews number and translation colours from the skin manifest', () => {
   ], [], '', true, 1);
   applyCandidateSkin('custom-gloss');
 
-  expect(generatedCss).toContain(':scope .num, :scope .cand-no { color: #8899aa; }');
-  expect(generatedCss).toContain(':scope .cand-translation { color: #e6a817; opacity: 1; }');
+  expect(generatedCss).toContain(':is(:scope, :scope .candidate) .num, :is(:scope, :scope .candidate) .cand-no { color: #8899aa; }');
+  expect(generatedCss).toContain(':is(:scope, :scope .candidate) .cand-translation { color: #e6a817; opacity: 1; }');
   expect(generatedCss).not.toContain('display: none');
 });
 
@@ -101,11 +101,11 @@ it('anchors preview colour rules on the host so the light theme and selected bar
   ], [], '', true, 2);
   applyCandidateSkin('custom-pink');
 
-  expect(generatedCss).toContain(':scope .cursor, :scope .first::before { background: #e08aa8; }');
-  expect(generatedCss).toContain(':scope.theme-light .cursor, :scope.theme-light .first::before { background: #c45c7a; }');
+  expect(generatedCss).toContain(':is(:scope, :scope .candidate) .cursor, :is(:scope, :scope .candidate) .first::before { background: #e08aa8; }');
+  expect(generatedCss).toContain(':is(:scope, :scope .candidate).theme-light .cursor, :is(:scope, :scope .candidate).theme-light .first::before { background: #c45c7a; }');
   // Hovering the selected candidate keeps the selected colour instead of the base skin's hover colour.
   expect(generatedCss).toContain(
-    ':scope.theme-light .first, :scope.theme-light .cand.first, :scope.theme-light .cand.first:hover { background-color: #f5dde5; }');
+    ':is(:scope, :scope .candidate).theme-light .first, :is(:scope, :scope .candidate).theme-light .cand.first, :is(:scope, :scope .candidate).theme-light .cand.first:hover { background-color: #f5dde5; }');
 });
 
 it('previews decoration placement, background image and corner radius from the skin manifest', () => {
@@ -123,9 +123,51 @@ it('previews decoration placement, background image and corner radius from the s
   expect(generatedCss).toContain('top: 0; left: 0;');
   expect(generatedCss).toContain('height: var(--msime-skin-decoration-top, 0px)');
   expect(generatedCss).toContain('/custom-art/assets/character.png');
-  expect(generatedCss).toContain('/custom-art/assets/paper.png?v=3") center / contain no-repeat; opacity: 0.5;');
+  // The image sits in the card's own border-box background so the border is drawn over it, as in the D2D renderer;
+  // the opacity becomes a veil of the surface over it.
+  const veil = 'color-mix(in srgb, var(--cand-bg) 50%, transparent)';
+  expect(generatedCss).toContain(
+    `:is(:scope, :scope .candidate) .container:not(:empty) { background-image: linear-gradient(${veil}, ${veil}), url("https://candidate-skins.example/custom-art/assets/paper.png?v=3"); background-size: auto, contain;`);
+  expect(generatedCss).toContain('background-origin: border-box; background-clip: border-box; }');
+  expect(generatedCss).not.toContain('::before {\n  content: ""; position: absolute; inset: 0');
   expect(generatedCss).toContain(':scope .container { border-radius: 12px; --wg-radius: 12px; --ao-radius: 12px; }');
-  expect(generatedCss).toContain(':scope.wnd-h .container > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: 12px; }');
+  expect(generatedCss).toContain(':is(:scope, :scope .candidate).wnd-h .container > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: 12px; }');
+});
+
+it('veils the background image with the surface the card is painted with in each theme', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-veil', name: 'Custom Veil', version: '1', base: 'willow_green', layouts: ['horizontal'],
+      themes: ['dark', 'light'], compatible: true, backgroundImage: 'paper.png', backgroundOpacity: 0.9,
+      candidate: { light: { surface: '#fff7fa' } }
+    }
+  ], [], '', true, 8);
+  applyCandidateSkin('custom-veil');
+
+  expect(generatedCss).toContain(
+    ':is(:scope, :scope .candidate) .container:not(:empty) { background-image: linear-gradient(color-mix(in srgb, var(--wg-surface) 10%, transparent)');
+  expect(generatedCss).toContain(
+    ':is(:scope, :scope .candidate).theme-light .container:not(:empty) { background-image: linear-gradient(color-mix(in srgb, #fff7fa 10%, transparent)');
+  // The image rules come after the surface rules, whose `background` shorthand would otherwise reset the layers.
+  expect(generatedCss.indexOf('.container:not(:empty) { background-image'))
+    .toBeGreaterThan(generatedCss.indexOf(':is(:scope, :scope .candidate).theme-light .container { background: #fff7fa; }'));
+});
+
+it('keys theme colours on a candidate host nested inside the skin card', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-card', name: 'Custom Card', version: '1', base: 'fluent', layouts: ['horizontal'],
+      themes: ['dark', 'light'], compatible: true,
+      candidate: { light: { border: 'rgba(176, 80, 110, 0.22)' } }
+    }
+  ], [], '', true, 9);
+  applyCandidateSkin('custom-card');
+
+  // In the skin list the scope root is the card and the theme class sits on the .candidate inside it.
+  expect(generatedCss).toContain(
+    ':is(:scope, :scope .candidate).theme-light .container { border-color: rgba(176, 80, 110, 0.22); }');
+  expect(generatedCss).toContain(
+    ':is(:scope.candidate, :scope .candidate).theme-light { --cand-border: rgba(176, 80, 110, 0.22); }');
 });
 
 it('ignores out-of-range numbers instead of pasting them into preview css', () => {
@@ -138,7 +180,8 @@ it('ignores out-of-range numbers instead of pasting them into preview css', () =
   ], [], '', true, 4);
   applyCandidateSkin('custom-bad');
 
-  expect(generatedCss).toContain('opacity: 1;');
+  // A bad opacity falls back to 1, which leaves no veil over the image.
+  expect(generatedCss).toContain('color-mix(in srgb, var(--cand-bg) 0%, transparent)');
   expect(generatedCss).not.toContain('display: none');
   expect(generatedCss).not.toContain('border-radius: 4px');
 });
@@ -152,4 +195,40 @@ it('draws no decoration without a decoration image', () => {
   applyCandidateSkin('custom-preview-only');
 
   expect(generatedCss).not.toContain('.containerParent:not(:empty)::before');
+});
+
+it('previews toolbar colours and corner radius per theme from the skin manifest', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-toolbar', name: 'Custom Toolbar', version: '1', base: 'fluent', layouts: ['horizontal'],
+      themes: ['dark', 'light'], compatible: true, toolbarCornerRadiusDip: 12,
+      toolbar: {
+        dark: { border: 'rgba(224, 138, 168, 0.38)', handle: '#e08aa8' },
+        light: { background: '#fff7fa', icon: '#3a2a30', divider: 'red; } body { display: none' }
+      }
+    }
+  ], [], '', true, 6);
+  applyCandidateSkin('custom-toolbar');
+
+  const dark = ':is(:scope.ftb-preview-host, :scope .ftb-preview-host).theme-dark';
+  const light = ':is(:scope.ftb-preview-host, :scope .ftb-preview-host).theme-light';
+  expect(generatedCss).toContain(`${dark} .status-bar { border-color: rgba(224, 138, 168, 0.38); }`);
+  expect(generatedCss).toContain(`${dark} .drag-handle { background: #e08aa8; }`);
+  expect(generatedCss).toContain(`${dark} .status-bar { border-radius: calc(12px * var(--ftb-scale)); }`);
+  expect(generatedCss).toContain(`${light} .status-bar { background-color: #fff7fa; }`);
+  expect(generatedCss).toContain(`${light} .icon { color: #3a2a30; }`);
+  expect(generatedCss).not.toContain(`${light} .drag-handle`);
+  expect(generatedCss).not.toContain('display: none');
+});
+
+it('emits no toolbar rules for a skin without a toolbar table', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-no-toolbar', name: 'No Toolbar', version: '1', base: 'fluent', layouts: ['horizontal'],
+      themes: ['dark'], compatible: true, toolbarCornerRadiusDip: null
+    }
+  ], [], '', true, 7);
+  applyCandidateSkin('custom-no-toolbar');
+
+  expect(generatedCss).not.toContain('ftb-preview-host');
 });

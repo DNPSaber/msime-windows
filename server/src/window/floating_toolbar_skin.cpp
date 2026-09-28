@@ -1,5 +1,6 @@
 #include "window/floating_toolbar_skin.h"
 
+#include "skin/candidate_skin_catalog.h"
 #include "window/candidate_skin_palette.h"
 
 FloatingToolbarSkin ResolveFloatingToolbarSkin(const std::string &skinId, bool light)
@@ -56,4 +57,20 @@ FloatingToolbarSkin ResolveFloatingToolbarSkin(const std::string &skinId, bool l
         skin.radius = 10.0f;
     }
     return skin;
+}
+
+void ApplyFloatingToolbarSkinOverrides(FloatingToolbarSkin &skin, const CandidateSkinCatalog::Package &package,
+                                       bool light)
+{
+    const CandidateSkinCatalog::ToolbarColors &colors = light ? package.toolbarLight : package.toolbarDark;
+    skin.fill = ParseCandidateCssColor(colors.background, skin.fill);
+    skin.border = ParseCandidateCssColor(colors.border, skin.border);
+    skin.handle = ParseCandidateCssColor(colors.handle, skin.handle);
+    skin.divider = ParseCandidateCssColor(colors.divider, skin.divider);
+    skin.glyph = ParseCandidateCssColor(colors.icon, skin.glyph);
+    skin.hover = ParseCandidateCssColor(colors.hover, skin.hover);
+    if (package.toolbarCornerRadiusDip)
+    {
+        skin.radius = static_cast<float>(*package.toolbarCornerRadiusDip);
+    }
 }

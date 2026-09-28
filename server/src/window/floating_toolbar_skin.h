@@ -18,6 +18,16 @@ struct FloatingToolbarSkin
     float iconRadius;
 };
 
-// skinId is a built-in skin id; external skins pass their base skin, because
-// their toolbar.css overrides only reach the WebView2 renderer.
+namespace CandidateSkinCatalog
+{
+struct Package;
+}
+
+// skinId is a built-in skin id; external skins pass their base skin and then
+// layer their [toolbar] overrides with ApplyFloatingToolbarSkinOverrides.
 FloatingToolbarSkin ResolveFloatingToolbarSkin(const std::string &skinId, bool light);
+
+// Applies an external skin's [toolbar] colors and corner radius for the given
+// theme. Unset or unparsable values keep what the base skin resolved.
+void ApplyFloatingToolbarSkinOverrides(FloatingToolbarSkin &skin, const CandidateSkinCatalog::Package &package,
+                                       bool light);

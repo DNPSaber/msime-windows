@@ -1,7 +1,5 @@
 let skinInitialized = false;
 let catalogKey = '';
-let styleGeneration = 0;
-const styleLoads = new Map<string, Promise<void>>();
 import { serializeHostMessage } from '../../../../shared/messages';
 import { loadHTML } from '../utils/common-utils';
 import { applyToolbarIconGlyphFallbacks } from './toolbar-icon-glyphs';
@@ -14,13 +12,17 @@ type CandidateColors = {
   accent?: string; selected?: string; hover?: string; surface?: string;
   border?: string; text?: string; number?: string; translation?: string; showSelectedBar?: boolean;
 };
+type ToolbarColors = {
+  background?: string; border?: string; handle?: string; divider?: string; icon?: string; hover?: string;
+};
 type ExternalSkin = {
   id: string; name: string; version: string; author?: string; description?: string;
-  base: string; toolbarStylesheet?: string; layouts: string[]; themes: string[];
+  base: string; layouts: string[]; themes: string[];
   minWidthDip?: number; decorationTopDip?: number; decorationWidthDip?: number; compatible: boolean;
   decorationImage?: string; decorationAlign?: string; cornerRadiusDip?: number | null;
   backgroundImage?: string; backgroundFit?: string; backgroundOpacity?: number;
   candidate?: { dark?: CandidateColors; light?: CandidateColors };
+  toolbar?: { dark?: ToolbarColors; light?: ToolbarColors }; toolbarCornerRadiusDip?: number | null;
 };
 type SkinScanIssue = { folder: string; reason: string };
 
@@ -99,16 +101,6 @@ function resourceUrl(id: string, relativePath: string): string {
   return `https://candidate-skins.example/${encodeURIComponent(id)}/${relativePath.split('/').map(encodeURIComponent).join('/')}?v=${catalogRevision}`;
 }
 
-function rewriteSkinCssUrls(css: string, skinId: string): string {
-  return css.replace(/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi, (full, _quote: string, url: string) => {
-    const trimmed = url.trim();
-    if (!trimmed || /^(data:|https?:|\/\/|\/)/i.test(trimmed)) return full;
-    const relative = trimmed.replace(/^\.\//, '');
-    if (relative.includes('..')) return full;
-    return `url("${resourceUrl(skinId, relative)}")`;
-  });
-}
-
 function applyDecorationVars(host: HTMLElement, skin: ExternalSkin): void {
   host.style.setProperty('--msime-skin-min-width', `${skin.minWidthDip || 0}px`);
   host.style.setProperty('--msime-skin-decoration-top', `${skin.decorationTopDip || 0}px`);
@@ -134,6 +126,11 @@ function boundedNumber(value: unknown, max: number): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max ? value : undefined;
 }
 
+// The candidate preview host carries the theme and layout classes. It is the scope root itself on the appearance pages,
+// but sits inside the skin card that is the scope root in the skin list, where ":scope.theme-light" never matched and
+// the light preview fell back to the dark rules.
+const CANDIDATE_HOST = ':is(:scope, :scope .candidate)';
+
 // Mirrors the candidate window's corner override (BuildExternalCandidateSkinCss): the frame, the variables the
 // willow green / autumn osmanthus skins read, and the fluent / wechat horizontal highlight corners on the frame.
 function cornerPreviewCss(skin: ExternalSkin): string {
@@ -143,7 +140,7 @@ function cornerPreviewCss(skin: ExternalSkin): string {
   let css = `:scope .container { border-radius: ${r}; --wg-radius: ${r}; --ao-radius: ${r}; }\n`;
   if (skin.base === 'willow_green') css += `:scope .containerParent { border-radius: ${r}; }\n`;
   if (skin.base === 'fluent' || skin.base === 'wechat') {
-    const h = ':scope.wnd-h .container';
+    const h = `${CANDIDATE_HOST}.wnd-h .container`;
     css += `${h} > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: ${r}; }
 ${h}.preedit-hidden > .pinyin + .row-wrapper > .cand { border-top-left-radius: ${r}; }
 ${h} > .row-wrapper:is(:last-child, .last-visible) > .cand { border-bottom-right-radius: ${r}; }
@@ -152,15 +149,23 @@ ${h}.preedit-hidden > .row-wrapper:is(:last-child, .last-visible) > .cand { bord
   return css;
 }
 
+// Mirrors the candidate window: the image covers the whole card including the area under its border, which is drawn on
+// top, as in D2D. A ::before cannot reach there because the card is a scroll container that clips to its padding box, so
+// the translucent border showed a ring of bare surface. A layer has no opacity of its own, so a veil of the surface at
+// (1 - opacity) over the image gives the same result as the image at that opacity over the surface.
 function backgroundPreviewCss(skin: ExternalSkin): string {
   if (!skin.backgroundImage) return '';
   const size = skin.backgroundFit === 'contain' ? 'contain' : skin.backgroundFit === 'stretch' ? '100% 100%' : 'cover';
   const opacity = boundedNumber(skin.backgroundOpacity, 1) ?? 1;
-  return `.container { position: relative; isolation: isolate; }
-.container:not(:empty)::before {
-  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
-  background: url("${resourceUrl(skin.id, skin.backgroundImage)}") center / ${size} no-repeat; opacity: ${opacity};
-}\n`;
+  const veilPercent = Math.round((1 - opacity) * 1000) / 10;
+  const image = `url("${resourceUrl(skin.id, skin.backgroundImage)}")`;
+  const rule = (scope: string, colors: CandidateColors) => {
+    // The same surface the card is painted with: the manifest's, else the base preview's variable.
+    const surface = skinColor(colors.surface) ?? (skin.base === 'willow_green' ? 'var(--wg-surface)' : 'var(--cand-bg)');
+    const veil = `color-mix(in srgb, ${surface} ${veilPercent}%, transparent)`;
+    return `${CANDIDATE_HOST}${scope} .container:not(:empty) { background-image: linear-gradient(${veil}, ${veil}), ${image}; background-size: auto, ${size}; background-position: center; background-repeat: no-repeat; background-origin: border-box; background-clip: border-box; }\n`;
+  };
+  return rule('', skin.candidate?.dark || {}) + rule('.theme-light', skin.candidate?.light || {});
 }
 
 function decorationHorizontalCss(align: string | undefined): string {
@@ -173,8 +178,8 @@ function candidatePreviewCss(skin: ExternalSkin): string {
   const dark = skin.candidate?.dark || {};
   const light = skin.candidate?.light || {};
   const themeRules = (scope: string, colors: CandidateColors) => {
-    // Inside @scope a selector without :scope only matches below the preview host, so ".theme-light .first" never saw the host's own theme class, and bare ".first::before" lost on specificity to the preview's ".wnd-h .first::before". Anchoring on :scope fixes both.
-    const prefix = `:scope${scope} `;
+    // Inside @scope a selector without :scope only matches below the preview host, so ".theme-light .first" never saw the host's own theme class, and bare ".first::before" lost on specificity to the preview's ".wnd-h .first::before". Anchoring on the host fixes both.
+    const prefix = `${CANDIDATE_HOST}${scope} `;
     const accent = skinColor(colors.accent);
     const selected = skinColor(colors.selected);
     const hover = skinColor(colors.hover);
@@ -188,7 +193,7 @@ function candidatePreviewCss(skin: ExternalSkin): string {
       text && `--cand-text: ${text}`].filter(Boolean).join('; ');
     if (variables) {
       const theme = scope ? 'light' : 'dark';
-      css += `:scope.candidate.theme-${theme} { ${variables}; }\n`;
+      css += `:is(:scope.candidate, :scope .candidate).theme-${theme} { ${variables}; }\n`;
       css += `:scope.caret-state-preview-host.theme-${theme} { ${variables}; }\n`;
     }
     if (accent) css += `${prefix}.cursor, ${prefix}.first::before { background: ${accent}; }\n`;
@@ -216,10 +221,37 @@ function candidatePreviewCss(skin: ExternalSkin): string {
 }
 .container { position: relative; z-index: 1; }\n`;
   }
-  css += backgroundPreviewCss(skin);
   css += cornerPreviewCss(skin);
   css += themeRules('', dark);
   css += themeRules('.theme-light', light);
+  // After the theme rules: their `background` shorthand for the surface would otherwise reset the image layers.
+  css += backgroundPreviewCss(skin);
+  css += toolbarPreviewCss(skin);
+  return css;
+}
+
+// Mirrors the floating toolbar's [toolbar] overrides (BuildExternalToolbarSkinCss). The toolbar host is either the scope
+// root itself (appearance pages) or sits inside the skin card that is the scope root, and each theme is keyed on the
+// host's own theme class so dark values never leak into the light preview. Hover is not previewed: the host ignores
+// pointer events.
+function toolbarPreviewCss(skin: ExternalSkin): string {
+  let css = '';
+  const radius = boundedNumber(skin.toolbarCornerRadiusDip, 32);
+  (['dark', 'light'] as const).forEach((theme) => {
+    const colors = skin.toolbar?.[theme] || {};
+    const host = `:is(:scope.ftb-preview-host, :scope .ftb-preview-host).theme-${theme}`;
+    const background = skinColor(colors.background);
+    const border = skinColor(colors.border);
+    const handle = skinColor(colors.handle);
+    const divider = skinColor(colors.divider);
+    const icon = skinColor(colors.icon);
+    if (background) css += `${host} .status-bar { background-color: ${background}; }\n`;
+    if (border) css += `${host} .status-bar { border-color: ${border}; }\n`;
+    if (radius !== undefined) css += `${host} .status-bar { border-radius: calc(${radius}px * var(--ftb-scale)); }\n`;
+    if (handle) css += `${host} .drag-handle { background: ${handle}; }\n`;
+    if (divider) css += `${host} .divider { background-color: ${divider}; }\n`;
+    if (icon) css += `${host} .icon { color: ${icon}; }\n`;
+  });
   return css;
 }
 
@@ -246,35 +278,9 @@ function writeScopedSkinRules(
   });
 }
 
-function injectScopedSkinCss(skin: ExternalSkin, stylesheet: string | undefined, styleId: string, force = false): Promise<void> {
-  if (!stylesheet || (!force && loadedExternalStyleIds.has(styleId) && document.getElementById(styleId))) return Promise.resolve();
-  const pending = styleLoads.get(styleId);
-  if (pending) return pending;
-  const generation = styleGeneration;
-  const task = (async () => {
-    try {
-      const response = await fetch(resourceUrl(skin.id, stylesheet), { cache: 'no-store' });
-      if (!response.ok) return;
-      const css = rewriteSkinCssUrls(await response.text(), skin.id).replace(/:root\b/g, ':scope');
-      if (generation !== styleGeneration) return;
-      let style = document.getElementById(styleId) as HTMLStyleElement | null;
-      if (!style) {
-        style = document.createElement('style'); style.id = styleId;
-        style.dataset.externalSkinStyle = skin.id; document.head.appendChild(style);
-      }
-      writeScopedSkinRules(style, skin.id, css);
-      loadedExternalStyleIds.add(styleId);
-    } catch {
-      // Keep the inherited built-in preview if a stylesheet is unavailable.
-    }
-  })().finally(() => { if (styleLoads.get(styleId) === task) styleLoads.delete(styleId); });
-  styleLoads.set(styleId, task);
-  return task;
-}
-
-function injectGeneratedCandidateCss(skin: ExternalSkin, force = false): void {
+function injectGeneratedCandidateCss(skin: ExternalSkin): void {
   const styleId = `external-skin-style-${skin.id}`;
-  if (!force && loadedExternalStyleIds.has(styleId) && document.getElementById(styleId)) return;
+  if (loadedExternalStyleIds.has(styleId) && document.getElementById(styleId)) return;
   const css = candidatePreviewCss(skin);
   if (!css.trim()) return;
   let style = document.getElementById(styleId) as HTMLStyleElement | null;
@@ -288,14 +294,7 @@ function injectGeneratedCandidateCss(skin: ExternalSkin, force = false): void {
   loadedExternalStyleIds.add(styleId);
 }
 
-async function ensureExternalSkinStyle(skin: ExternalSkin, force = false): Promise<void> {
-  injectGeneratedCandidateCss(skin, force);
-  await injectScopedSkinCss(skin, skin.toolbarStylesheet, `external-toolbar-style-${skin.id}`, force);
-}
-
 function resetExternalSkinStyles(): void {
-  styleGeneration++;
-  styleLoads.clear();
   document.querySelectorAll('style[data-external-skin-style]').forEach((node) => node.remove());
   loadedExternalStyleIds.clear();
 }
@@ -393,7 +392,7 @@ export function syncAppearancePreviews(): void {
   document.querySelectorAll<HTMLElement>('.cand-preview').forEach((element) => {
     element.classList.toggle('has-skin-decoration', !!(external && (external.decorationTopDip || 0) > 0));
   });
-  if (external) void ensureExternalSkinStyle(external);
+  if (external) injectGeneratedCandidateCss(external);
 }
 
 function selectSkin(value: unknown, persist: boolean): void {
@@ -509,7 +508,7 @@ function renderExternalSkins(): void {
     previews.append(horizontal, vertical, toolbar);
 
     card.append(header, previews);
-    void ensureExternalSkinStyle(skin).then(() => applyExternalCardTheme(skin));
+    injectGeneratedCandidateCss(skin);
     return card;
   }));
   empty.textContent = catalogScanned ? '没有发现外部皮肤。' : '尚未扫描。点击“刷新皮肤”读取皮肤目录。';

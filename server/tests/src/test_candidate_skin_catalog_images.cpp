@@ -136,3 +136,59 @@ TEST_CASE(candidate_skin_catalog_rejects_incomplete_or_invalid_image_tables)
     REQUIRE(LoadFails(L"bg-opacity", window + background + paper + "opacity = 2\n"));
     REQUIRE(LoadFails(L"bg-missing", window + background + "image = \"assets/missing.png\"\n"));
 }
+
+TEST_CASE(candidate_skin_catalog_reads_toolbar_colors_and_corner_radius)
+{
+    // The rgba() values end in `)"`, so the raw string needs its own delimiter.
+    const auto root = WriteSkin(L"toolbar", R"toml([candidate_window]
+
+[toolbar]
+corner_radius_dip = 12
+
+[toolbar.dark]
+border = "rgba(224, 138, 168, 0.38)"
+handle = "#e08aa8"
+
+[toolbar.light]
+background = "#fff7fa"
+divider = "rgba(176, 80, 110, 0.22)"
+icon = "#3a2a30"
+hover = "rgba(196, 92, 122, 0.10)"
+)toml");
+    std::string error;
+    const auto package = CandidateSkinCatalog::Load(root, "art", &error);
+    REQUIRE(error.empty());
+    REQUIRE(package.has_value());
+    REQUIRE(package->toolbarCornerRadiusDip.has_value());
+    REQUIRE_EQ(*package->toolbarCornerRadiusDip, 12.0);
+    REQUIRE_EQ(package->toolbarDark.border, std::string("rgba(224, 138, 168, 0.38)"));
+    REQUIRE_EQ(package->toolbarDark.handle, std::string("#e08aa8"));
+    REQUIRE(package->toolbarDark.background.empty());
+    REQUIRE_EQ(package->toolbarLight.background, std::string("#fff7fa"));
+    REQUIRE_EQ(package->toolbarLight.divider, std::string("rgba(176, 80, 110, 0.22)"));
+    REQUIRE_EQ(package->toolbarLight.icon, std::string("#3a2a30"));
+    REQUIRE_EQ(package->toolbarLight.hover, std::string("rgba(196, 92, 122, 0.10)"));
+    REQUIRE(package->toolbarLight.handle.empty());
+    RemoveSkin(root);
+
+    // Without a [toolbar] table the toolbar keeps the base skin entirely.
+    const auto plainRoot = WriteSkin(L"toolbar-absent", "[candidate_window]\n");
+    const auto plain = CandidateSkinCatalog::Load(plainRoot, "art", &error);
+    REQUIRE(plain.has_value());
+    REQUIRE(!plain->toolbarCornerRadiusDip.has_value());
+    REQUIRE(plain->toolbarDark.handle.empty());
+    REQUIRE(plain->toolbarLight.background.empty());
+    RemoveSkin(plainRoot);
+}
+
+TEST_CASE(candidate_skin_catalog_rejects_invalid_toolbar_tables)
+{
+    const std::string window = "[candidate_window]\n";
+    REQUIRE(LoadFails(L"tb-not-table", window + "[[toolbar]]\n"));
+    REQUIRE(LoadFails(L"tb-theme-not-table", window + "[toolbar]\ndark = \"pink\"\n"));
+    REQUIRE(LoadFails(L"tb-color-type", window + "[toolbar.dark]\nhandle = 7\n"));
+    // Toolbar colours are pasted into the WebView2 page's CSS, so anything that could end the declaration is refused.
+    REQUIRE(LoadFails(L"tb-color-inject", window + "[toolbar.light]\nicon = \"red; } body { display: none\"\n"));
+    REQUIRE(LoadFails(L"tb-radius", window + "[toolbar]\ncorner_radius_dip = 40\n"));
+    REQUIRE(LoadFails(L"tb-radius-type", window + "[toolbar]\ncorner_radius_dip = \"8px\"\n"));
+}
