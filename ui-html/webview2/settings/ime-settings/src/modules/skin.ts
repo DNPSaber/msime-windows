@@ -126,6 +126,11 @@ function boundedNumber(value: unknown, max: number): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max ? value : undefined;
 }
 
+// The candidate preview host carries the theme and layout classes. It is the scope root itself on the appearance pages,
+// but sits inside the skin card that is the scope root in the skin list, where ":scope.theme-light" never matched and
+// the light preview fell back to the dark rules.
+const CANDIDATE_HOST = ':is(:scope, :scope .candidate)';
+
 // Mirrors the candidate window's corner override (BuildExternalCandidateSkinCss): the frame, the variables the
 // willow green / autumn osmanthus skins read, and the fluent / wechat horizontal highlight corners on the frame.
 function cornerPreviewCss(skin: ExternalSkin): string {
@@ -135,7 +140,7 @@ function cornerPreviewCss(skin: ExternalSkin): string {
   let css = `:scope .container { border-radius: ${r}; --wg-radius: ${r}; --ao-radius: ${r}; }\n`;
   if (skin.base === 'willow_green') css += `:scope .containerParent { border-radius: ${r}; }\n`;
   if (skin.base === 'fluent' || skin.base === 'wechat') {
-    const h = ':scope.wnd-h .container';
+    const h = `${CANDIDATE_HOST}.wnd-h .container`;
     css += `${h} > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: ${r}; }
 ${h}.preedit-hidden > .pinyin + .row-wrapper > .cand { border-top-left-radius: ${r}; }
 ${h} > .row-wrapper:is(:last-child, .last-visible) > .cand { border-bottom-right-radius: ${r}; }
@@ -158,7 +163,7 @@ function backgroundPreviewCss(skin: ExternalSkin): string {
     // The same surface the card is painted with: the manifest's, else the base preview's variable.
     const surface = skinColor(colors.surface) ?? (skin.base === 'willow_green' ? 'var(--wg-surface)' : 'var(--cand-bg)');
     const veil = `color-mix(in srgb, ${surface} ${veilPercent}%, transparent)`;
-    return `:scope${scope} .container:not(:empty) { background-image: linear-gradient(${veil}, ${veil}), ${image}; background-size: auto, ${size}; background-position: center; background-repeat: no-repeat; background-origin: border-box; background-clip: border-box; }\n`;
+    return `${CANDIDATE_HOST}${scope} .container:not(:empty) { background-image: linear-gradient(${veil}, ${veil}), ${image}; background-size: auto, ${size}; background-position: center; background-repeat: no-repeat; background-origin: border-box; background-clip: border-box; }\n`;
   };
   return rule('', skin.candidate?.dark || {}) + rule('.theme-light', skin.candidate?.light || {});
 }
@@ -173,8 +178,8 @@ function candidatePreviewCss(skin: ExternalSkin): string {
   const dark = skin.candidate?.dark || {};
   const light = skin.candidate?.light || {};
   const themeRules = (scope: string, colors: CandidateColors) => {
-    // Inside @scope a selector without :scope only matches below the preview host, so ".theme-light .first" never saw the host's own theme class, and bare ".first::before" lost on specificity to the preview's ".wnd-h .first::before". Anchoring on :scope fixes both.
-    const prefix = `:scope${scope} `;
+    // Inside @scope a selector without :scope only matches below the preview host, so ".theme-light .first" never saw the host's own theme class, and bare ".first::before" lost on specificity to the preview's ".wnd-h .first::before". Anchoring on the host fixes both.
+    const prefix = `${CANDIDATE_HOST}${scope} `;
     const accent = skinColor(colors.accent);
     const selected = skinColor(colors.selected);
     const hover = skinColor(colors.hover);
@@ -188,7 +193,7 @@ function candidatePreviewCss(skin: ExternalSkin): string {
       text && `--cand-text: ${text}`].filter(Boolean).join('; ');
     if (variables) {
       const theme = scope ? 'light' : 'dark';
-      css += `:scope.candidate.theme-${theme} { ${variables}; }\n`;
+      css += `:is(:scope.candidate, :scope .candidate).theme-${theme} { ${variables}; }\n`;
       css += `:scope.caret-state-preview-host.theme-${theme} { ${variables}; }\n`;
     }
     if (accent) css += `${prefix}.cursor, ${prefix}.first::before { background: ${accent}; }\n`;
