@@ -9,9 +9,10 @@
     margin-top: 0px;
     margin-left: 0px;
     background: var(--cand-bg);
-    padding: 2px 1px;
     border-radius: 6px;
     box-shadow: var(--cand-shadow);
+    /* 同候选窗 fluent 横排：加上 .row 的上 2px、下 1px 外边距后，高亮与外框内缘四周都留 3px。 */
+    padding: 1px 3px 2px;
     min-width: 7em;
     /* Allow wrapping so the sample row is not clipped in settings preview.
        Live candwnd keeps nowrap separately. */
@@ -121,4 +122,12 @@
   .hidden-pinyin {
     visibility: hidden;
   }
+}
+
+/* 同候选窗 fluent 横排：首项、尾项落在外框四角上的高亮角与外框同为 6px；其余内置皮肤在 skin.css 自带规则。 */
+.wnd-h:not(.skin-wechat, .skin-graphite, .skin-willow-green, .skin-autumn-osmanthus) {
+  .container > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: 6px; }
+  .container.preedit-hidden > .pinyin + .row-wrapper > .cand { border-top-left-radius: 6px; }
+  .container > .row-wrapper:is(:last-child, .last-visible) > .cand { border-bottom-right-radius: 6px; }
+  .container.preedit-hidden > .row-wrapper:is(:last-child, .last-visible) > .cand { border-top-right-radius: 6px; }
 }
