@@ -474,6 +474,11 @@ void InputSession::set_wubi_input_options(metasequoia::WubiInputOptions options)
     }
 }
 
+const metasequoia::WubiInputOptions &InputSession::wubi_input_options() const
+{
+    return engine_.wubi_input_options();
+}
+
 const MixedExpressiveOptions &InputSession::mixed_expressive_options() const
 {
     return mixed_expressive_options_;

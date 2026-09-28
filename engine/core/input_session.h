@@ -68,6 +68,9 @@ class InputSession
     const EnglishInputOptions &english_input_options() const;
     void set_mixed_expressive_options(MixedExpressiveOptions options);
     void set_wubi_input_options(metasequoia::WubiInputOptions options);
+    // 读回当前五笔设置：公开 Session 的运行期开关要按字段改，不能整份覆盖（否则会把另一个
+    // 独立开关复位）。
+    const metasequoia::WubiInputOptions &wubi_input_options() const;
     const MixedExpressiveOptions &mixed_expressive_options() const;
     void set_dedicated_english_mode(bool enabled);
     bool dedicated_english_mode() const;

@@ -36,6 +36,10 @@ class ImeSession
         rescoring_context_ = std::move(context);
     }
     void set_wubi_input_options(metasequoia::WubiInputOptions options);
+    const metasequoia::WubiInputOptions &wubi_input_options() const
+    {
+        return wubi_options_;
+    }
     void replace_shuangpin_raw_input(const std::string &raw_input, const std::string &raw_input_with_cases);
     void replace_quanpin_raw_input(const std::string &raw_input, const std::string &raw_input_with_cases);
     void replace_wubi_raw_input(const std::string &raw_input, const std::string &raw_input_with_cases);

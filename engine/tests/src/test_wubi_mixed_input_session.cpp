@@ -331,6 +331,23 @@ int main()
             require(!matched.snapshot().candidates.empty(), "The four-letter code answered with nothing.");
             require(matched.snapshot().candidates.front().scheme == SchemeType::Wubi,
                     "A code the wubi table answered was not tagged as wubi.");
+
+            // set_wubi_mixed_pinyin must leave the sibling z-wildcard setting alone: a host that
+            // enabled wildcard at construction and toggles mixed at runtime keeps wildcard working.
+            SessionOptions wildcard;
+            wildcard.paths = prepare_runtime_paths(resources, root / "user-z", root / "cache-z", "v1");
+            wildcard.scheme = SchemeType::Wubi;
+            wildcard.wubi.z_wildcard = true;
+            Session z_session(wildcard);
+            z_session.set_wubi_mixed_pinyin(true);
+            for (const char letter : std::string("wz"))
+            {
+                z_session.character(letter);
+            }
+            const auto &z_candidates = z_session.snapshot().candidates;
+            require(std::any_of(z_candidates.begin(), z_candidates.end(),
+                                [](const WordItem &item) { return item.word == "你好"; }),
+                    "Toggling mixed pinyin reset the z wildcard setting.");
         }
     }
     catch (const std::exception &error)
