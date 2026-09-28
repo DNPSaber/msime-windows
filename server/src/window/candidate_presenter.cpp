@@ -10,6 +10,7 @@
 #include "utils/common_utils.h"
 #include "utils/ime_utils.h"
 #include "utils/window_utils.h"
+#include "webview2/windows_webview2.h"
 #include "window/candidate_skin_palette.h"
 #include "window/candidate_wheel_paging.h"
 #include "window/ime_windows.h"
@@ -155,7 +156,24 @@ constexpr float kShadowPadTop = 20.0f;
 constexpr float kShadowPadRight = 32.0f;
 constexpr float kShadowPadBottom = 40.0f;
 constexpr float kCandidateMinWidthDip = 160.0f;
-constexpr float kDecorationCardOverlap = 5.0f;
+
+msimeui::ImageStretch BackgroundStretch(const std::string &fit)
+{
+    if (fit == "contain")
+        return msimeui::ImageStretch::Uniform;
+    if (fit == "stretch")
+        return msimeui::ImageStretch::Fill;
+    return msimeui::ImageStretch::UniformToFill;
+}
+
+msimeui::HorizontalAlignment DecorationAlignment(const std::string &align)
+{
+    if (align == "left")
+        return msimeui::HorizontalAlignment::Leading;
+    if (align == "center")
+        return msimeui::HorizontalAlignment::Center;
+    return msimeui::HorizontalAlignment::Trailing;
+}
 // Below this fraction of the kept extent, the page really got smaller (fewer or
 // shorter candidates) and the card follows it; above it, the difference is a
 // late addition coming or going and the card keeps its size. Mirrors
@@ -176,6 +194,9 @@ struct CandidatePresenter::Impl
     std::shared_ptr<msimeui::StackPanel> root;
     std::shared_ptr<msimeui::Image> decoration;
     std::shared_ptr<msimeui::Card> card;
+    // 装饰图与卡片同列：列宽即卡片宽，装饰图在列内按 align 对齐，对应 CSS 里
+    // .containerParent 为 fit-content、::before 相对它定位。
+    std::shared_ptr<msimeui::StackPanel> cardColumn;
     std::shared_ptr<msimeui::Container> frame;
     std::shared_ptr<msimeui::StackPanel> body;
     std::shared_ptr<msimeui::TextBlock> preedit;
@@ -236,6 +257,7 @@ void CandidatePresenter::RebuildScene()
     impl_->root = std::make_shared<msimeui::StackPanel>(0.0f);
     impl_->decoration = std::make_shared<msimeui::Image>(L"");
     impl_->decoration->SetHorizontalAlignment(msimeui::HorizontalAlignment::Trailing);
+    impl_->decoration->SetStretch(msimeui::ImageStretch::Uniform);
     impl_->preedit = std::make_shared<msimeui::TextBlock>(L"", 14.0f, D2D1::ColorF(0xF5F5F5));
     impl_->preedit->SetTextLayoutPadding({0.0f, 1.0f, 0.0f, 1.0f});
     impl_->preedit->SetHorizontalAlignment(msimeui::HorizontalAlignment::Leading);
@@ -257,10 +279,14 @@ void CandidatePresenter::RebuildScene()
     impl_->card->SetHorizontalAlignment(msimeui::HorizontalAlignment::Leading);
     impl_->card->AddChild(impl_->body);
     impl_->root->SetHorizontalContentAlignment(msimeui::HorizontalAlignment::Leading);
+    impl_->cardColumn = std::make_shared<msimeui::StackPanel>(0.0f);
+    impl_->cardColumn->SetHorizontalAlignment(msimeui::HorizontalAlignment::Leading);
+    impl_->cardColumn->SetHorizontalContentAlignment(msimeui::HorizontalAlignment::Stretch);
+    impl_->cardColumn->AddChild(impl_->decoration);
+    impl_->cardColumn->AddChild(impl_->card);
     impl_->frame = std::make_shared<msimeui::Container>();
     impl_->frame->SetPadding({kShadowPadLeft, kShadowPadTop, kShadowPadRight, kShadowPadBottom});
-    impl_->frame->SetChild(impl_->card);
-    impl_->root->AddChild(impl_->decoration);
+    impl_->frame->SetChild(impl_->cardColumn);
     impl_->root->AddChild(impl_->frame);
     auto scene = std::make_unique<msimeui::Scene>();
     scene->SetRoot(impl_->root);
@@ -285,6 +311,8 @@ void CandidatePresenter::ApplySkin()
                 << GetConfiguredCandidateWindowPreeditFontSize() << '|' << GetConfiguredCandidateWindowLayout() << '|'
                 << GetConfiguredCandidateTextColor() << '|' << GetConfiguredCandidateWindowPreeditStyle();
     fingerprint << '|' << GetConfiguredCandidateEnglishFont();
+    // 同一个外部皮肤的 skin.toml 或图片改了，只有强制重载能看出来；带上重载代数让 D2D 也重读 manifest。
+    fingerprint << '|' << GetCandidateSkinReloadRevision();
     for (const auto &font : GetConfiguredCandidateFallbackFonts())
         fingerprint << '|' << font.size() << ':' << font;
     const std::string skinKey = fingerprint.str();
@@ -479,6 +507,15 @@ void CandidatePresenter::ApplySkin()
     if (package)
     {
         ApplyPackageColors(candLight ? package->light : package->dark, tokens);
+        // 自定义圆角：外框和贴着外框四角的高亮角一起换成 R，普通高亮角不变。
+        if (package->cornerRadiusDip)
+        {
+            tokens.radius = static_cast<float>(*package->cornerRadiusDip);
+            // 贴角规则以 outerItemRadius > 0 为开关；R 为 0 时仍要保持开启，否则贴角的
+            // 高亮会退回普通圆角、从直角外框里探出来。
+            if (tokens.outerItemRadius > 0.0f)
+                tokens.outerItemRadius = (std::max)(tokens.radius, 0.01f);
+        }
     }
     const CandidateSkinCatalog::CandidateColors *packageColors =
         package ? &(candLight ? package->light : package->dark) : nullptr;
@@ -579,36 +616,44 @@ void CandidatePresenter::ApplySkin()
     impl_->preedit->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
     impl_->preedit->SetTextLayoutPadding({5.0f, 0.0f, 5.0f, 0.0f});
 
+    // 装饰图与 WebView2 端的 .containerParent::before 同一几何：宽 width_dip、高 top_inset_dip 的盒子
+    // 底边贴着卡片顶边、不与卡片重叠，按 align 贴卡片左/中/右，图片在盒内等比居中（contain）。
     decorationTopDip_ = 0.0f;
     decorationWidthDip_ = 0.0f;
+    cardMinWidthDip_ = kCandidateMinWidthDip;
     std::wstring decorationPath;
+    std::wstring backgroundPath;
+    const std::wstring packageRoot = package ? skinsRoot + L"\\" + string_to_wstring(package->id) + L"\\" : L"";
     if (package)
     {
         decorationTopDip_ = static_cast<float>(package->decorationTopDip);
         decorationWidthDip_ = static_cast<float>(package->decorationWidthDip);
-        if (!package->preview.empty())
-        {
-            decorationPath =
-                skinsRoot + L"\\" + string_to_wstring(package->id) + L"\\" + string_to_wstring(package->preview);
-        }
+        if (!package->decorationImage.empty())
+            decorationPath = packageRoot + string_to_wstring(package->decorationImage);
+        if (!package->backgroundImage.empty())
+            backgroundPath = packageRoot + string_to_wstring(package->backgroundImage);
+        cardMinWidthDip_ =
+            (std::max)({cardMinWidthDip_, static_cast<float>(package->minWidthDip), decorationWidthDip_});
     }
+    // 卡片上方留给阴影的 kShadowPadTop 与装饰盒重叠，装饰盒高过它时不再额外留白。
+    float framePadTop = kShadowPadTop;
     if (decorationPath.empty() || decorationTopDip_ <= 0.0f)
     {
         impl_->decoration->SetHeight(0.0f);
         impl_->decoration->ClearWidth();
         impl_->decoration->SetSource(L"");
-        impl_->decoration->SetMargin({0.0f, 0.0f, 0.0f, 0.0f});
     }
     else
     {
         impl_->decoration->SetSource(decorationPath);
         impl_->decoration->SetHeight(decorationTopDip_);
-        if (decorationWidthDip_ > 0.0f)
-        {
-            impl_->decoration->SetWidth(decorationWidthDip_);
-        }
-        impl_->decoration->SetStretch(msimeui::ImageStretch::Uniform);
-        impl_->decoration->SetMargin({0.0f, 0.0f, 0.0f, -(kShadowPadTop + kDecorationCardOverlap)});
+        impl_->decoration->SetWidth(decorationWidthDip_);
+        impl_->decoration->SetHorizontalAlignment(DecorationAlignment(package->decorationAlign));
+        framePadTop = (std::max)(0.0f, kShadowPadTop - decorationTopDip_);
+    }
+    if (impl_->frame)
+    {
+        impl_->frame->SetPadding({kShadowPadLeft, framePadTop, kShadowPadRight, kShadowPadBottom});
     }
 
     msimeui::Brush brush;
@@ -621,7 +666,9 @@ void CandidatePresenter::ApplySkin()
     {
         impl_->card->SetBrush(brush);
         impl_->card->SetPadding(tokens.containerPad);
-        impl_->card->SetMinWidth(kCandidateMinWidthDip);
+        impl_->card->SetMinWidth(cardMinWidthDip_);
+        impl_->card->SetBackgroundImage(backgroundPath, BackgroundStretch(package ? package->backgroundFit : ""),
+                                        package ? static_cast<float>(package->backgroundOpacity) : 1.0f);
     }
 }
 
@@ -1119,7 +1166,7 @@ void CandidatePresenter::ShowFromGlobalState(POINT caret)
     auto layoutRoot = [&]() {
         impl_->root->InvalidateMeasure();
         const msimeui::SizeF measured = impl_->root->MeasureInLayout({maxW, maxH});
-        widthDip = (std::max)(measured.width, kCandidateMinWidthDip + kShadowPadLeft + kShadowPadRight);
+        widthDip = (std::max)(measured.width, cardMinWidthDip_ + kShadowPadLeft + kShadowPadRight);
         heightDip = (std::max)(measured.height, 36.0f);
         impl_->root->InvalidateArrange();
         impl_->root->ArrangeInLayout({0.0f, 0.0f, widthDip, heightDip});
@@ -1134,7 +1181,7 @@ void CandidatePresenter::ShowFromGlobalState(POINT caret)
     // carrying the old size over leaves blank rows at the bottom.
     if (impl_->card)
     {
-        impl_->card->SetMinWidth(kCandidateMinWidthDip);
+        impl_->card->SetMinWidth(cardMinWidthDip_);
         impl_->card->ClearMinHeight();
     }
     layoutRoot();
@@ -1150,12 +1197,12 @@ void CandidatePresenter::ShowFromGlobalState(POINT caret)
             stickyCardHeightDip_ = 0.0f;
         }
         const msimeui::RectF natural = impl_->card->GetBounds();
-        const float maxCardWidthDip = (std::max)(kCandidateMinWidthDip, maxW - kShadowPadLeft - kShadowPadRight);
+        const float maxCardWidthDip = (std::max)(cardMinWidthDip_, maxW - kShadowPadLeft - kShadowPadRight);
         stickyCardWidthDip_ = (std::min)(StickyCardExtent(stickyCardWidthDip_, natural.width), maxCardWidthDip);
         stickyCardHeightDip_ = StickyCardExtent(stickyCardHeightDip_, natural.height);
         if (stickyCardWidthDip_ > natural.width + 0.5f || stickyCardHeightDip_ > natural.height + 0.5f)
         {
-            impl_->card->SetMinWidth((std::max)(kCandidateMinWidthDip, stickyCardWidthDip_));
+            impl_->card->SetMinWidth((std::max)(cardMinWidthDip_, stickyCardWidthDip_));
             impl_->card->SetMinHeight(stickyCardHeightDip_);
             layoutRoot();
         }

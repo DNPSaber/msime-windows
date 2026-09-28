@@ -127,6 +127,26 @@ double BoundedNumber(const toml::table &table, const char *key, double maximum)
     return -1.0;
 }
 
+bool ReadEnum(const toml::table &table, const char *key, const std::vector<std::string> &allowed, std::string &out)
+{
+    if (!table.contains(key))
+    {
+        return true;
+    }
+    std::string text;
+    if (!ReadString(table, key, text, 32, true) || std::find(allowed.begin(), allowed.end(), text) == allowed.end())
+    {
+        return false;
+    }
+    out = text;
+    return true;
+}
+
+bool ReadResource(const toml::table &table, const char *key, std::string &out)
+{
+    return !table.contains(key) || (ReadString(table, key, out, 256, true) && IsSafeRelativeResource(out));
+}
+
 bool ReadColors(const toml::table *table, CandidateColors &out)
 {
     if (!table)
@@ -250,19 +270,54 @@ std::optional<Package> Load(const std::filesystem::path &skinsRoot, const std::s
             SetError(error, "candidate_window.min_width_dip 超出范围");
             return std::nullopt;
         }
-        const auto *decoration = (*window)["decoration"].as_table();
-        if (!decoration)
+        // 装饰图是可选的：没有这张表就没有装饰；有这张表时图片和两个尺寸都必须给出。
+        if (const toml::node *decorationNode = window->get("decoration"))
         {
-            SetError(error, "缺少 candidate_window.decoration");
-            return std::nullopt;
+            const auto *decoration = decorationNode->as_table();
+            if (!decoration || !decoration->contains("image") ||
+                !ReadResource(*decoration, "image", package.decorationImage) ||
+                !ReadEnum(*decoration, "align", {"left", "center", "right"}, package.decorationAlign))
+            {
+                SetError(error, "candidate_window.decoration 无效");
+                return std::nullopt;
+            }
+            package.decorationTopDip = BoundedNumber(*decoration, "top_inset_dip", 500.0);
+            package.decorationWidthDip = BoundedNumber(*decoration, "width_dip", 1000.0);
+            if (package.decorationTopDip <= 0.0 || package.decorationWidthDip <= 0.0)
+            {
+                SetError(error, "candidate_window.decoration 尺寸无效");
+                return std::nullopt;
+            }
         }
-        package.decorationTopDip = BoundedNumber(*decoration, "top_inset_dip", 500.0);
-        package.decorationWidthDip = BoundedNumber(*decoration, "width_dip", 1000.0);
-        if (package.decorationTopDip < 0.0 || package.decorationWidthDip < 0.0 ||
-            ((package.decorationTopDip == 0.0) != (package.decorationWidthDip == 0.0)))
+        if (window->contains("corner_radius_dip"))
         {
-            SetError(error, "decoration 尺寸无效");
-            return std::nullopt;
+            const double radius = BoundedNumber(*window, "corner_radius_dip", 32.0);
+            if (radius < 0.0)
+            {
+                SetError(error, "candidate_window.corner_radius_dip 超出范围");
+                return std::nullopt;
+            }
+            package.cornerRadiusDip = radius;
+        }
+        if (const toml::node *backgroundNode = window->get("background"))
+        {
+            const auto *background = backgroundNode->as_table();
+            if (!background || !background->contains("image") ||
+                !ReadResource(*background, "image", package.backgroundImage) ||
+                !ReadEnum(*background, "fit", {"cover", "contain", "stretch"}, package.backgroundFit))
+            {
+                SetError(error, "candidate_window.background 无效");
+                return std::nullopt;
+            }
+            if (background->contains("opacity"))
+            {
+                package.backgroundOpacity = BoundedNumber(*background, "opacity", 1.0);
+                if (package.backgroundOpacity < 0.0)
+                {
+                    SetError(error, "candidate_window.background.opacity 超出范围");
+                    return std::nullopt;
+                }
+            }
         }
         const auto *candidate = root["candidate"].as_table();
         if (candidate && (!ReadColors((*candidate)["dark"].as_table(), package.dark) ||
@@ -276,6 +331,18 @@ std::optional<Package> Load(const std::filesystem::path &skinsRoot, const std::s
             !std::filesystem::is_regular_file(directory / std::filesystem::u8path(package.toolbarStylesheet), ec))
         {
             SetError(error, "找不到 toolbar_stylesheet 文件");
+            return std::nullopt;
+        }
+        if (!package.decorationImage.empty() &&
+            !std::filesystem::is_regular_file(directory / std::filesystem::u8path(package.decorationImage), ec))
+        {
+            SetError(error, "找不到 candidate_window.decoration.image 文件");
+            return std::nullopt;
+        }
+        if (!package.backgroundImage.empty() &&
+            !std::filesystem::is_regular_file(directory / std::filesystem::u8path(package.backgroundImage), ec))
+        {
+            SetError(error, "找不到 candidate_window.background.image 文件");
             return std::nullopt;
         }
         return package;

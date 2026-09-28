@@ -340,6 +340,12 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
                  {"minWidthDip", skin.minWidthDip},
                  {"decorationTopDip", skin.decorationTopDip},
                  {"decorationWidthDip", skin.decorationWidthDip},
+                 {"decorationImage", skin.decorationImage},
+                 {"decorationAlign", skin.decorationAlign},
+                 {"cornerRadiusDip", skin.cornerRadiusDip ? nlohmann::json(*skin.cornerRadiusDip) : nlohmann::json()},
+                 {"backgroundImage", skin.backgroundImage},
+                 {"backgroundFit", skin.backgroundFit},
+                 {"backgroundOpacity", skin.backgroundOpacity},
                  {"candidate",
                   {{"dark", CandidateColorsToJson(skin.dark)}, {"light", CandidateColorsToJson(skin.light)}}},
                  {"compatible", CandidateSkinCatalog::Supports(skin, skin_layout, skin_theme)}});

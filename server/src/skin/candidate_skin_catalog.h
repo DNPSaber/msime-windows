@@ -34,8 +34,17 @@ struct Package
     std::vector<std::string> layouts;
     std::vector<std::string> themes;
     double minWidthDip = 0.0;
+    // 覆盖基础皮肤的候选框外框圆角；未设置时沿用基础皮肤。
+    std::optional<double> cornerRadiusDip;
+    // 候选框卡片内的背景图，绘制在底色之上、候选文字之下，按外框圆角裁剪。
+    std::string backgroundImage;
+    std::string backgroundFit = "cover"; // cover / contain / stretch
+    double backgroundOpacity = 1.0;
     double decorationTopDip = 0.0;
     double decorationWidthDip = 0.0;
+    // 卡片上方的装饰图；为空表示皮肤没有装饰。
+    std::string decorationImage;
+    std::string decorationAlign = "right"; // left / center / right，相对卡片
     CandidateColors dark;
     CandidateColors light;
 };
