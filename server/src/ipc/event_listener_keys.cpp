@@ -118,8 +118,8 @@ bool IsManualPinyinSeparatorKey(UINT keycode, WCHAR wch)
 
 bool IsMicrosoftShuangpinIngKey(UINT keycode, WCHAR wch, const std::string &raw_input)
 {
-    if (keycode != VK_OEM_1 || wch != L';' || GetConfiguredShuangpinSchema() != "microsoft" ||
-        g_inputSession == nullptr || g_inputSession->current_scheme_type() != SchemeType::Shuangpin)
+    if (keycode != VK_OEM_1 || wch != L';' || !IsConfiguredShuangpinSemicolonFinal() || g_inputSession == nullptr ||
+        g_inputSession->current_scheme_type() != SchemeType::Shuangpin)
     {
         return false;
     }
@@ -344,7 +344,7 @@ bool ApplyCompositionEditKey(UINT keycode, WCHAR wch, UINT modifiers_down, bool 
         {
             input = '\'';
         }
-        else if (keycode == VK_OEM_1 && wch == L';' && GetConfiguredShuangpinSchema() == "microsoft" &&
+        else if (keycode == VK_OEM_1 && wch == L';' && IsConfiguredShuangpinSemicolonFinal() &&
                  g_inputSession->current_scheme_type() == SchemeType::Shuangpin)
         {
             input = ';';

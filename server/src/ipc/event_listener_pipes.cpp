@@ -838,7 +838,7 @@ void RegisteredPipeMonitorThread(HANDLE clientPipe, UINT pipeRole, uint64_t hand
                 GetConfiguredPairedPunctuationEnabled() ? L"1" : L"0");
             SendToTsfWorkerThreadClientViaNamedpipe(
                 hello.client_id, Global::DataFromServerMsgTypeToTsfWorkerThread::MicrosoftShuangpinChanged,
-                GetConfiguredShuangpinSchema() == "microsoft" ? L"1" : L"0");
+                IsConfiguredShuangpinSemicolonFinal() ? L"1" : L"0");
             SendToTsfWorkerThreadClientViaNamedpipe(hello.client_id,
                                                     Global::DataFromServerMsgTypeToTsfWorkerThread::InputModeChanged,
                                                     GetConfiguredInputMode() == "japanese" ? L"1" : L"0");

@@ -567,7 +567,7 @@ int ShuangpinDictionary::handleVkCode(ImeKeyCode vk, ImeModifierMask modifiers_d
                 _pinyin_sequence_with_cases += lowerAlpha;
             }
         }
-        else if (profile_.name == "microsoft" && vk == ImeKey::Semicolon && wch == u';' &&
+        else if (ShuangpinProfileUsesSemicolonFinal(profile_) && vk == ImeKey::Semicolon && wch == u';' &&
                  _pinyin_sequence.size() % 2 == 1)
         {
             _pinyin_sequence += ';';

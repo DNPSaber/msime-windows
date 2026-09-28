@@ -362,7 +362,8 @@ constexpr std::uint32_t InsertText = 10;
 constexpr std::uint32_t SmartPunctuationChanged = 11;
 // Auto-complete opening paired punctuation and leave the caret inside. Payload "0"/"1".
 constexpr std::uint32_t PairedPunctuationChanged = 12;
-// Whether ';' is an input key for the Microsoft shuangpin profile.
+// Whether ';' is an input key for the configured shuangpin profile (Microsoft, Sogou and
+// Ziguang put the ing final there). The name predates the other profiles.
 constexpr std::uint32_t MicrosoftShuangpinChanged = 13;
 // Revert a converted ASCII punctuation back to Chinese when the same
 // punctuation key is pressed within the revert window. Payload "0"/"1".

@@ -205,6 +205,8 @@ bool SetConfiguredSwitchLanguageCtrlEnabled(bool enabled);
 bool GetConfiguredSwitchLanguageCtrlAltSpaceEnabled();
 bool SetConfiguredSwitchLanguageCtrlAltSpaceEnabled(bool enabled);
 const std::string &GetConfiguredShuangpinSchema();
+// 当前双拼方案是否把 ing 放在分号键上（微软、搜狗、紫光），此时分号在音节第二位是输入键。
+bool IsConfiguredShuangpinSemicolonFinal();
 bool SetConfiguredShuangpinSchema(const std::string &schema);
 const std::string &GetConfiguredWubiSchema();
 bool SetConfiguredWubiSchema(const std::string &schema);

@@ -190,7 +190,8 @@ KeyResult InputSession::insert_at_caret(char character)
         case LocalInputMode::None:
             accepted = lower || (upper && ((scheme() == SchemeType::Quanpin && quanpin_helpcode_enabled_) ||
                                            (scheme() == SchemeType::Shuangpin && shuangpin_helpcode_enabled_)));
-            if (character == ';' && scheme() == SchemeType::Shuangpin && shuangpin_profile_.name == "microsoft")
+            if (character == ';' && scheme() == SchemeType::Shuangpin &&
+                ShuangpinProfileUsesSemicolonFinal(shuangpin_profile_))
             {
                 const auto separator = caret == 0 ? std::string::npos : text.rfind('\'', caret - 1);
                 const auto start = separator == std::string::npos ? 0 : separator + 1;
