@@ -59,6 +59,9 @@ class CandidatePresenter
     POINT hoverBaseline_{};
     float decorationTopDip_ = 0.0f;
     float decorationWidthDip_ = 0.0f;
+    // 卡片最小宽度：默认 160，外部皮肤的 min_width_dip 与装饰图宽度可以把它撑大，
+    // 装饰图因此始终落在卡片宽度之内（与 WebView2 端的 min-width 规则一致）。
+    float cardMinWidthDip_ = 160.0f;
     std::string lastSkinFingerprint_;
     int lastHostWidthPx_ = 0;
     int lastHostHeightPx_ = 0;

@@ -22,8 +22,6 @@ layouts = ["horizontal", "vertical"]
 themes = ["dark", "light"]
 
 [candidate_window]
-
-[candidate_window.decoration]
 )";
 
 std::filesystem::path WriteSkin(const std::wstring &leaf, const std::string &candidateTables)

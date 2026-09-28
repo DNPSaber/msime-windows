@@ -329,30 +329,90 @@ void AppendExternalCandidateColorCss(std::wstring &css, const CandidateSkinCatal
     }
 }
 
+// Image paths come from the package's own skin.toml, so they get the same treatment as a URL
+// written inside the stylesheet rather than being trusted because they arrived through a
+// manifest field.
+std::wstring ManifestImageCssUrl(const std::wstring &skinsRoot, const std::string &skinId, const std::string &path)
+{
+    const std::wstring raw = string_to_wstring(path);
+    if (path.empty() || msime::skin_css::ClassifyUrl(raw) != msime::skin_css::UrlAction::Embed)
+    {
+        return L"none";
+    }
+    return EmbedSkinCssUrl(skinsRoot, skinId, raw);
+}
+
+void AppendExternalCandidateCornerCss(std::wstring &css, const CandidateSkinCatalog::Package &skin)
+{
+    if (!skin.cornerRadiusDip)
+    {
+        return;
+    }
+    const std::wstring radius = fmt::format(L"{}px", *skin.cornerRadiusDip);
+    // 杨柳青、秋桂的外框与贴角高亮都读这两个变量，改变量即可；杨柳青的外框阴影挂在 .containerParent 上。
+    css.append(L"body, .container { border-radius: " + radius + L"; }\n");
+    css.append(L".container { --wg-radius: " + radius + L"; --ao-radius: " + radius + L"; }\n");
+    if (skin.base == "willow_green")
+    {
+        css.append(L".containerParent { border-radius: " + radius + L"; }\n");
+    }
+    // Fluent 与微信横排把贴着外框四角的高亮角写死成外框圆角，这里用同一组选择器改成 R。
+    if ((skin.base == "fluent" || skin.base == "wechat") && GetConfiguredCandidateWindowLayout() == "horizontal")
+    {
+        css.append(L".container > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: " + radius +
+                   L"; }\n"
+                   L".container.preedit-hidden > .pinyin + .row-wrapper > .cand { border-top-left-radius: " +
+                   radius +
+                   L"; }\n"
+                   L".container > .row-wrapper:is(:last-child, .last-visible) > .cand { "
+                   L"border-bottom-right-radius: " +
+                   radius +
+                   L"; }\n"
+                   L".container.preedit-hidden > .row-wrapper:is(:last-child, .last-visible) > .cand { "
+                   L"border-top-right-radius: " +
+                   radius + L"; }\n");
+    }
+}
+
 std::wstring BuildExternalCandidateSkinCss(const CandidateSkinCatalog::Package &skin, const std::wstring &skinsRoot)
 {
-    std::wstring css;
+    // 卡片至少与装饰图同宽，装饰图因此总落在卡片宽度之内；D2D 端用同一规则撑开卡片。
+    std::wstring css = L".container:not(:empty) { min-width: max(7em, var(--msime-skin-min-width, 0px), "
+                       L"var(--msime-skin-decoration-width, 0px)); }\n";
     if (skin.decorationTopDip > 0.0)
     {
-        // skin.preview comes from the package's own skin.toml, so it gets the same treatment as a
-        // URL written inside the stylesheet rather than being trusted because it arrived through a
-        // manifest field.
-        std::wstring preview = L"none";
-        if (!skin.preview.empty() &&
-            msime::skin_css::ClassifyUrl(string_to_wstring(skin.preview)) == msime::skin_css::UrlAction::Embed)
-        {
-            preview = EmbedSkinCssUrl(skinsRoot, skin.id, string_to_wstring(skin.preview));
-        }
+        // 装饰盒底边贴卡片顶边、不与卡片重叠，按 align 贴卡片左/中/右，图片在盒内 contain 居中。
+        const wchar_t *horizontal = L"right: 0;";
+        if (skin.decorationAlign == "left")
+            horizontal = L"left: 0;";
+        else if (skin.decorationAlign == "center")
+            horizontal = L"left: 0; right: 0; margin-inline: auto;";
         css.append(L".containerParent { padding-top: var(--msime-skin-decoration-top, 0px); "
                    L"position: relative; box-sizing: border-box; }\n"
                    L".containerParent:not(:empty)::before { content: \"\"; position: absolute; "
-                   L"z-index: 0; top: 0; right: 0; width: var(--msime-skin-decoration-width, 0px); "
+                   L"z-index: 0; top: 0; ");
+        css.append(horizontal);
+        css.append(L" width: var(--msime-skin-decoration-width, 0px); "
                    L"height: var(--msime-skin-decoration-top, 0px); background: ");
-        css.append(preview);
+        css.append(ManifestImageCssUrl(skinsRoot, skin.id, skin.decorationImage));
         css.append(L" center / contain no-repeat; pointer-events: none; }\n"
-                   L".container { position: relative; z-index: 1; "
-                   L"min-width: max(7em, var(--msime-skin-min-width, 0px)); }\n");
+                   L".container { position: relative; z-index: 1; }\n");
     }
+    if (!skin.backgroundImage.empty())
+    {
+        // 背景图垫在卡片底色之上、候选内容之下；卡片的 overflow 裁剪让它跟随外框圆角。
+        const wchar_t *size = L"cover";
+        if (skin.backgroundFit == "contain")
+            size = L"contain";
+        else if (skin.backgroundFit == "stretch")
+            size = L"100% 100%";
+        css.append(L".container { position: relative; isolation: isolate; }\n"
+                   L".container:not(:empty)::before { content: \"\"; position: absolute; inset: 0; z-index: -1; "
+                   L"pointer-events: none; border-radius: inherit; background: ");
+        css.append(ManifestImageCssUrl(skinsRoot, skin.id, skin.backgroundImage));
+        css.append(fmt::format(L" center / {} no-repeat; opacity: {}; }}\n", size, skin.backgroundOpacity));
+    }
+    AppendExternalCandidateCornerCss(css, skin);
     const bool light = ResolveConfiguredTheme(GetConfiguredThemeCand()) == "light";
     AppendExternalCandidateColorCss(css, light ? skin.light : skin.dark);
     return css;

@@ -25,10 +25,6 @@ themes = ["dark", "light"]
 
 [candidate_window]
 min_width_dip = 320.0
-
-[candidate_window.decoration]
-top_inset_dip = 0.0
-width_dip = 0.0
 )";
 
 // Writes a minimal but complete external skin under <root>/skins/demo.

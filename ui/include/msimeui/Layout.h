@@ -32,6 +32,14 @@ enum class VerticalAlignment
     Trailing,
 };
 
+enum class ImageStretch
+{
+    None,
+    Fill,
+    Uniform,
+    UniformToFill,
+};
+
 enum class GridUnitType
 {
     Auto,
@@ -362,6 +370,10 @@ class Card : public Panel
     void SetShadowPasses(const std::vector<ShadowPass> &passes);
     // Turns the drop shadow off entirely; enabled by default.
     void SetShadowEnabled(bool enabled);
+    // Draws an image file over the fill and under the children, clipped to the rounded
+    // card shape. An empty path removes it.
+    void SetBackgroundImage(std::wstring filePath, ImageStretch stretch = ImageStretch::UniformToFill,
+                            float opacity = 1.0f);
 
     SizeF Measure(const SizeF &availableSize) override;
     void Arrange(const RectF &finalRect) override;
@@ -370,9 +382,14 @@ class Card : public Panel
   private:
     void RenderShadow(ID2D1RenderTarget *target);
     bool RenderCachedShadow(ID2D1RenderTarget *target, const ShadowPass *passes, size_t count);
+    void RenderBackgroundImage(DeviceResources &deviceResources, ID2D1RenderTarget *target,
+                               const D2D1_ROUNDED_RECT &shape);
 
     Brush brush_;
     float padding_ = 0.0f;
+    std::wstring backgroundImage_;
+    ImageStretch backgroundStretch_ = ImageStretch::UniformToFill;
+    float backgroundOpacity_ = 1.0f;
     float shadowScale_ = 1.0f;
     float shadowOpacity_ = 1.0f;
     std::vector<ShadowPass> shadowPasses_;
