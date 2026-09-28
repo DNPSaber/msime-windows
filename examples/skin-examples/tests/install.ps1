@@ -8,7 +8,7 @@ try {
     $config = Join-Path $imeRoot 'config.toml'
     & "$PSScriptRoot/../install.ps1" -NoActivate
     if (Test-Path $config) { throw 'NoActivate must not create settings' }
-    foreach ($file in @('skin.toml', 'toolbar.css', 'assets/character.png')) {
+    foreach ($file in @('skin.toml', 'assets/character.png', 'assets/background.png')) {
         $source = Join-Path "$PSScriptRoot/../skins/niya-demo" $file
         $copy = Join-Path $destination $file
         if ((Get-FileHash $source).Hash -ne (Get-FileHash $copy).Hash) {
