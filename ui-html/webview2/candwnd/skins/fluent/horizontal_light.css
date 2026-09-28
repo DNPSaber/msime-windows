@@ -74,7 +74,7 @@
       padding: 2px 4px 2px 0;
     }
 
-    .hover-active .cand:hover {
+    .hover-active .cand:not(.first):hover {
       background-color: #ececec;
     }
 

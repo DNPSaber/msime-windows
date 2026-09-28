@@ -48,7 +48,7 @@
     padding: 2px 4px 2px 0;
   }
 
-  .cand:hover {
+  .cand:not(.first):hover {
     background-color: var(--cand-hover);
   }
 
