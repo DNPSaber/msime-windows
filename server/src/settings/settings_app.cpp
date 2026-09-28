@@ -334,7 +334,6 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
                  {"description", skin.description},
                  {"base", skin.base},
                  {"toolbarStylesheet", skin.toolbarStylesheet},
-                 {"preview", skin.preview},
                  {"layouts", skin.layouts},
                  {"themes", skin.themes},
                  {"minWidthDip", skin.minWidthDip},

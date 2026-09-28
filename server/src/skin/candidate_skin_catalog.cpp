@@ -245,12 +245,6 @@ std::optional<Package> Load(const std::filesystem::path &skinsRoot, const std::s
             SetError(error, "toolbar_stylesheet 文件名无效");
             return std::nullopt;
         }
-        if (root.contains("preview") &&
-            (!ReadString(root, "preview", package.preview, 256, false) || !IsSafeRelativeResource(package.preview)))
-        {
-            SetError(error, "preview 必须是皮肤目录内的相对路径");
-            return std::nullopt;
-        }
         const auto *supports = root["supports"].as_table();
         if (!supports || !ReadEnumArray(*supports, "layouts", {"horizontal", "vertical"}, package.layouts) ||
             !ReadEnumArray(*supports, "themes", {"dark", "light"}, package.themes))

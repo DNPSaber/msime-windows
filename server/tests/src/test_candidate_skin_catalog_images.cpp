@@ -16,7 +16,6 @@ id = "art"
 name = "Art"
 version = "1.0.0"
 base = "fluent"
-preview = "preview.png"
 
 [supports]
 layouts = ["horizontal", "vertical"]
@@ -33,7 +32,7 @@ std::filesystem::path WriteSkin(const std::wstring &leaf, const std::string &can
     fs::remove_all(skins_root, ec);
     fs::create_directories(skins_root / L"art" / L"assets", ec);
     REQUIRE(!ec);
-    for (const wchar_t *image : {L"preview.png", L"assets\\character.png", L"assets\\paper.png"})
+    for (const wchar_t *image : {L"assets\\character.png", L"assets\\paper.png"})
     {
         std::ofstream file(skins_root / L"art" / image, std::ios::binary | std::ios::trunc);
         REQUIRE(file.is_open());
@@ -61,8 +60,7 @@ bool LoadFails(const std::wstring &leaf, const std::string &candidateWindow)
 } // namespace
 
 // Every image key is optional: a skin without them has no decoration, no background image and keeps the
-// base theme's corner radius. The preview image is only for the settings page and never becomes the
-// decoration.
+// base theme's corner radius.
 TEST_CASE(candidate_skin_catalog_image_tables_are_optional)
 {
     const auto root = WriteSkin(L"plain", "[candidate_window]\n");
@@ -121,7 +119,7 @@ TEST_CASE(candidate_skin_catalog_rejects_incomplete_or_invalid_image_tables)
     const std::string background = "[candidate_window.background]\n";
     const std::string paper = "image = \"assets/paper.png\"\n";
 
-    // A decoration needs its own image and both sizes; the preview image is not a fallback.
+    // A decoration needs its image and both sizes.
     REQUIRE(LoadFails(L"deco-empty", window + decoration));
     REQUIRE(LoadFails(L"deco-no-image", window + decoration + sized));
     REQUIRE(LoadFails(L"deco-no-top", window + decoration + character + "width_dip = 136\n"));

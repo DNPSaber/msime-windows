@@ -16,7 +16,7 @@ type CandidateColors = {
 };
 type ExternalSkin = {
   id: string; name: string; version: string; author?: string; description?: string;
-  base: string; toolbarStylesheet?: string; preview?: string; layouts: string[]; themes: string[];
+  base: string; toolbarStylesheet?: string; layouts: string[]; themes: string[];
   minWidthDip?: number; decorationTopDip?: number; decorationWidthDip?: number; compatible: boolean;
   decorationImage?: string; decorationAlign?: string; cornerRadiusDip?: number | null;
   backgroundImage?: string; backgroundFit?: string; backgroundOpacity?: number;
