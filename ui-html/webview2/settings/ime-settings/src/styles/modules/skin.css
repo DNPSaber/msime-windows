@@ -76,6 +76,12 @@
 .candidate.skin-wechat .first .text,
 .candidate.skin-wechat .first .num,
 .candidate.skin-wechat .first .cand-no { color: #fff; }
+/* 同候选窗微信绿横排：高亮与外框内缘四周都留 2px，首项、尾项贴角的高亮角与外框同为 5px。 */
+.candidate.skin-wechat.wnd-h .container { padding: 0 2px 1px; }
+.candidate.skin-wechat.wnd-h .container > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: 5px; }
+.candidate.skin-wechat.wnd-h .container.preedit-hidden > .pinyin + .row-wrapper > .cand { border-top-left-radius: 5px; }
+.candidate.skin-wechat.wnd-h .container > .row-wrapper:is(:last-child, .last-visible) > .cand { border-bottom-right-radius: 5px; }
+.candidate.skin-wechat.wnd-h .container.preedit-hidden > .row-wrapper:is(:last-child, .last-visible) > .cand { border-top-right-radius: 5px; }
 
 .ftb-preview-host.skin-wechat.theme-dark .status-bar {
   background-color: #151515;

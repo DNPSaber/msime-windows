@@ -72,7 +72,7 @@
       border-radius: 4px;
     }
 
-    .hover-active .cand:hover {
+    .hover-active .cand:not(.first):hover {
       background-color: #ececec;
     }
 
@@ -181,7 +181,7 @@
     }
     .cand { border-radius: 2px; }
     .cursor { background: #5f6b7a; }
-    .hover-active .cand:hover { background-color: rgba(31, 41, 55, .055); }
+    .hover-active .cand:not(.first):hover { background-color: rgba(31, 41, 55, .055); }
     .first { background: transparent; border-radius: 2px; }
     .first::before { display: none; }
     .first .text,

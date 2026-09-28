@@ -310,7 +310,8 @@ void AppendExternalCandidateColorCss(std::wstring &css, const CandidateSkinCatal
         css.append(L"; }\n");
     };
     add(colors.accent, L".cursor, .first::before", L"background");
-    add(colors.selected, L".first, .cand.first", L"background-color");
+    // 悬停在选中项上保持选中色；base 皮肤的 .cand.first:hover（如微信绿的 #07c160）会盖过低特异度的 .cand.first。
+    add(colors.selected, L".first, .cand.first, .hover-active .cand.first:hover", L"background-color");
     add(colors.hover, L".hover-active .cand:not(.first):hover", L"background-color");
     add(colors.surface, L".container", L"background");
     add(colors.border, L".container", L"border-color");
