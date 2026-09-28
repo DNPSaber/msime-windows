@@ -1202,6 +1202,27 @@ uint64_t ResolvePipeClientTerminalDeactivationEpoch(uint64_t client_id, uint64_t
     return g_active_client_state.terminal_deactivation_epoch(client_id, transition_epoch);
 }
 
+uint64_t DeactivatePipeRouteForForegroundClient(uint64_t client_id, uint64_t main_registration_id)
+{
+    std::lock_guard lock(g_pipe_clients_mutex);
+    const auto it = g_pipe_clients.find(client_id);
+    if (client_id == 0 || main_registration_id == 0 || it == g_pipe_clients.end() ||
+        it->second.main_registration_id != main_registration_id)
+    {
+        return 0;
+    }
+    // The displaced owner keeps its acknowledged focus token, exactly as when
+    // another activation displaces it: its next real key may implicitly
+    // reactivate the route without a transport reset.
+    const uint64_t epoch = g_active_client_state.retire_for_terminal_deactivation(client_id);
+    if (epoch != 0 && it->second.focus_token != 0)
+    {
+        it->second.inactive_focus_token = it->second.focus_token;
+        it->second.focus_token = 0;
+    }
+    return epoch;
+}
+
 PipeClientActivation GetActivePipeClient()
 {
     std::lock_guard lock(g_pipe_clients_mutex);

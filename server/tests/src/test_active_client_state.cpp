@@ -114,6 +114,40 @@ TEST_CASE(active_client_terminal_deactivation_reuses_only_current_inactive_epoch
     REQUIRE_EQ(state.terminal_deactivation_epoch(2002), second_suspended_epoch);
 }
 
+TEST_CASE(active_client_foreground_terminal_deactivation_retires_foreign_route)
+{
+    FanyImeIpc::ActiveClientState state;
+
+    // The foreground app suspended, then another client (e.g. TextInputHost)
+    // took routing and never gave it back. The app's terminal event is not
+    // routed to it, so ownership alone rejects it.
+    state.activate(1001);
+    state.deactivate(1001);
+    const auto foreign = state.activate(3003);
+    REQUIRE_EQ(state.deactivate(1001), 0u);
+    REQUIRE_EQ(state.terminal_deactivation_epoch(1001), 0u);
+
+    // Once the caller proved 1001 owns the foreground thread, the stale route
+    // is retired and the UI worker's inactive check accepts the new epoch.
+    const uint64_t retired_epoch = state.retire_for_terminal_deactivation(1001);
+    REQUIRE(retired_epoch != 0);
+    REQUIRE(retired_epoch != foreign.epoch);
+    REQUIRE(!state.matches(3003, foreign.epoch));
+    REQUIRE(state.matches(0, retired_epoch));
+    REQUIRE_EQ(state.snapshot().client_id, 0u);
+
+    // The duplicate event from Deactivate() reuses the same epoch instead of
+    // being dropped or advancing it again.
+    REQUIRE_EQ(state.terminal_deactivation_epoch(1001), retired_epoch);
+    REQUIRE_EQ(state.terminal_deactivation_epoch(3003), 0u);
+
+    // A later activation supersedes the retirement.
+    const auto next = state.activate(3003);
+    REQUIRE(!state.matches(0, retired_epoch));
+    REQUIRE(state.matches(3003, next.epoch));
+    REQUIRE_EQ(state.retire_for_terminal_deactivation(0), 0u);
+}
+
 TEST_CASE(focus_session_ready_requires_nonzero_client_epoch_and_token)
 {
     REQUIRE(FanyImeIpc::CanSendFocusSessionReady(1001, 22, 77));

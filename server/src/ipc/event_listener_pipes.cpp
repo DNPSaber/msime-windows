@@ -130,6 +130,37 @@ bool IsImplicitActivationEvent(UINT event_type)
     return event_type == FanyImePipeEventType::KeyEvent || event_type == FanyImePipeEventType::FocusRestored;
 }
 
+// client_id is PID << 32 | TID of the TSF thread. A match against the
+// foreground window's thread, or the thread owning its keyboard focus (a
+// child window on an attached thread), means the user is looking at this TIP.
+bool IsForegroundInputThreadClient(uint64_t client_id)
+{
+    const HWND foreground = GetForegroundWindow();
+    if (!foreground)
+    {
+        return false;
+    }
+    DWORD process_id = 0;
+    const DWORD thread_id = GetWindowThreadProcessId(foreground, &process_id);
+    if (thread_id == 0 || static_cast<DWORD>(client_id >> 32) != process_id)
+    {
+        return false;
+    }
+    const DWORD client_thread_id = static_cast<DWORD>(client_id & 0xFFFFFFFFull);
+    if (client_thread_id == thread_id)
+    {
+        return true;
+    }
+    GUITHREADINFO info{sizeof(info)};
+    if (!GetGUIThreadInfo(thread_id, &info) || !info.hwndFocus)
+    {
+        return false;
+    }
+    DWORD focus_process_id = 0;
+    const DWORD focus_thread_id = GetWindowThreadProcessId(info.hwndFocus, &focus_process_id);
+    return focus_process_id == process_id && focus_thread_id == client_thread_id;
+}
+
 void SendFocusSessionReady(const PipeClientActivation &activation)
 {
     if (!FanyImeIpc::CanSendFocusSessionReady(activation.client_id, activation.epoch, activation.focus_token))
@@ -468,6 +499,18 @@ void MainPipeClientThread(HANDLE clientPipe, uint64_t handlerId)
                 // inactive state. Preserve exact terminal cleanup for that
                 // owner; a subsequent activation makes this task stale.
                 deactivationEpoch = ResolvePipeClientTerminalDeactivationEpoch(clientId);
+            }
+            if (terminalDeactivation && deactivationEpoch == 0 && IsForegroundInputThreadClient(clientId))
+            {
+                // Routing is owned by some other client — one that never
+                // suspended (TextInputHost after Win+., the taskbar), or one
+                // that suspended after this client did. Ownership alone would
+                // drop this event and leave the toolbar up after the user
+                // switched input methods in the window they are looking at.
+                // A background TIP unloading still cannot hide it.
+                deactivationEpoch = DeactivatePipeRouteForForegroundClient(clientId, mainRegistrationId);
+                CAND_DIAG_LOGF(L"terminal deactivation accepted from foreground non-owner client={} epoch={}", clientId,
+                               deactivationEpoch);
             }
             if (deactivationEpoch != 0)
             {
