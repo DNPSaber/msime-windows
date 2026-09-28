@@ -156,6 +156,32 @@ TEST_CASE(deleting_the_last_raw_character_keeps_the_created_word)
     REQUIRE(!ShouldKeepCreatingWordAfterRawEmptied(false, false, true, 3));
 }
 
+TEST_CASE(escape_inside_a_created_word_owes_the_client_a_frame)
+{
+    using FanyImeIpc::HasEscapeCreatingWordShape;
+    constexpr uint32_t kEscape = 0x1B;
+    // TSF holds for a reply whenever a word is being created, whatever the
+    // option says, so the frame goes out in both outcomes.
+    REQUIRE(HasEscapeCreatingWordShape(kEscape, true, false, true));
+    REQUIRE(!HasEscapeCreatingWordShape(kEscape, false, false, true));
+    REQUIRE(!HasEscapeCreatingWordShape(kEscape, true, true, true));
+    REQUIRE(!HasEscapeCreatingWordShape(kEscape, true, false, false));
+    REQUIRE(!HasEscapeCreatingWordShape(0x10, true, false, true));
+}
+
+TEST_CASE(escape_keeps_the_selected_word_only_while_spelling_remains)
+{
+    using FanyImeIpc::ShouldEscapeKeepSelectedWord;
+    // 造句 + "deshihou": the first Esc drops the spelling and keeps 造句.
+    REQUIRE(ShouldEscapeKeepSelectedWord(true, 8, false));
+    // The word is already alone: the second Esc cancels everything.
+    REQUIRE(!ShouldEscapeKeepSelectedWord(true, 0, false));
+    // Option off: Esc always cancels the whole composition.
+    REQUIRE(!ShouldEscapeKeepSelectedWord(false, 8, false));
+    // R mode only unwinds its temporary session through a full reset.
+    REQUIRE(!ShouldEscapeKeepSelectedWord(true, 8, true));
+}
+
 TEST_CASE(candidate_page_prefix_normalizes_the_decoded_prefix)
 {
     using FanyImeIpc::NormalizeCandidatePagePrefix;

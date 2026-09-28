@@ -217,6 +217,39 @@ HRESULT CMetasequoiaIME::_HandleCancel(TfEditCookie ec, _In_ ITfContext *pContex
     return S_OK;
 }
 
+//+---------------------------------------------------------------------------
+//
+// _HandleEscapeCancel
+//
+// Esc inside a live creating-word state lets the Server decide the outcome
+// (input.escape_keeps_selected_word): drop only the unselected spelling and
+// keep the selected word (Rime's ClearNonConfirmedComposition), or cancel the
+// whole composition. The Server answers this shape with a CompositionRestored
+// frame in both outcomes -- an empty payload for the full cancel -- so the
+// hold applies whatever the payload describes. Anything else falls back to
+// the local cancel.
+//
+//----------------------------------------------------------------------------
+
+HRESULT CMetasequoiaIME::_HandleEscapeCancel(TfEditCookie ec, _In_ ITfContext *pContext, uint64_t requestId)
+{
+    if (!GlobalIme::word_for_creating_word.empty() && SupportsCompositionRestore() && !Global::IsUiLessMode() &&
+        requestId != FANY_IME_NO_REQUEST_ID)
+    {
+        struct FanyImeNamedpipeDataToTsf *receivedData =
+            TryReadDataFromServerPipeWithTimeout(requestId, /*abortTransportOnTimeout=*/false);
+        if (receivedData->msg_type == Global::DataFromServerMsgType::CompositionRestored)
+        {
+            CreatingWordPayload payload;
+            if (ParseCreatingWordPayload(receivedData->candidate_string, payload))
+            {
+                return _ApplyCreatingWordPayload(ec, pContext, payload);
+            }
+        }
+    }
+    return _HandleCancel(ec, pContext);
+}
+
 HRESULT CMetasequoiaIME::_HandleToogleIMEMode(TfEditCookie ec, _In_ ITfContext *pContext)
 {
     CStringRange keyStrokebuffer = _pCompositionProcessorEngine->GetKeystrokeBuffer();
@@ -950,8 +983,8 @@ HRESULT CMetasequoiaIME::_ApplyCreatingWordPayload(TfEditCookie ec, _In_ ITfCont
         // composition (Ctrl+Backspace deleted the last unit): show the word
         // alone. Only the stale local candidate list is dropped -- ending the
         // presenter here would send HideCandidateWnd, which resets the very
-        // Server composition this payload preserves; the Server has already
-        // taken its window down.
+        // Server composition this payload preserves; the Server owns its window
+        // (taken down after a deletion, kept with the word alone after Esc).
         if (_pCandidateListUIPresenter)
         {
             _pCandidateListUIPresenter->_ClearList();

@@ -136,6 +136,9 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (typeof data?.input?.paired_punctuation === 'boolean') {
     applyToggleState('pairedPunctuationToggleBtn', data.input.paired_punctuation);
   }
+  if (typeof data?.input?.escape_keeps_selected_word === 'boolean') {
+    applyToggleState('escapeKeepsSelectedWordToggleBtn', data.input.escape_keeps_selected_word);
+  }
   if (typeof data?.quanpin?.autocorrect_transposition === 'boolean') {
     applyToggleState('autocorrectTranspositionToggleBtn', data.quanpin.autocorrect_transposition);
   }

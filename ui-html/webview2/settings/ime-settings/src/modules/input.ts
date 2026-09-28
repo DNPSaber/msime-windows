@@ -287,6 +287,9 @@ export function setupInput(): void {
   setupToggleButton('pairedPunctuationToggleBtn', (active) => {
     updateConfig('input.paired_punctuation', active);
   });
+  setupToggleButton('escapeKeepsSelectedWordToggleBtn', (active) => {
+    updateConfig('input.escape_keeps_selected_word', active);
+  });
   setupToggleButton('zhEnToggleBtn', (active) => {
     syncZhEnMixedInputOptionsEnabled(active);
     updateConfig('general.cn_en_mixed_input', active);

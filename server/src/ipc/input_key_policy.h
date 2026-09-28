@@ -186,6 +186,28 @@ constexpr bool ShouldKeepCreatingWordAfterRawEmptied(bool creating_word_active, 
            selection_history_size > 0;
 }
 
+// Esc inside the creating-word shape owes the client a CompositionRestored
+// frame: TSF arms its reply hold from the same word_for_creating_word mirror
+// the Backspace hold uses, and cannot see input.escape_keeps_selected_word.
+// The frame therefore goes out in both outcomes, with an empty payload when
+// the composition is cancelled.
+constexpr bool HasEscapeCreatingWordShape(uint32_t keycode, bool creating_word_active, bool ui_less,
+                                          bool client_supports_restore)
+{
+    return keycode == kVirtualKeyEscape &&
+           HasRetreatBackspaceShape(creating_word_active, ui_less, client_supports_restore);
+}
+
+// Rime's ClearNonConfirmedComposition: with the option on, Esc drops only the
+// unselected spelling and keeps the selected word on screen alone. With no
+// spelling left (the word is already alone) the next Esc cancels everything.
+// R mode is excluded: its temporary Japanese session is only restored by a
+// full reset.
+constexpr bool ShouldEscapeKeepSelectedWord(bool option_enabled, std::size_t raw_length, bool r_mode_active)
+{
+    return option_enabled && raw_length > 0 && !r_mode_active;
+}
+
 // Ctrl+Backspace inside a composition deletes one segmentation unit instead of
 // one character. Only the bare Ctrl chord is the IME's: Shift, Alt and the
 // Windows keys keep their host meaning (PRD R1).
