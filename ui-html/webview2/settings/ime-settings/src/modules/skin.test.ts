@@ -153,3 +153,39 @@ it('draws no decoration without a decoration image', () => {
 
   expect(generatedCss).not.toContain('.containerParent:not(:empty)::before');
 });
+
+it('previews toolbar colours and corner radius per theme from the skin manifest', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-toolbar', name: 'Custom Toolbar', version: '1', base: 'fluent', layouts: ['horizontal'],
+      themes: ['dark', 'light'], compatible: true, toolbarCornerRadiusDip: 12,
+      toolbar: {
+        dark: { border: 'rgba(224, 138, 168, 0.38)', handle: '#e08aa8' },
+        light: { background: '#fff7fa', icon: '#3a2a30', divider: 'red; } body { display: none' }
+      }
+    }
+  ], [], '', true, 6);
+  applyCandidateSkin('custom-toolbar');
+
+  const dark = ':is(:scope.ftb-preview-host, :scope .ftb-preview-host).theme-dark';
+  const light = ':is(:scope.ftb-preview-host, :scope .ftb-preview-host).theme-light';
+  expect(generatedCss).toContain(`${dark} .status-bar { border-color: rgba(224, 138, 168, 0.38); }`);
+  expect(generatedCss).toContain(`${dark} .drag-handle { background: #e08aa8; }`);
+  expect(generatedCss).toContain(`${dark} .status-bar { border-radius: calc(12px * var(--ftb-scale)); }`);
+  expect(generatedCss).toContain(`${light} .status-bar { background-color: #fff7fa; }`);
+  expect(generatedCss).toContain(`${light} .icon { color: #3a2a30; }`);
+  expect(generatedCss).not.toContain(`${light} .drag-handle`);
+  expect(generatedCss).not.toContain('display: none');
+});
+
+it('emits no toolbar rules for a skin without a toolbar table', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-no-toolbar', name: 'No Toolbar', version: '1', base: 'fluent', layouts: ['horizontal'],
+      themes: ['dark'], compatible: true, toolbarCornerRadiusDip: null
+    }
+  ], [], '', true, 7);
+  applyCandidateSkin('custom-no-toolbar');
+
+  expect(generatedCss).not.toContain('ftb-preview-host');
+});
