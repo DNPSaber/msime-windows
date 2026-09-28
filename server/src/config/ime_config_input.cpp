@@ -8,6 +8,7 @@
 #include "defines/defines.h"
 #include "engine/common/helpcode_utils.h"
 #include "engine/core/data_path.h"
+#include "engine/shuangpin/shuangpin_profile.h"
 
 using namespace ime_config_detail;
 
@@ -179,9 +180,15 @@ const std::string &GetConfiguredShuangpinSchema()
     return g_shuangpin_schema;
 }
 
+bool IsConfiguredShuangpinSemicolonFinal()
+{
+    return ShuangpinProfileUsesSemicolonFinal(GetShuangpinProfile(g_shuangpin_schema));
+}
+
 bool SetConfiguredShuangpinSchema(const std::string &schema)
 {
-    if (schema != "xiaohe" && schema != "ziranma" && schema != "shoudao" && schema != "microsoft")
+    // The resolver falls back to Xiaohe for unknown names, so a name round-trip means "built in".
+    if (GetShuangpinProfile(schema).name != schema)
     {
         return false;
     }

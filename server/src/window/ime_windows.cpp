@@ -271,7 +271,7 @@ void ApplyConfiguredShuangpinSchema()
 {
     FanyNamedPipe::EnqueueReloadInputSessionTask();
     BroadcastToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::MicrosoftShuangpinChanged,
-                                           GetConfiguredShuangpinSchema() == "microsoft" ? L"1" : L"0");
+                                           IsConfiguredShuangpinSemicolonFinal() ? L"1" : L"0");
 }
 
 LRESULT RegisterCandidateWindowMessage()

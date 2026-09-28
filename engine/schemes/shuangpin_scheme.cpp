@@ -12,7 +12,7 @@ bool is_alpha_vk(ImeKeyCode vk)
 bool is_microsoft_ing_key(ImeKeyCode vk, ImeCharacter wch, const std::string &raw_input,
                           const ShuangpinProfile &profile)
 {
-    if (profile.name != "microsoft" || vk != ImeKey::Semicolon || wch != u';')
+    if (!ShuangpinProfileUsesSemicolonFinal(profile) || vk != ImeKey::Semicolon || wch != u';')
     {
         return false;
     }
