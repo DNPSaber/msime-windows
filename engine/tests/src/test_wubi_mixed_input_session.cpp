@@ -282,6 +282,7 @@ int main()
             require(!four.empty(), "The fixture did not answer the four-letter code wqaa.");
             matched.handle_character('a');
             require(matched.preedit() == "wqaa", "A matched four-letter code accepted a fifth letter.");
+            require(words(matched) == four, "A refused fifth letter still changed the candidates.");
 
             InputSession unmatched(SchemeType::Wubi, GetXiaoheShuangpinProfile(), paths_for(resources, root, next()));
             unmatched.set_wubi_input_options(WubiInputOptions{true});
