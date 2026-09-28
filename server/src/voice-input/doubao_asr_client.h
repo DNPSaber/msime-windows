@@ -15,9 +15,7 @@
 class DoubaoAsrClient
 {
   public:
-    // text is the whole transcript so far. definite_text is its prefix made of utterances the
-    // service has finalized (punctuated and no longer revised), so callers may commit it early.
-    using TranscriptCallback = std::function<void(const std::string &text, const std::string &definite_text)>;
+    using TranscriptCallback = std::function<void(const std::string &)>;
 
     // legacy_auth selects the old console's App ID + Access Token headers. Otherwise the new
     // console's single API Key is sent as X-Api-Key and app_key is ignored.
