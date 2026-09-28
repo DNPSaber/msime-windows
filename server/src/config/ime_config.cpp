@@ -108,8 +108,8 @@ bool g_assoc_sentence_google = true;
 bool g_assoc_sentence_neural_desktop = false;
 bool g_assoc_sentence_neural_keyboard = true;
 bool g_assoc_sentence_show_next_on_duplicate = false;
-// 候选窗整句候选后的来源标签（〔Trigram〕〔神经K〕等），默认显示。
-bool g_assoc_sentence_source_badge = true;
+// 候选窗整句候选后的来源标签（〔Trigram〕〔神经K〕等），默认不显示。
+bool g_assoc_sentence_source_badge = false;
 bool g_emoji_mixed_input_enabled = false;
 bool g_kaomoji_mixed_input_enabled = false;
 bool g_unicode_mode_enabled = true;
@@ -465,7 +465,7 @@ bool LoadImeConfig()
         g_assoc_sentence_neural_desktop = tbl["association"]["sentence_neural_desktop"].value_or(false);
         g_assoc_sentence_neural_keyboard = tbl["association"]["sentence_neural_keyboard"].value_or(true);
         g_assoc_sentence_show_next_on_duplicate = tbl["association"]["sentence_show_next_on_duplicate"].value_or(false);
-        g_assoc_sentence_source_badge = tbl["association"]["sentence_source_badge"].value_or(true);
+        g_assoc_sentence_source_badge = tbl["association"]["sentence_source_badge"].value_or(false);
         g_emoji_mixed_input_enabled = tbl["general"]["emoji_mixed_input"].value_or(false);
         g_kaomoji_mixed_input_enabled = tbl["general"]["kaomoji_mixed_input"].value_or(false);
         g_unicode_mode_enabled = tbl["utility"]["unicode_mode"].value_or(true);
