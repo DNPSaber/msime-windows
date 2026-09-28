@@ -1919,12 +1919,78 @@ void Card::Render(DeviceResources &deviceResources)
         D2D1::RoundedRect(D2D1::RectF(bounds_.x, bounds_.y, bounds_.x + bounds_.width, bounds_.y + bounds_.height),
                           brush_.radiusX, brush_.radiusY);
     target->FillRoundedRectangle(roundedRect, fillBrush);
+    RenderBackgroundImage(deviceResources, target, roundedRect);
     target->DrawRoundedRectangle(roundedRect, strokeBrush, brush_.strokeWidth);
 
     for (const auto &child : children_)
     {
         child->Render(deviceResources);
     }
+}
+
+void Card::SetBackgroundImage(std::wstring filePath, ImageStretch stretch, float opacity)
+{
+    const float clamped = std::clamp(opacity, 0.0f, 1.0f);
+    if (backgroundImage_ == filePath && backgroundStretch_ == stretch && backgroundOpacity_ == clamped)
+    {
+        return;
+    }
+    backgroundImage_ = std::move(filePath);
+    backgroundStretch_ = stretch;
+    backgroundOpacity_ = clamped;
+    InvalidateVisual();
+}
+
+void Card::RenderBackgroundImage(DeviceResources &deviceResources, ID2D1RenderTarget *target,
+                                 const D2D1_ROUNDED_RECT &shape)
+{
+    if (backgroundImage_.empty() || backgroundOpacity_ <= 0.0f || bounds_.width <= 0.0f || bounds_.height <= 0.0f)
+    {
+        return;
+    }
+    D2D1_SIZE_F sourceSize = {};
+    ID2D1Bitmap *bitmap = deviceResources.GetBitmapFromFile(backgroundImage_, &sourceSize);
+    if (!bitmap || sourceSize.width <= 0.0f || sourceSize.height <= 0.0f)
+    {
+        return;
+    }
+
+    // Same placement rules as Image: Uniform / UniformToFill center the scaled bitmap,
+    // None keeps its natural size at the top-left corner.
+    RectF destination = bounds_;
+    if (backgroundStretch_ == ImageStretch::None)
+    {
+        destination.width = sourceSize.width;
+        destination.height = sourceSize.height;
+    }
+    else if (backgroundStretch_ == ImageStretch::Uniform || backgroundStretch_ == ImageStretch::UniformToFill)
+    {
+        const float scaleX = bounds_.width / sourceSize.width;
+        const float scaleY = bounds_.height / sourceSize.height;
+        const float scale =
+            backgroundStretch_ == ImageStretch::Uniform ? std::min(scaleX, scaleY) : std::max(scaleX, scaleY);
+        destination.width = sourceSize.width * scale;
+        destination.height = sourceSize.height * scale;
+        destination.x = bounds_.x + (bounds_.width - destination.width) * 0.5f;
+        destination.y = bounds_.y + (bounds_.height - destination.height) * 0.5f;
+    }
+
+    // Clip to the rounded card shape so the image corners follow the card radius.
+    ComPtr<ID2D1Factory> factory;
+    target->GetFactory(factory.GetAddressOf());
+    ComPtr<ID2D1RoundedRectangleGeometry> clip;
+    ComPtr<ID2D1Layer> layer;
+    if (!factory || FAILED(factory->CreateRoundedRectangleGeometry(shape, clip.GetAddressOf())) ||
+        FAILED(target->CreateLayer(nullptr, layer.GetAddressOf())))
+    {
+        return;
+    }
+    target->PushLayer(D2D1::LayerParameters(D2D1::InfiniteRect(), clip.Get()), layer.Get());
+    target->DrawBitmap(bitmap,
+                       D2D1::RectF(destination.x, destination.y, destination.x + destination.width,
+                                   destination.y + destination.height),
+                       backgroundOpacity_, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+    target->PopLayer();
 }
 
 void Card::RenderShadow(ID2D1RenderTarget *target)

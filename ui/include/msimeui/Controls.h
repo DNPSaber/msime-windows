@@ -19,14 +19,6 @@ enum class PopupPlacement
     AboveLeading,
 };
 
-enum class ImageStretch
-{
-    None,
-    Fill,
-    Uniform,
-    UniformToFill,
-};
-
 class Image : public Visual
 {
   public:
