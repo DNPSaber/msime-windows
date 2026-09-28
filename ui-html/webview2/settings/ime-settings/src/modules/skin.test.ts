@@ -107,3 +107,51 @@ it('anchors preview colour rules on the host so the light theme and selected bar
   expect(generatedCss).toContain(
     ':scope.theme-light .first, :scope.theme-light .cand.first, :scope.theme-light .cand.first:hover { background-color: #f5dde5; }');
 });
+
+it('previews decoration placement, background image and corner radius from the skin manifest', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-art', name: 'Custom Art', version: '1', base: 'fluent', layouts: ['horizontal'],
+      themes: ['dark', 'light'], compatible: true, preview: 'assets/card.png',
+      decorationTopDip: 88, decorationWidthDip: 136, decorationImage: 'assets/character.png', decorationAlign: 'left',
+      backgroundImage: 'assets/paper.png', backgroundFit: 'contain', backgroundOpacity: 0.5, cornerRadiusDip: 12
+    }
+  ], [], '', true, 3);
+  applyCandidateSkin('custom-art');
+
+  expect(generatedCss).toContain('min-width: max(7em, var(--msime-skin-min-width, 0px), var(--msime-skin-decoration-width, 0px))');
+  expect(generatedCss).toContain('top: 0; left: 0;');
+  expect(generatedCss).toContain('height: var(--msime-skin-decoration-top, 0px)');
+  expect(generatedCss).toContain('/custom-art/assets/character.png');
+  expect(generatedCss).not.toContain('/custom-art/assets/card.png');
+  expect(generatedCss).toContain('/custom-art/assets/paper.png?v=3") center / contain no-repeat; opacity: 0.5;');
+  expect(generatedCss).toContain(':scope .container { border-radius: 12px; --wg-radius: 12px; --ao-radius: 12px; }');
+  expect(generatedCss).toContain(':scope.wnd-h .container > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: 12px; }');
+});
+
+it('ignores out-of-range numbers instead of pasting them into preview css', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-bad', name: 'Custom Bad', version: '1', base: 'fluent', layouts: ['horizontal'],
+      themes: ['dark'], compatible: true, backgroundImage: 'bg.png',
+      backgroundOpacity: '1; } body { display: none', cornerRadiusDip: '4px; } body { display: none'
+    }
+  ], [], '', true, 4);
+  applyCandidateSkin('custom-bad');
+
+  expect(generatedCss).toContain('opacity: 1;');
+  expect(generatedCss).not.toContain('display: none');
+  expect(generatedCss).not.toContain('border-radius: 4px');
+});
+it('never falls back to the preview image for the decoration', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-preview-only', name: 'Preview Only', version: '1', base: 'fluent', layouts: ['horizontal'],
+      themes: ['dark'], compatible: true, preview: 'assets/card.png', decorationTopDip: 88, decorationWidthDip: 136
+    }
+  ], [], '', true, 5);
+  applyCandidateSkin('custom-preview-only');
+
+  expect(generatedCss).not.toContain('assets/card.png');
+  expect(generatedCss).not.toContain('.containerParent:not(:empty)::before');
+});

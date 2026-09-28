@@ -18,6 +18,8 @@ type ExternalSkin = {
   id: string; name: string; version: string; author?: string; description?: string;
   base: string; toolbarStylesheet?: string; preview?: string; layouts: string[]; themes: string[];
   minWidthDip?: number; decorationTopDip?: number; decorationWidthDip?: number; compatible: boolean;
+  decorationImage?: string; decorationAlign?: string; cornerRadiusDip?: number | null;
+  backgroundImage?: string; backgroundFit?: string; backgroundOpacity?: number;
   candidate?: { dark?: CandidateColors; light?: CandidateColors };
 };
 type SkinScanIssue = { folder: string; reason: string };
@@ -127,10 +129,49 @@ function skinColor(value: string | undefined): string | undefined {
   return trimmed && SKIN_COLOR_PATTERN.test(trimmed) ? trimmed : undefined;
 }
 
+// Numbers from the manifest are pasted into CSS text, so anything that is not a finite number in range is dropped.
+function boundedNumber(value: unknown, max: number): number | undefined {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= max ? value : undefined;
+}
+
+// Mirrors the candidate window's corner override (BuildExternalCandidateSkinCss): the frame, the variables the
+// willow green / autumn osmanthus skins read, and the fluent / wechat horizontal highlight corners on the frame.
+function cornerPreviewCss(skin: ExternalSkin): string {
+  const radius = boundedNumber(skin.cornerRadiusDip, 32);
+  if (radius === undefined) return '';
+  const r = `${radius}px`;
+  let css = `:scope .container { border-radius: ${r}; --wg-radius: ${r}; --ao-radius: ${r}; }\n`;
+  if (skin.base === 'willow_green') css += `:scope .containerParent { border-radius: ${r}; }\n`;
+  if (skin.base === 'fluent' || skin.base === 'wechat') {
+    const h = ':scope.wnd-h .container';
+    css += `${h} > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: ${r}; }
+${h}.preedit-hidden > .pinyin + .row-wrapper > .cand { border-top-left-radius: ${r}; }
+${h} > .row-wrapper:is(:last-child, .last-visible) > .cand { border-bottom-right-radius: ${r}; }
+${h}.preedit-hidden > .row-wrapper:is(:last-child, .last-visible) > .cand { border-top-right-radius: ${r}; }\n`;
+  }
+  return css;
+}
+
+function backgroundPreviewCss(skin: ExternalSkin): string {
+  if (!skin.backgroundImage) return '';
+  const size = skin.backgroundFit === 'contain' ? 'contain' : skin.backgroundFit === 'stretch' ? '100% 100%' : 'cover';
+  const opacity = boundedNumber(skin.backgroundOpacity, 1) ?? 1;
+  return `.container { position: relative; isolation: isolate; }
+.container:not(:empty)::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit;
+  background: url("${resourceUrl(skin.id, skin.backgroundImage)}") center / ${size} no-repeat; opacity: ${opacity};
+}\n`;
+}
+
+function decorationHorizontalCss(align: string | undefined): string {
+  if (align === 'left') return 'left: 0;';
+  if (align === 'center') return 'left: 0; right: 0; margin-inline: auto;';
+  return 'right: 0;';
+}
+
 function candidatePreviewCss(skin: ExternalSkin): string {
   const dark = skin.candidate?.dark || {};
   const light = skin.candidate?.light || {};
-  const preview = skin.preview ? `url("${resourceUrl(skin.id, skin.preview)}")` : 'none';
   const themeRules = (scope: string, colors: CandidateColors) => {
     // Inside @scope a selector without :scope only matches below the preview host, so ".theme-light .first" never saw the host's own theme class, and bare ".first::before" lost on specificity to the preview's ".wnd-h .first::before". Anchoring on :scope fixes both.
     const prefix = `:scope${scope} `;
@@ -162,16 +203,21 @@ function candidatePreviewCss(skin: ExternalSkin): string {
     if (colors.showSelectedBar === false) css += `${prefix}.first::before { display: none; }\n`;
     return css;
   };
-  let css = '';
-  if ((skin.decorationTopDip || 0) > 0) {
+  // Same geometry as the candidate window: the card is at least as wide as the decoration, and the decoration box
+  // sits on top of the card without overlapping it, aligned to the card's left, centre or right edge.
+  let css = `.container:not(:empty) { min-width: max(7em, var(--msime-skin-min-width, 0px), var(--msime-skin-decoration-width, 0px)); }\n`;
+  if (skin.decorationImage && (skin.decorationTopDip || 0) > 0) {
+    const decoration = `url("${resourceUrl(skin.id, skin.decorationImage)}")`;
     css += `.containerParent { padding-top: var(--msime-skin-decoration-top, 0px); position: relative; box-sizing: border-box; }
 .containerParent:not(:empty)::before {
-  content: ""; position: absolute; z-index: 0; top: 0; right: 0;
-  width: var(--msime-skin-decoration-width, 0px); height: 118px;
-  background: ${preview} center / contain no-repeat; pointer-events: none;
+  content: ""; position: absolute; z-index: 0; top: 0; ${decorationHorizontalCss(skin.decorationAlign)}
+  width: var(--msime-skin-decoration-width, 0px); height: var(--msime-skin-decoration-top, 0px);
+  background: ${decoration} center / contain no-repeat; pointer-events: none;
 }
-.container { position: relative; z-index: 1; min-width: max(7em, var(--msime-skin-min-width, 0px)); }\n`;
+.container { position: relative; z-index: 1; }\n`;
   }
+  css += backgroundPreviewCss(skin);
+  css += cornerPreviewCss(skin);
   css += themeRules('', dark);
   css += themeRules('.theme-light', light);
   return css;
