@@ -108,6 +108,11 @@ bool ShuangpinUtil::is_accepted_syllable_code(const std::string &sp_str, const S
     return shuangpin_pinyin_set().count(cvt_single_sp_to_pinyin(sp_str, profile)) > 0;
 }
 
+const std::unordered_set<std::string> &ShuangpinUtil::decodable_syllables()
+{
+    return shuangpin_pinyin_set();
+}
+
 /**
  * @brief Split shuangpin, using ' as delimiter, using forward greedy segmentation
  *

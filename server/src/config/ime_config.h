@@ -2,6 +2,7 @@
 
 #include "engine/core/fuzzy_pinyin_options.h"
 #include "engine/core/scheme_type.h"
+#include "engine/shuangpin/shuangpin_profile.h"
 #include <toml++/toml.h>
 #include <filesystem>
 #include <map>
@@ -207,7 +208,29 @@ bool SetConfiguredSwitchLanguageCtrlAltSpaceEnabled(bool enabled);
 const std::string &GetConfiguredShuangpinSchema();
 // 当前双拼方案是否把 ing 放在分号键上（微软、搜狗、紫光），此时分号在音节第二位是输入键。
 bool IsConfiguredShuangpinSemicolonFinal();
+// 内置方案名，或 custom/<文件名> 形式的自定义方案；自定义方案要能解析通过才会写入。
 bool SetConfiguredShuangpinSchema(const std::string &schema);
+// 用户放在 <数据目录>/shuangpin/custom/*.toml 的自定义双拼，每次调用都重新扫描和解析。
+// 解析失败的文件也列出来，error 写明原因，设置页据此把它显示成不可选。
+struct CustomShuangpinSchemaInfo
+{
+    std::string schema;
+    std::string name;
+    std::string name_en;
+    std::string error;
+};
+std::vector<CustomShuangpinSchemaInfo> GetCustomShuangpinSchemas();
+// UTF-8 path of the folder GetCustomShuangpinSchemas scans.
+std::string GetCustomShuangpinDirectory();
+// 把一份自定义双拼 TOML 文本解析成 profile（profile.name 取 schema）。errors 为空才算成功。
+struct ParsedCustomShuangpin
+{
+    std::string name;
+    std::string name_en;
+    ShuangpinProfile profile;
+    std::vector<std::string> errors;
+};
+ParsedCustomShuangpin ParseCustomShuangpinSchema(const std::string &toml_text, const std::string &schema);
 const std::string &GetConfiguredWubiSchema();
 bool SetConfiguredWubiSchema(const std::string &schema);
 // 五笔拼音混输：独立开关，同一串字母同时给五笔码表和全拼。

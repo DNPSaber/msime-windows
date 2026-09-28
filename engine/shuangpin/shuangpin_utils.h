@@ -4,6 +4,7 @@
 #include "shuangpin_profile.h"
 #include <filesystem>
 #include <string>
+#include <unordered_set>
 
 namespace shuangpin
 {
@@ -28,6 +29,8 @@ class ShuangpinUtil
     // deleted unit can never disagree with the displayed segmentation.
     static bool is_accepted_syllable_code(const std::string &sp_str,
                                           const ShuangpinProfile &profile = GetXiaoheShuangpinProfile());
+    // Every syllable cvt_single_sp_to_pinyin can produce, whatever the profile.
+    static const std::unordered_set<std::string> &decodable_syllables();
     static std::string::size_type get_first_char_size(std::string words);
     static std::string::size_type count_utf8_chars(const std::string &str);
     static std::string extract_preview(std::string candidate);

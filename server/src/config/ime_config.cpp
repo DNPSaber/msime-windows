@@ -383,7 +383,11 @@ bool LoadImeConfig()
             const std::string scope = tbl["input"]["ime_mode_scope"].value_or(std::string("app"));
             g_ime_mode_scope = scope == "global" ? "global" : "app";
         }
-        g_shuangpin_schema = tbl["input"]["shuangpin_schema"].value_or(std::string("xiaohe"));
+        {
+            // 自定义方案每次加载配置都重读文件；文件删了或写错就回落小鹤，而不是带着半张表输入。
+            const std::string schema = tbl["input"]["shuangpin_schema"].value_or(std::string("xiaohe"));
+            g_shuangpin_schema = LoadShuangpinSchema(schema) ? schema : "xiaohe";
+        }
         g_wubi_schema = tbl["input"]["wubi_schema"].value_or(std::string("wubi86"));
         g_wubi_mixed_pinyin = tbl["input"]["wubi_mixed_pinyin"].value_or(false);
         g_escape_keeps_selected_word = tbl["input"]["escape_keeps_selected_word"].value_or(false);

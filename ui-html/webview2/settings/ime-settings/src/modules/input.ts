@@ -3,6 +3,8 @@ import { applyDropdownValue, applyToggleState, setFuzzyRuleOptionsDisabled, setS
 import { updateConfig } from './config-sync';
 import { updateCandidatePreviewHelpcode } from './appearance';
 import { setupCredentialTest } from './credential-test';
+import { onHostMessage } from '../utils/host-messages';
+import { hoistOverlay } from '../utils/overlay-host';
 
 type InputScheme = 'quanpin' | 'shuangpin' | 'wubi';
 type InputMode = 'chinese' | 'japanese';
@@ -12,6 +14,82 @@ type TranslationProvider = 'tencent' | 'niutrans' | 'custom';
 let applyingInputConfig = false;
 let customTranslationEnabled = false;
 let niutransTranslationEnabled = false;
+
+const SHUANGPIN_REFRESH_TIMEOUT_MS = 5000;
+let shuangpinToastTimer: number | null = null;
+let pendingShuangpinRefresh: (() => void) | null = null;
+
+function showShuangpinToast(message: string, ok: boolean, durationMs = 3200): void {
+  const toast = document.getElementById('shuangpinToast');
+  if (!toast) return;
+  document.getElementById('shuangpinToastMessage')!.textContent = message;
+  document.getElementById('shuangpinToastIcon')!.textContent = ok ? '' : '!';
+  toast.className = `dict-toast visible ${ok ? 'success' : 'error'}`;
+  if (shuangpinToastTimer !== null) window.clearTimeout(shuangpinToastTimer);
+  shuangpinToastTimer = window.setTimeout(() => {
+    toast.classList.remove('visible');
+    shuangpinToastTimer = null;
+  }, durationMs);
+}
+
+// 等宿主推回重新扫描后的快照再提示；超时没回来就报失败。重复点击只保留最后一次。
+function refreshCustomShuangpins(): void {
+  const webview = window.chrome?.webview;
+  if (!webview) return;
+  pendingShuangpinRefresh?.();
+  const timer = window.setTimeout(() => {
+    finish();
+    showShuangpinToast('刷新失败，请稍后重试', false);
+  }, SHUANGPIN_REFRESH_TIMEOUT_MS);
+  const unsubscribe = onHostMessage('configSnapshot', (message) => {
+    finish();
+    const schemas = (message.data as Record<string, any> | undefined)?.input?.custom_shuangpin_schemas;
+    const list: Array<Record<string, unknown>> = Array.isArray(schemas) ? schemas : [];
+    const broken = list.filter((schema) => typeof schema?.error === 'string' && schema.error !== '').length;
+    if (list.length === 0) {
+      showShuangpinToast('刷新成功，文件夹里还没有自定义双拼方案', true);
+    } else if (broken > 0) {
+      showShuangpinToast(`找到 ${list.length} 个自定义方案，其中 ${broken} 个有错误，悬停在灰色方案上可查看原因`, false, 5000);
+    } else {
+      showShuangpinToast(`刷新成功，找到 ${list.length} 个自定义方案`, true);
+    }
+  });
+  function finish(): void {
+    window.clearTimeout(timer);
+    unsubscribe();
+    pendingShuangpinRefresh = null;
+  }
+  pendingShuangpinRefresh = finish;
+  webview.postMessage(serializeHostMessage({ type: 'configRequest' }));
+}
+
+// 自定义双拼由 Server 扫描 shuangpin/custom 得到，追加在内置方案之后。
+// 校验不通过的方案仍列出来但置灰，悬停提示错误原因，免得用户以为文件没被读到。
+export function applyCustomShuangpinSchemas(schemas: unknown, directory: unknown): void {
+  const menu = document.getElementById('shuangpinSchemeMenu');
+  if (menu && Array.isArray(schemas)) {
+    menu.querySelectorAll('.dropdown-item[data-custom]').forEach((item) => item.remove());
+    for (const schema of schemas) {
+      if (typeof schema?.id !== 'string' || typeof schema?.name !== 'string') continue;
+      const item = document.createElement('div');
+      item.className = 'dropdown-item';
+      item.dataset.value = schema.id;
+      item.dataset.custom = 'true';
+      item.textContent = schema.name;
+      if (typeof schema.error === 'string' && schema.error !== '') {
+        item.setAttribute('aria-disabled', 'true');
+        item.title = schema.error;
+      } else if (typeof schema.name_en === 'string' && schema.name_en !== schema.name) {
+        item.title = schema.name_en;
+      }
+      menu.appendChild(item);
+    }
+  }
+  if (typeof directory === 'string') {
+    const element = document.getElementById('customShuangpinDirectory');
+    if (element) element.textContent = `文件夹：${directory}`;
+  }
+}
 
 function updateInputConfig(path: string, value: string): void {
   window.chrome?.webview?.postMessage(serializeHostMessage({
@@ -248,6 +326,16 @@ export function setupInput(): void {
     true,
     'input.shuangpin_schema'
   );
+  // 打开自定义双拼所在文件夹，由宿主负责创建并用资源管理器打开
+  document.getElementById('openCustomShuangpinDirectory')?.addEventListener('click', () => {
+    window.chrome?.webview?.postMessage(serializeHostMessage({ type: 'openShuangpinDirectory' }));
+  });
+  // 重新请求配置快照：宿主会重新扫描并校验 custom 文件夹，下拉框随快照重建
+  document.getElementById('refreshCustomShuangpins')?.addEventListener('click', refreshCustomShuangpins);
+  hoistOverlay(document.getElementById('shuangpinToast'));
+  document.getElementById('shuangpinToastClose')?.addEventListener('click', () => {
+    document.getElementById('shuangpinToast')?.classList.remove('visible');
+  });
   setupDropdownMenu('wubiSchemeBtn', 'wubiSchemeMenu', 'changeWubiScheme', true, 'input.wubi_schema');
   setupToggleButton('wubiMixedPinyinToggleBtn', (active) => {
     updateConfig('input.wubi_mixed_pinyin', active);

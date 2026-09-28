@@ -69,6 +69,7 @@ set(METASEQUOIA_IME_ENGINE_SOURCES
     schemes/shuangpin_scheme.cpp
     schemes/wubi_scheme.cpp
     shuangpin/engine.cpp
+    shuangpin/shuangpin_custom_profile.cpp
     shuangpin/shuangpin_dictionary.cpp
     shuangpin/shuangpin_profile.cpp
     shuangpin/shuangpin_query.cpp
