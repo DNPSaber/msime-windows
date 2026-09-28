@@ -70,8 +70,7 @@ std::string g_shuangpin_schema = "xiaohe";
 std::string g_wubi_schema = "wubi86";
 // 五笔拼音混输是独立开关：同一串字母同时给五笔码表和全拼，五笔候选在前。与 z 键角色无关。
 bool g_wubi_mixed_pinyin = false;
-// 五笔 z 键角色两态：off | wildcard。改非法值回落 off（升级用户零变化）。旧三态键里的
-// "mixed_pinyin" 在读取时迁到上面的独立开关上，见 LoadConfiguration。
+// 五笔 z 键角色两态：off | wildcard。非法值回落 off（升级用户零变化）。
 std::string g_wubi_z_mode = "off";
 std::string g_shuangpin_preedit_mode = "quanpin";
 std::string g_tsf_preedit_style = "raw";
@@ -384,19 +383,9 @@ bool LoadImeConfig()
         }
         g_shuangpin_schema = tbl["input"]["shuangpin_schema"].value_or(std::string("xiaohe"));
         g_wubi_schema = tbl["input"]["wubi_schema"].value_or(std::string("wubi86"));
-        {
-            // 旧版本把「拼音混输」塞进 z 键三态；升级合并会原样保留 "mixed_pinyin"，这里把它
-            // 迁到独立的混输开关上，z 键回到 off。新键一旦写入（含用户手动关掉混输）就以它
-            // 为准，否则文件里遗留的 "mixed_pinyin" 会把关闭状态再翻回开启。
-            const auto mixed_node = tbl["input"]["wubi_mixed_pinyin"];
-            g_wubi_mixed_pinyin = mixed_node.value_or(false);
-            const std::string z_mode = tbl["input"]["wubi_z_mode"].value_or(std::string("off"));
-            if (!mixed_node.is_boolean() && z_mode == "mixed_pinyin")
-            {
-                g_wubi_mixed_pinyin = true;
-            }
-            g_wubi_z_mode = z_mode == "wildcard" ? "wildcard" : "off";
-        }
+        g_wubi_mixed_pinyin = tbl["input"]["wubi_mixed_pinyin"].value_or(false);
+        const std::string z_mode = tbl["input"]["wubi_z_mode"].value_or(std::string("off"));
+        g_wubi_z_mode = z_mode == "wildcard" ? "wildcard" : "off";
         g_shuangpin_preedit_mode = tbl["input"]["shuangpin_preedit_mode"].value_or(std::string("quanpin"));
         g_shuangpin_helpcode_enabled = tbl["helpcode"]["shuangpin_helpcode"].value_or(true);
         g_quanpin_helpcode_enabled = tbl["helpcode"]["quanpin_helpcode"].value_or(true);
