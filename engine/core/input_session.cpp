@@ -463,6 +463,13 @@ void InputSession::set_mixed_expressive_options(MixedExpressiveOptions options)
 
 void InputSession::set_wubi_input_options(metasequoia::WubiInputOptions options)
 {
+    // Server 每次击键都重读配置并调用这里；值没变就不能重建候选，否则五笔会话每键会多跑一轮
+    // 码表（混输时再加一轮拼音）查询，而那次结果紧接着被真正按键的重建覆盖。
+    const auto &current = engine_.wubi_input_options();
+    if (current.mixed_pinyin == options.mixed_pinyin && current.z_wildcard == options.z_wildcard)
+    {
+        return;
+    }
     engine_.set_wubi_input_options(options);
     // The setting decides which dictionaries answer the code in hand, so a live composition has to
     // be asked again. Leaving it alone shows the previous answer: the pinyin candidates stay on
