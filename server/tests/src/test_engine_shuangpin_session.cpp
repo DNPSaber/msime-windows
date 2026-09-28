@@ -782,6 +782,24 @@ TEST_CASE(WholeSentenceCandidatesAlwaysCarryAStoreableCanonicalPinyin)
     check(quanpin);
 }
 
+TEST_CASE(QuanpinGoogleSentenceIsNotRepeatedForShorterPrefixes)
+{
+    // 前缀查不到词时曾各补一条 Google 整句，长句后面于是缀上「输入长据的是 / 输入长据的 /
+    // 输入长据」这样一串越来越短的〔Unigram〕子串。整句联想只对完整输入出一句。
+    EngineInputSession session(SchemeType::Quanpin);
+    InputSequence(session, "shuruchangjudeshihou");
+
+    size_t google_sentences = 0;
+    for (const auto &item : session.get_candidates())
+    {
+        if (item.source != CandidateSource::Fallback || !item.sentence_association)
+            continue;
+        ++google_sentences;
+        REQUIRE_EQ(HelpcodeUtils::count_han_chars(item.word), static_cast<size_t>(7));
+    }
+    REQUIRE(google_sentences <= 1);
+}
+
 TEST_CASE(EngineQuanpinIncompleteUppercaseSuffixIsNotConsumedAsHelpcode)
 {
     EngineInputSession session(SchemeType::Quanpin);
