@@ -16,6 +16,8 @@
 namespace
 {
 constexpr std::size_t kPcmChunkBytes = 6400; // 200 ms, 16 kHz, signed 16-bit mono.
+constexpr int kEndWindowMs = 800;            // Silence that finalizes an utterance.
+constexpr int kForceToSpeechMs = 1000;       // Minimum speech before silence may finalize.
 
 struct WinHttpHandle
 {
@@ -151,7 +153,27 @@ struct ParsedResponse
     bool last = false;
     int code = 0;
     std::string text;
+    std::string definite_text;
 };
+
+// Leading utterances flagged definite are final. Stop at the first pending one so the result is
+// always a prefix of the transcript, never a sentence that would be followed by revised text.
+std::string ExtractDefinitePrefix(const nlohmann::json &body, const std::string &text)
+{
+    if (!body.is_object() || !body.contains("result") || !body["result"].is_object())
+        return {};
+    const auto &result = body["result"];
+    if (!result.contains("utterances") || !result["utterances"].is_array())
+        return {};
+    std::string definite;
+    for (const auto &utterance : result["utterances"])
+    {
+        if (!utterance.is_object() || !utterance.value("definite", false))
+            break;
+        definite += utterance.value("text", std::string());
+    }
+    return text.compare(0, definite.size(), definite) == 0 ? definite : std::string();
+}
 
 // bigmodel_async returns "result" as an object; bigmodel_nostream documents it as a list of
 // segments. Accept either shape so one parser covers both endpoints.
@@ -221,9 +243,14 @@ ParsedResponse ParseResponse(const std::vector<std::uint8_t> &message)
     try
     {
         const auto json = nlohmann::json::parse(payload.begin(), payload.end());
+        const nlohmann::json *body = &json;
         response.text = ExtractTranscript(json);
         if (response.text.empty() && json.contains("payload_msg"))
-            response.text = ExtractTranscript(json["payload_msg"]);
+        {
+            body = &json["payload_msg"];
+            response.text = ExtractTranscript(*body);
+        }
+        response.definite_text = ExtractDefinitePrefix(*body, response.text);
     }
     catch (...)
     {
@@ -409,9 +436,12 @@ void DoubaoAsrClient::Run()
         return;
     }
 
-    nlohmann::json request_options = {{"model_name", "bigmodel"},    {"enable_itn", enable_itn_},
-                                      {"enable_punc", enable_punc_}, {"enable_ddc", enable_ddc_},
-                                      {"show_utterances", false},    {"result_type", "full"}};
+    // Split on silence instead of the default semantic split: the latter keeps the last sentence
+    // pending (and unpunctuated) until the audio ends, i.e. until the hotkey is released.
+    nlohmann::json request_options = {{"model_name", "bigmodel"},        {"enable_itn", enable_itn_},
+                                      {"enable_punc", enable_punc_},     {"enable_ddc", enable_ddc_},
+                                      {"show_utterances", true},         {"result_type", "full"},
+                                      {"end_window_size", kEndWindowMs}, {"force_to_speech_time", kForceToSpeechMs}};
     if (!boosting_table_id_.empty())
         request_options["corpus"] = {{"boosting_table_id", boosting_table_id_}};
 
@@ -434,17 +464,19 @@ void DoubaoAsrClient::Run()
     std::thread receiver([this, websocket_handle = websocket.value] {
         std::vector<std::uint8_t> message;
         std::string last_notified_text;
+        std::string last_notified_definite;
         while (ReceiveMessage(websocket_handle, message))
         {
             const ParsedResponse response = ParseResponse(message);
             if (!response.text.empty())
             {
                 result_ = response.text;
-                if (response.text != last_notified_text)
+                if (response.text != last_notified_text || response.definite_text != last_notified_definite)
                 {
                     last_notified_text = response.text;
+                    last_notified_definite = response.definite_text;
                     if (transcript_callback_)
-                        transcript_callback_(response.text);
+                        transcript_callback_(response.text, response.definite_text);
                 }
             }
             if (response.last || response.code != 0)
