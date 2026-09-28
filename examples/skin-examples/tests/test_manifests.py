@@ -19,14 +19,31 @@ class ManifestTests(unittest.TestCase):
                 self.assertRegex(data["id"], r"^[a-z0-9._-]{1,64}$")
                 for key in ("name", "version", "author"):
                     self.assertTrue(data[key].strip(), key)
-                for key in ("toolbar_stylesheet", "preview"):
-                    if key in data:
-                        asset = (path.parent / data[key]).resolve()
-                        self.assertTrue(asset.is_relative_to(path.parent.resolve()), key)
-                        self.assertTrue(asset.is_file(), f"Missing {key}: {asset}")
+                window = data.get("candidate_window", {})
+                assets = {key: data.get(key) for key in ("toolbar_stylesheet", "preview")}
+                for table in ("decoration", "background"):
+                    if table in window:
+                        assets[f"candidate_window.{table}.image"] = window[table]["image"]
+                if "decoration" in window:
+                    for key in ("top_inset_dip", "width_dip"):
+                        self.assertGreater(window["decoration"][key], 0, key)
+                for key, rel in assets.items():
+                    if rel is None:
+                        continue
+                    asset = (path.parent / rel).resolve()
+                    self.assertTrue(asset.is_relative_to(path.parent.resolve()), key)
+                    self.assertTrue(asset.is_file(), f"Missing {key}: {asset}")
+                    if asset.suffix.lower() == ".png":
+                        self.assertLessEqual(asset.stat().st_size, 500 * 1024, key)
+                for scope in ("candidate_window", "toolbar"):
+                    if "corner_radius_dip" in data.get(scope, {}):
+                        self.assertTrue(0 <= data[scope]["corner_radius_dip"] <= 32, scope)
+                if "background" in window:
+                    self.assertTrue(0 <= window["background"].get("opacity", 1) <= 1)
                 for theme in data["supports"]["themes"]:
                     self.assertIn(theme, data["candidate"])
-                self.assertLessEqual((path.parent / data["preview"]).stat().st_size, 500 * 1024)
+                    if "toolbar" in data:
+                        self.assertIn(theme, data["toolbar"])
 
 
 if __name__ == "__main__":

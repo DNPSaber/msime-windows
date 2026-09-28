@@ -13,10 +13,14 @@
     .preview-label { margin-bottom:8px; color:#aaa; }
     .containerParent { width:fit-content; padding-top:88px; position:relative; }
     .containerParent:not(:empty)::before {
-      content:""; position:absolute; z-index:0; top:0; right:0; width:136px; height:118px;
+      content:""; position:absolute; z-index:0; top:0; right:0; width:102px; height:88px;
       background: url("./skins/niya-demo/assets/character.png") center / contain no-repeat; pointer-events:none;
     }
-    .container { width:fit-content; padding:2px; border:1.5px solid #9b9b9b2e; border-radius:6px; background:#202020; box-shadow:5px 5px 10px #0008; user-select:none; position:relative; z-index:1; }
+    .container { width:fit-content; min-width:176px; padding:2px; border:1.5px solid #9b9b9b2e; border-radius:12px; background:#202020; box-shadow:5px 5px 10px #0008; user-select:none; position:relative; z-index:1; overflow:hidden; }
+    .container::before {
+      content:""; position:absolute; inset:0; z-index:-1; opacity:.3;
+      background: url("./skins/niya-demo/assets/background.png") center / cover no-repeat; pointer-events:none;
+    }
     .row { margin-top:2px; padding:0 12px 0 2px; }
     .pinyin { display:flex; min-width:140px; }
     .cursor { display:inline-block; width:1.5px; height:1.2em; margin-left:1px; background:#e08aa8; vertical-align:middle; }
