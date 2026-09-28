@@ -400,6 +400,7 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"shuangpin_schema", GetConfiguredShuangpinSchema()},
             {"wubi_schema", GetConfiguredWubiSchema()},
             {"wubi_mixed_pinyin", GetConfiguredWubiMixedPinyin()},
+            {"escape_keeps_selected_word", GetConfiguredEscapeKeepsSelectedWord()},
             {"wubi_z_mode", GetConfiguredWubiZMode()},
             {"word_to_character", GetConfiguredWordToCharacterEnabled()},
             {"word_to_character_keys", GetConfiguredWordToCharacterKeys()},
@@ -679,6 +680,8 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredWubiSchema(json::value_to<std::string>(data.at("value")));
     if (path == "input.wubi_mixed_pinyin")
         return SetConfiguredWubiMixedPinyin(json::value_to<bool>(data.at("value")));
+    if (path == "input.escape_keeps_selected_word")
+        return SetConfiguredEscapeKeepsSelectedWord(json::value_to<bool>(data.at("value")));
     if (path == "input.wubi_z_mode")
         return SetConfiguredWubiZMode(json::value_to<std::string>(data.at("value")));
     if (path == "input.word_to_character")

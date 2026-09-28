@@ -438,6 +438,14 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                                     PostSettingsConfig();
                                 }
                             }
+                            else if (path == "input.escape_keeps_selected_word")
+                            {
+                                const bool value = json::value_to<bool>(data.at("value"));
+                                if (SetConfiguredEscapeKeepsSelectedWord(value))
+                                {
+                                    PostSettingsConfig();
+                                }
+                            }
                             else if (path == "input.wubi_z_mode")
                             {
                                 const std::string value = json::value_to<std::string>(data.at("value"));
@@ -1315,6 +1323,7 @@ void PostSettingsConfig()
             {"shuangpin_schema", GetConfiguredShuangpinSchema()},
             {"wubi_schema", GetConfiguredWubiSchema()},
             {"wubi_mixed_pinyin", GetConfiguredWubiMixedPinyin()},
+            {"escape_keeps_selected_word", GetConfiguredEscapeKeepsSelectedWord()},
             {"wubi_z_mode", GetConfiguredWubiZMode()},
             {"word_to_character", GetConfiguredWordToCharacterEnabled()},
             {"word_to_character_keys", GetConfiguredWordToCharacterKeys()},

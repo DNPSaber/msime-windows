@@ -211,6 +211,9 @@ bool SetConfiguredWubiSchema(const std::string &schema);
 // 五笔拼音混输：独立开关，同一串字母同时给五笔码表和全拼。
 bool GetConfiguredWubiMixedPinyin();
 bool SetConfiguredWubiMixedPinyin(bool enabled);
+// 造词时 Esc 只清未选拼音、保留已选词（小狼毫风格）；关闭时 Esc 直接整体取消。
+bool GetConfiguredEscapeKeepsSelectedWord();
+bool SetConfiguredEscapeKeepsSelectedWord(bool enabled);
 // 五笔 z 键角色："off" | "wildcard"。混输已拆成独立开关，这里只剩通配两态。
 const std::string &GetConfiguredWubiZMode();
 bool SetConfiguredWubiZMode(const std::string &mode);

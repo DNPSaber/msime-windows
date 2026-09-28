@@ -307,6 +307,13 @@ void CMetasequoiaIME::_ApplyDeferredKeyProjection(const _KEYSTROKE_STATE &keySta
     shadow.candidateActive = _deferredProjectedCandidateActive;
     shadow.unicodeMode = _deferredProjectedUnicodeMode;
     ApplyDeferredKeyState(shadow, keyState, wch);
+    if (keyState.Function == FUNCTION_CANCEL && !GlobalIme::word_for_creating_word.empty())
+    {
+        // Esc inside a creating word may keep the selected word alive
+        // (input.escape_keeps_selected_word is Server-owned), so the
+        // composition is not necessarily gone.
+        shadow.projectionValid = false;
+    }
     if (!shadow.projectionValid)
     {
         // The queued key's effect on the composition is unknown (a segment

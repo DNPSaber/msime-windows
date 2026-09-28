@@ -263,6 +263,7 @@ class CMetasequoiaIME : public ITfTextInputProcessorEx,
     HRESULT _HandleComplete(TfEditCookie ec, _In_ ITfContext *pContext);
     HRESULT _HandleCompleteCommitFirst(TfEditCookie ec, _In_ ITfContext *pContext);
     HRESULT _HandleCancel(TfEditCookie ec, _In_ ITfContext *pContext);
+    HRESULT _HandleEscapeCancel(TfEditCookie ec, _In_ ITfContext *pContext, uint64_t requestId);
     HRESULT _HandleToogleIMEMode(TfEditCookie ec, _In_ ITfContext *pContext);
     HRESULT _HandleInsertText(TfEditCookie ec, _In_ ITfContext *pContext, const std::wstring &text);
     HRESULT _HandleCommitCandidateAndContinue(TfEditCookie ec, _In_ ITfContext *pContext, const std::wstring &payload);

@@ -576,6 +576,61 @@ void PublishRestoredCompositionCandidates(uint64_t client_id, uint64_t activatio
     RequestShowCandidateWindow();
 }
 
+// Esc inside the creating-word shape (see HasEscapeCreatingWordShape). TSF is
+// holding for a CompositionRestored frame, so it is sent in both outcomes:
+//   - keep (ShouldEscapeKeepSelectedWord): drop only the unselected spelling
+//     and leave the selected word alone on screen -- the R3 state a segment
+//     Backspace already produces, except that the candidate window stays up
+//     showing just the word as its preedit. The selection history stays, so a
+//     later Backspace can still retract the word;
+//   - otherwise reset everything like any other Esc; the empty payload makes
+//     TSF cancel its composition.
+void HandleCreatingWordEscape(uint64_t client_id, uint64_t activation_epoch, uint64_t request_id,
+                              const std::string &input_before_key)
+{
+    if (FanyImeIpc::ShouldEscapeKeepSelectedWord(GetConfiguredEscapeKeepsSelectedWord(), input_before_key.size(),
+                                                 g_r_mode_triggered))
+    {
+        g_inputSession->set_pinyin_sequence("");
+        g_inputSession->set_pinyin_sequence_with_cases("");
+        g_inputSession->recompute_candidates();
+        UpdateCloudInput("");
+        UpdateEnglishInput("");
+        UpdateEmojiInput("");
+        UpdateKaomojiInput("");
+        UpdateAiInput("");
+        g_dedicated_english_answer_pending = false;
+        ClearSpecialModeTriggers();
+        auto &composition = GlobalIme::composition;
+        composition.raw_input_with_cases.clear();
+        composition.segmented_pinyin.clear();
+        composition.caret_position = 0;
+        composition.restored_selection_highlight = {};
+        Global::MsgTypeToTsf = Global::DataFromServerMsgType::CompositionRestored;
+        Global::candidate_ui.selected_text =
+            BuildCreateWordPipePayload(std::string{}, composition.creating_word.word) + L"\t0";
+        SendCurrentDataToClient(client_id, activation_epoch, request_id);
+        if (GetConfiguredCandidateWindowPreeditStyle() == "empty")
+        {
+            // The window draws no preedit, so an empty page would be a blank card.
+            HideCandidateWindowAndDropItems();
+            return;
+        }
+        // Keep the window up with the word alone as its preedit (Weasel style): an
+        // empty page, so the stale candidates of the dropped spelling go away.
+        Global::CandidateString.clear();
+        Global::candidate_ui.set_items({});
+        RefreshCandidatePageUi(true);
+        return;
+    }
+
+    PostMessage(::global_hwnd, WM_HIDE_MAIN_WINDOW, 0, 0);
+    ClearState();
+    Global::MsgTypeToTsf = Global::DataFromServerMsgType::CompositionRestored;
+    Global::candidate_ui.selected_text = L"\t\t\t0";
+    SendCurrentDataToClient(client_id, activation_epoch, request_id);
+}
+
 /**
  * @brief
  *
@@ -696,6 +751,13 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
         g_r_mode_original_session = g_inputSession;
         g_inputSession = CreateTemporaryJapaneseInputSession();
         g_r_mode_triggered = true;
+    }
+
+    if (FanyImeIpc::HasEscapeCreatingWordShape(Global::Keycode, GlobalIme::composition.creating_word.active,
+                                               IsUiLessMode(), ClientNegotiatedCompositionRestore(client_id)))
+    {
+        HandleCreatingWordEscape(client_id, activation_epoch, request_id, input_before_key);
+        return;
     }
 
     if (FanyImeIpc::IsBackendIndependentCompositionResetKey(Global::Keycode))

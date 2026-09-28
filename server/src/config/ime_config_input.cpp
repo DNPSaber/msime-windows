@@ -246,6 +246,21 @@ bool SetConfiguredWubiMixedPinyin(bool enabled)
     return true;
 }
 
+bool GetConfiguredEscapeKeepsSelectedWord()
+{
+    return g_escape_keeps_selected_word;
+}
+
+bool SetConfiguredEscapeKeepsSelectedWord(bool enabled)
+{
+    if (!WriteConfiguredValue("input", "escape_keeps_selected_word", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_escape_keeps_selected_word = enabled;
+    return true;
+}
+
 const std::string &GetConfiguredShuangpinPreeditMode()
 {
     return g_shuangpin_preedit_mode;
