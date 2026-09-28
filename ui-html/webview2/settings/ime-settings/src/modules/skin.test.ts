@@ -83,7 +83,27 @@ it('previews number and translation colours from the skin manifest', () => {
   ], [], '', true, 1);
   applyCandidateSkin('custom-gloss');
 
-  expect(generatedCss).toContain('.num, .cand-no { color: #8899aa; }');
-  expect(generatedCss).toContain('.cand-translation { color: #e6a817; opacity: 1; }');
+  expect(generatedCss).toContain(':scope .num, :scope .cand-no { color: #8899aa; }');
+  expect(generatedCss).toContain(':scope .cand-translation { color: #e6a817; opacity: 1; }');
   expect(generatedCss).not.toContain('display: none');
+});
+
+it('anchors preview colour rules on the host so the light theme and selected bar apply', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-pink', name: 'Custom Pink', version: '1', base: 'fluent', layouts: ['horizontal'],
+      themes: ['dark', 'light'], compatible: true,
+      candidate: {
+        dark: { accent: '#e08aa8', selected: '#442233' },
+        light: { accent: '#c45c7a', selected: '#f5dde5' }
+      }
+    }
+  ], [], '', true, 2);
+  applyCandidateSkin('custom-pink');
+
+  expect(generatedCss).toContain(':scope .cursor, :scope .first::before { background: #e08aa8; }');
+  expect(generatedCss).toContain(':scope.theme-light .cursor, :scope.theme-light .first::before { background: #c45c7a; }');
+  // Hovering the selected candidate keeps the selected colour instead of the base skin's hover colour.
+  expect(generatedCss).toContain(
+    ':scope.theme-light .first, :scope.theme-light .cand.first, :scope.theme-light .cand.first:hover { background-color: #f5dde5; }');
 });

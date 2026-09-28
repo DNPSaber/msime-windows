@@ -132,7 +132,8 @@ function candidatePreviewCss(skin: ExternalSkin): string {
   const light = skin.candidate?.light || {};
   const preview = skin.preview ? `url("${resourceUrl(skin.id, skin.preview)}")` : 'none';
   const themeRules = (scope: string, colors: CandidateColors) => {
-    const prefix = scope ? `${scope} ` : '';
+    // Inside @scope a selector without :scope only matches below the preview host, so ".theme-light .first" never saw the host's own theme class, and bare ".first::before" lost on specificity to the preview's ".wnd-h .first::before". Anchoring on :scope fixes both.
+    const prefix = `:scope${scope} `;
     const accent = skinColor(colors.accent);
     const selected = skinColor(colors.selected);
     const hover = skinColor(colors.hover);
@@ -150,7 +151,7 @@ function candidatePreviewCss(skin: ExternalSkin): string {
       css += `:scope.caret-state-preview-host.theme-${theme} { ${variables}; }\n`;
     }
     if (accent) css += `${prefix}.cursor, ${prefix}.first::before { background: ${accent}; }\n`;
-    if (selected) css += `${prefix}.first, ${prefix}.cand.first { background-color: ${selected}; }\n`;
+    if (selected) css += `${prefix}.first, ${prefix}.cand.first, ${prefix}.cand.first:hover { background-color: ${selected}; }\n`;
     if (hover) css += `${prefix}.cand:not(.first):hover { background-color: ${hover} !important; }\n`;
     if (surface) css += `${prefix}.container { background: ${surface}; }\n`;
     if (border) css += `${prefix}.container { border-color: ${border}; }\n`;
