@@ -304,13 +304,31 @@ void CandidatePresenter::ApplySkin()
         tokens.menuText = ColorFromRgb(0x1A1A1A);
         tokens.menuHover = ColorFromRgb(0xECECEC);
     }
+    const std::wstring skinsRoot = AssetRoot() + L"\\skins";
+    std::optional<CandidateSkinCatalog::Package> package;
+    if (!CandidateSkinCatalog::IsBuiltIn(skinId))
+    {
+        package = CandidateSkinCatalog::Load(std::filesystem::path(skinsRoot), skinId);
+    }
+    // 自定义包的几何取自它的 base 皮肤，与 WebView2 端注入 base 皮肤 CSS 一致；颜色随后由包覆盖。
+    const std::string baseSkin = package ? package->base : skinId;
     // Built-in skin palettes mirror ui-html/webview2/candwnd/skins/<skin>/;
     // the WebView2 CSS is the reference for both the light and dark values.
-    if (skinId == "wechat")
+    // 横排时高亮内缩于外框，首项、尾项落在卡片四角上的那几个角与卡片同 R，其余角保持
+    // itemRadius，对应 CSS 横排的 .pinyin + .row-wrapper / .last-visible 规则。
+    const bool horizontalLayout = GetConfiguredCandidateWindowLayout() == "horizontal";
+    if (baseSkin == "fluent")
+    {
+        if (horizontalLayout)
+            tokens.outerItemRadius = tokens.radius;
+    }
+    else if (baseSkin == "wechat")
     {
         tokens.borderWidth = 1.0f;
         tokens.radius = 5.0f;
         tokens.containerPad = 2.0f;
+        if (horizontalLayout)
+            tokens.outerItemRadius = tokens.radius;
         tokens.accent = ColorFromRgb(0x07C160);
         tokens.selected = ColorFromRgb(0x07C160);
         tokens.showSelectedBar = false;
@@ -335,7 +353,7 @@ void CandidatePresenter::ApplySkin()
             tokens.menuHover = ColorFromRgb(0x2A2A2A);
         }
     }
-    else if (skinId == "willow_green")
+    else if (baseSkin == "willow_green")
     {
         tokens.borderWidth = 0.0f;
         tokens.radius = 9.0f;
@@ -387,7 +405,7 @@ void CandidatePresenter::ApplySkin()
             tokens.menuHover = ColorFromRgb(0x414441);
         }
     }
-    else if (skinId == "graphite")
+    else if (baseSkin == "graphite")
     {
         tokens.borderWidth = 1.0f;
         tokens.radius = 3.0f;
@@ -420,7 +438,7 @@ void CandidatePresenter::ApplySkin()
             tokens.menuHover = ColorFromRgb(0x30353B);
         }
     }
-    else if (skinId == "autumn_osmanthus")
+    else if (baseSkin == "autumn_osmanthus")
     {
         tokens.borderWidth = 0.0f;
         tokens.radius = 10.0f;
@@ -458,15 +476,9 @@ void CandidatePresenter::ApplySkin()
         }
     }
 
-    const std::wstring skinsRoot = AssetRoot() + L"\\skins";
-    std::optional<CandidateSkinCatalog::Package> package;
-    if (!CandidateSkinCatalog::IsBuiltIn(skinId))
+    if (package)
     {
-        package = CandidateSkinCatalog::Load(std::filesystem::path(skinsRoot), skinId);
-        if (package)
-        {
-            ApplyPackageColors(candLight ? package->light : package->dark, tokens);
-        }
+        ApplyPackageColors(candLight ? package->light : package->dark, tokens);
     }
     const CandidateSkinCatalog::CandidateColors *packageColors =
         package ? &(candLight ? package->light : package->dark) : nullptr;
