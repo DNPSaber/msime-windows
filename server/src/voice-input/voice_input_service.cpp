@@ -48,10 +48,6 @@ std::vector<std::future<void>> g_network_tasks;
 std::mutex g_send_mutex;
 std::atomic<bool> g_stream_inline_this_session{false};
 std::wstring g_last_inline_preedit;
-// Finalized sentences are committed while recording unless polishing needs the whole transcript.
-bool g_commit_definite_this_session = false;
-// UTF-8 transcript prefix already committed this session. Guarded by g_send_mutex.
-std::string g_inline_committed;
 std::thread g_control_thread;
 std::mutex g_control_mutex;
 std::condition_variable g_control_cv;
@@ -595,15 +591,10 @@ RecognitionResult Recognize(const std::vector<float> &samples, const VoiceInputC
     }
 }
 
-bool IsPolishConfigured(const VoiceInputConfig &config)
-{
-    return config.polish_text && !VoiceInput::ResolvePolishToken(config).empty() && !config.polish_endpoint.empty() &&
-           !VoiceInput::ResolvePolishModel(config).empty();
-}
-
 bool ShouldPolish(const std::string &text, const VoiceInputConfig &config)
 {
-    return !text.empty() && IsPolishConfigured(config);
+    return config.polish_text && !text.empty() && !VoiceInput::ResolvePolishToken(config).empty() &&
+           !config.polish_endpoint.empty() && !VoiceInput::ResolvePolishModel(config).empty();
 }
 
 std::string Polish(const std::string &text, const VoiceInputConfig &config)
@@ -743,41 +734,19 @@ bool SendVoiceComposition(UINT msg_type, const std::wstring &text)
     return SendVoiceCompositionToTsfWorker(active.client_id, active.epoch, msg_type, text);
 }
 
-// Returns the part of utf8 not yet committed this session. A transcript that no longer starts with
-// the committed prefix is returned whole; that should not happen since definite text is final.
-std::string UncommittedTranscript(const std::string &utf8)
-{
-    if (utf8.compare(0, g_inline_committed.size(), g_inline_committed) == 0)
-        return utf8.substr(g_inline_committed.size());
-    return utf8;
-}
-
-// Caller holds g_send_mutex.
-void PushInlineTranscript(const std::string &text, const std::string &definite_text)
+void PushInlinePreedit(const std::wstring &text)
 {
     if (!g_stream_inline_this_session.load() || !g_recording.load())
     {
         return;
     }
-    if (g_commit_definite_this_session && definite_text.size() > g_inline_committed.size() &&
-        definite_text.compare(0, g_inline_committed.size(), g_inline_committed) == 0)
-    {
-        const std::wstring sentence = string_to_wstring(definite_text.substr(g_inline_committed.size()));
-        // On failure the sentence stays in the preedit and is committed with the rest on release.
-        if (SendVoiceComposition(Global::DataFromServerMsgTypeToTsfWorkerThread::CommitVoiceComposition, sentence))
-        {
-            g_inline_committed = definite_text;
-            g_last_inline_preedit.clear();
-        }
-    }
-    const std::wstring preedit = string_to_wstring(UncommittedTranscript(text));
-    if (preedit.empty() || preedit == g_last_inline_preedit)
+    if (text.empty() || text == g_last_inline_preedit)
     {
         return;
     }
-    if (SendVoiceComposition(Global::DataFromServerMsgTypeToTsfWorkerThread::UpdateVoiceComposition, preedit))
+    if (SendVoiceComposition(Global::DataFromServerMsgTypeToTsfWorkerThread::UpdateVoiceComposition, text))
     {
-        g_last_inline_preedit = preedit;
+        g_last_inline_preedit = text;
     }
 }
 
@@ -789,7 +758,6 @@ void CancelInlinePreedit()
     }
     SendVoiceComposition(Global::DataFromServerMsgTypeToTsfWorkerThread::CancelVoiceComposition, L"");
     g_last_inline_preedit.clear();
-    g_inline_committed.clear();
     g_stream_inline_this_session.store(false);
 }
 
@@ -824,17 +792,14 @@ bool SendTextViaTsf(const std::wstring &text)
 void CommitRecognizedText(const std::string &utf8, const VoiceInputConfig &config, bool stream_inline)
 {
     std::lock_guard<std::mutex> send_lock(g_send_mutex);
+    const std::wstring text = string_to_wstring(utf8);
+    if (text.empty())
+    {
+        return;
+    }
+
     if (stream_inline)
     {
-        // Sentences finalized while recording are already in the document.
-        const std::wstring text = string_to_wstring(UncommittedTranscript(utf8));
-        g_inline_committed.clear();
-        if (text.empty())
-        {
-            SendVoiceComposition(Global::DataFromServerMsgTypeToTsfWorkerThread::CancelVoiceComposition, L"");
-            g_last_inline_preedit.clear();
-            return;
-        }
         if (SendVoiceComposition(Global::DataFromServerMsgTypeToTsfWorkerThread::CommitVoiceComposition, text))
         {
             g_last_inline_preedit.clear();
@@ -846,11 +811,6 @@ void CommitRecognizedText(const std::string &utf8, const VoiceInputConfig &confi
         return;
     }
 
-    const std::wstring text = string_to_wstring(utf8);
-    if (text.empty())
-    {
-        return;
-    }
     if (config.commit_mode == "ctrl_v")
     {
         SendTextViaCtrlV(text);
@@ -941,9 +901,7 @@ bool StartRecording()
         voice_session = ++g_voice_session;
         g_dismissed_overlay_session = 0;
         g_last_inline_preedit.clear();
-        g_inline_committed.clear();
         g_stream_inline_this_session.store(use_doubao && ShouldStreamInlinePreedit(config));
-        g_commit_definite_this_session = !IsPolishConfigured(config);
     }
     g_overlay.set_show_transcript(!g_stream_inline_this_session.load());
     g_overlay.set_compact_status(WaveOverlay::CompactStatus::None);
@@ -954,16 +912,16 @@ bool StartRecording()
         g_doubao_asr = std::make_unique<DoubaoAsrClient>(
             config.asr_endpoint, VoiceInput::UsesDoubaoLegacyAuth(config), config.asr_app_key, asr_token,
             config.asr_resource_id, config.doubao_enable_itn, config.doubao_enable_punc, config.doubao_enable_ddc,
-            config.doubao_boosting_table_id,
-            [voice_session](const std::string &text, const std::string &definite_text) {
+            config.doubao_boosting_table_id, [voice_session](const std::string &text) {
                 if (g_voice_session != voice_session)
                     return;
+                const std::wstring wide = string_to_wstring(text);
                 if (!g_stream_inline_this_session.load())
-                    g_overlay.set_transcript(string_to_wstring(text));
+                    g_overlay.set_transcript(wide);
                 std::lock_guard<std::mutex> send_lock(g_send_mutex);
                 if (g_voice_session != voice_session)
                     return;
-                PushInlineTranscript(text, definite_text);
+                PushInlinePreedit(wide);
             });
         if (!g_doubao_asr->Start())
         {
