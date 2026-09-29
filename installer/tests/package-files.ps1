@@ -63,6 +63,20 @@ try {
                          'app_data/helpcodes/helpcode.txt', 'THIRD_PARTY_NOTICES.txt', 'LICENSE.txt')) {
         if (-not (Test-Path (Join-Path $installer $file))) { throw "Missing packaged file: $file" }
     }
+    # 数据目录不整个归输入法时（旧版安装器把标记写进了用户原有的文件夹，#537），卸载只按
+    # IsShippedAppDataItem 等名单删。包里新增了顶层条目而名单没跟上，卸载就会把它漏在用户目录里。
+    $iss = [IO.File]::ReadAllText((Join-Path $installer 'msime_setup.iss'))
+    $shippedBody = [regex]::Match($iss, '(?s)function IsShippedAppDataItem\(.*?\r?\nend;').Value
+    if (-not $shippedBody) { throw 'msime_setup.iss is missing IsShippedAppDataItem' }
+    $shipped = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($literal in [regex]::Matches($shippedBody, "CompareText\(\s*FileName\s*,\s*'([^']+)'")) {
+        [void]$shipped.Add($literal.Groups[1].Value)
+    }
+    foreach ($entry in Get-ChildItem -LiteralPath (Join-Path $installer 'app_data') -Force) {
+        if (-not $shipped.Contains($entry.Name)) {
+            throw "app_data\$($entry.Name) 不在 msime_setup.iss 的 IsShippedAppDataItem 名单里"
+        }
+    }
     # user_dict.dat 是 role=user 的可写文件，清单里 profiles 为空。装进资源目录会把用户
     # 自造词顶掉，而且每次升级顶一次，所以它必须由引擎在用户数据目录下自建。
     if (Test-Path (Join-Path $installer 'app_data/user_dict.dat')) { throw 'Packaged the writable user dictionary' }
