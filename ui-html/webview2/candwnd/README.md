@@ -16,7 +16,7 @@ skins/
 └─ autumn_osmanthus/
 ```
 
-每个皮肤目录包含 `horizontal_dark.css`、`horizontal_light.css`、`vertical_dark.css` 和 `vertical_light.css`。Server 根据基础皮肤、候选框布局和明暗模式组合资源路径，并以内联 `<style>` 注入共享 HTML；外部皮肤的 CSS 随后加载，用于覆盖基础皮肤。
+每个皮肤目录包含 `horizontal_dark.css`、`horizontal_light.css`、`vertical_dark.css` 和 `vertical_light.css`。Server 根据基础皮肤、候选框布局和明暗模式组合资源路径，并以内联 `<style>` 注入共享 HTML；启用外部皮肤时，Server 再根据其 `skin.toml` 生成一段 CSS，以内联 `<style>` 追加在后面，用于覆盖基础皮肤。
 
 `ApplyCandidateFrame` 只隐藏用不到的候选行、不删除它们，所以 `:last-child` 不一定是最后一个可见行；需要定位尾项的皮肤用它维护的 `.row-wrapper.last-visible`。
 
