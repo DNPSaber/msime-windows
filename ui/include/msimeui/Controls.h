@@ -530,8 +530,16 @@ class CandidateList : public Visual
         // row) sits between the list and the frame's top edge.
         float outerCornerRadius = 0.0f;
         bool outerTopCornersEnabled = true;
+        // Horizontal only: when the list is arranged wider than a line of
+        // items, spread the spare width evenly over that line's items so the
+        // last one reaches the list's right edge (full-bleed highlights).
+        bool justifyHorizontalRows = false;
         float contentPadLeft = 5.0f;
         float contentPadRight = 5.0f;
+        // Part of itemHeight that is the row's bottom padding. Lines stacked
+        // under the first one (wrapped annotation, horizontal translation)
+        // start above it, and the padding is restored below the last line.
+        float contentPadBottom = 0.0f;
         float textPadLeft = 0.0f;
         float labelGap = 1.5f;
         float selectedBarWidth = 3.0f;
