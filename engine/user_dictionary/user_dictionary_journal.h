@@ -39,6 +39,22 @@ bool record_pinyin_upsert_from_database(const std::string &main_db_path, const s
 bool bump_wubi_weight(const std::string &main_db_path, const std::string &user_db_path, const std::string &key,
                       const std::string &value);
 
+// 快捷短语混排的调频状态。快捷短语与拼音候选的权重不在同一个量纲上，不能互相比较，所以
+// 按编码记一个槽位：同码快捷短语组前面排几个普通候选（见
+// metasequoia::local_modes::counts_toward_quick_phrase_slot）。没有记录即 0，组在首位。
+int quick_phrase_slot(const std::string &user_db_path, const std::string &code);
+// 用户选中了组里的一条快捷短语。累计到 trigger_count 次后按调频模式把组往前挪（槽位按
+// ranking_target 缩小），选中的不是组内第一条时再把它的权重升到组内最高 + 1 并记日志。
+// mode 为 "disabled" 时什么都不做。
+bool learn_quick_phrase_selection(const std::string &main_db_path, const std::string &user_db_path,
+                                  const std::string &code, const std::string &value, bool first_in_group,
+                                  const std::string &mode, int linear_step, int trigger_count);
+// 用户越过快捷短语组选了排在组后面的普通候选，ordinary_rank 是它在普通候选里的名次。
+// 把整组当成它前面的一个位置，它按调频模式的目标位置越过这一组时，累计到 trigger_count
+// 次后槽位 + 1，最多到 max_slot（首页最后一位）。
+bool learn_quick_phrase_bypass(const std::string &user_db_path, const std::string &code, int ordinary_rank,
+                               const std::string &mode, int linear_step, int trigger_count, int max_slot);
+
 struct ReplayResult
 {
     int applied = 0;

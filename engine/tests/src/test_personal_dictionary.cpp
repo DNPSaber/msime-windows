@@ -98,6 +98,20 @@ void run()
                             [&](const auto &candidate) { return candidate.word == quick.value; }),
                 "Quick phrase is missing from the local input mode");
     }
+    {
+        // 快捷短语按编码精确匹配、混在普通候选首位。
+        PersonalDictionaryEntry letters{PersonalDictionaryKind::QuickPhrase, "qpfixture", "letters phrase", 10};
+        require(edit_personal_dictionary(paths, std::nullopt, letters).success, "Quick phrase add failed");
+        SessionOptions options;
+        options.paths = paths;
+        Session session(options);
+        for (char ch : letters.key)
+            session.character(ch);
+        const auto snapshot = session.snapshot();
+        require(!snapshot.candidates.empty() && snapshot.candidates.front().word == letters.value,
+                "Quick phrase is not mixed first into the candidate list");
+        require(edit_personal_dictionary(paths, letters, std::nullopt).success, "Quick phrase delete failed");
+    }
     // Moving between dictionaries must commit the old tombstone and new candidate together.
     PersonalDictionaryEntry moved{PersonalDictionaryKind::English, "fixtureword", "FixtureWord", quick.weight};
     require(edit_personal_dictionary(paths, quick, moved).success &&

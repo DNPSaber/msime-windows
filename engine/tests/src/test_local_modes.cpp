@@ -176,6 +176,17 @@ int main()
                 metasequoia::local_modes::query_quick_phrases("a", quick_phrase_database, 0).candidates.empty(),
             "Quick-phrase query accepted an invalid prefix or limit.");
 
+    const auto exact_quick_phrases =
+        metasequoia::local_modes::query_quick_phrases_by_code("aa", quick_phrase_database, 10);
+    require(!exact_quick_phrases.diagnostic.has_value() && exact_quick_phrases.candidates.size() == 2 &&
+                exact_quick_phrases.candidates[0].word == "tie a" && exact_quick_phrases.candidates[1].word == "tie b",
+            "Exact quick-phrase query diverged from its code.");
+    require(
+        metasequoia::local_modes::query_quick_phrases_by_code("a", quick_phrase_database, 10).candidates.empty() &&
+            metasequoia::local_modes::query_quick_phrases_by_code("A", quick_phrase_database, 10).candidates.empty() &&
+            metasequoia::local_modes::query_quick_phrases_by_code("aa", quick_phrase_database, 0).candidates.empty(),
+        "Exact quick-phrase query matched a prefix or accepted an invalid code or limit.");
+
     const auto missing_quick_phrases =
         metasequoia::local_modes::query_quick_phrases("secret", quick_phrase_directory / "private-missing.db", 10);
     require(missing_quick_phrases.candidates.empty() && missing_quick_phrases.diagnostic.has_value() &&

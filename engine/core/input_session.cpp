@@ -23,6 +23,9 @@ namespace metasequoia
 {
 namespace
 {
+// 引擎没有页长的概念，快捷短语组最多退到默认页长 6 的末位。
+constexpr int kQuickPhraseMaxSlot = 5;
+
 const char *frequency_mode_name(FrequencyAdjustmentMode mode)
 {
     switch (mode)
@@ -420,7 +423,13 @@ const FrequencyAdjustmentOptions &InputSession::frequency_adjustment() const
 
 void InputSession::set_local_mode_options(LocalModeOptions options)
 {
+    const bool quick_phrase_changed = local_mode_options_.quick_phrase_candidates != options.quick_phrase_candidates ||
+                                      local_mode_options_.quick_phrase_frequency != options.quick_phrase_frequency;
     local_mode_options_ = options;
+    if (quick_phrase_changed && local_input_mode_ == LocalInputMode::None && !dedicated_english_mode_)
+    {
+        update_mixed_candidates();
+    }
     if ((local_input_mode_ == LocalInputMode::Unicode && !local_mode_options_.unicode) ||
         (local_input_mode_ == LocalInputMode::DateTime && !local_mode_options_.date_time) ||
         (local_input_mode_ == LocalInputMode::QuickPhrase && !local_mode_options_.quick_phrase) ||
@@ -648,10 +657,7 @@ const std::vector<WordItem> &InputSession::candidates() const
     {
         return local_candidates_;
     }
-    if (fixed_positions_enabled_ ||
-        ((english_input_options_.mixed_candidates || mixed_expressive_options_.emoji_candidates ||
-          mixed_expressive_options_.kaomoji_candidates) &&
-         (scheme() == SchemeType::Quanpin || scheme() == SchemeType::Shuangpin)))
+    if (mixed_candidates_active())
     {
         // update_mixed_candidates() assembles this from the decoded prefix while it is active.
         return mixed_candidates_;
@@ -840,6 +846,98 @@ void InputSession::update_mixed_candidates()
     mixed_candidates_ = candidate_queries_.mixed(decoded, association_prefix, scheme(), english_input_options_,
                                                  mixed_expressive_options_, dedicated_english_mode_, local_input_mode_);
     apply_candidate_positions(mixed_candidates_);
+    // 只有混排列表才会被 candidates() 返回；Server 自己混排，不走这里。
+    const auto code = mixed_candidates_active() ? quick_phrase_code() : std::nullopt;
+    if (!code)
+    {
+        return;
+    }
+    auto phrases = local_modes::query_quick_phrases_by_code(*code, paths_.dictionary(assets::main_dictionary));
+    if (phrases.candidates.empty())
+    {
+        return;
+    }
+    std::size_t slot = 0;
+    if (local_mode_options_.quick_phrase_frequency && frequency_adjustment_configured_ &&
+        frequency_adjustment_.mode != FrequencyAdjustmentMode::Disabled)
+    {
+        const int stored = user_dictionary::quick_phrase_slot(path_to_utf8(paths_.user(assets::user_journal)), *code);
+        slot = static_cast<std::size_t>(std::clamp(stored, 0, kQuickPhraseMaxSlot));
+    }
+    local_modes::place_quick_phrases(mixed_candidates_, std::move(phrases.candidates), slot);
+}
+
+bool InputSession::mixed_candidates_active() const
+{
+    return fixed_positions_enabled_ ||
+           ((english_input_options_.mixed_candidates || mixed_expressive_options_.emoji_candidates ||
+             mixed_expressive_options_.kaomoji_candidates) &&
+            (scheme() == SchemeType::Quanpin || scheme() == SchemeType::Shuangpin));
+}
+
+std::optional<std::string> InputSession::quick_phrase_code() const
+{
+    if (!local_mode_options_.quick_phrase_candidates || local_input_mode_ != LocalInputMode::None ||
+        dedicated_english_mode_ || (scheme() != SchemeType::Quanpin && scheme() != SchemeType::Shuangpin) ||
+        prefix_candidates_active_ || !immediate_phrase_progress_.word.empty() || has_active_helpcode())
+    {
+        return std::nullopt;
+    }
+    const auto &request = engine_.get_request();
+    const std::string &code = request.raw_input_with_cases.empty() ? request.raw_input : request.raw_input_with_cases;
+    if (code.empty() || !std::all_of(code.begin(), code.end(),
+                                     [](unsigned char character) { return character >= 'a' && character <= 'z'; }))
+    {
+        return std::nullopt;
+    }
+    return code;
+}
+
+std::optional<std::string> InputSession::learn_quick_phrase_order(std::size_t index)
+{
+    if (!local_mode_options_.quick_phrase_frequency || !frequency_adjustment_configured_ ||
+        frequency_adjustment_.mode == FrequencyAdjustmentMode::Disabled)
+    {
+        return std::nullopt;
+    }
+    const auto code = quick_phrase_code();
+    if (!code)
+    {
+        return std::nullopt;
+    }
+    const auto &list = candidates();
+    const WordItem &selected = list[index];
+    const std::string main_db = path_to_utf8(paths_.dictionary(assets::main_dictionary));
+    const std::string user_db = path_to_utf8(paths_.user(assets::user_journal));
+    const std::string mode = frequency_mode_name(frequency_adjustment_.mode);
+    if (selected.source == CandidateSource::QuickPhrase)
+    {
+        const auto first = std::find_if(
+            list.begin(), list.end(), [](const WordItem &item) { return item.source == CandidateSource::QuickPhrase; });
+        const bool first_in_group = first == list.begin() + static_cast<std::ptrdiff_t>(index);
+        if (!user_dictionary::learn_quick_phrase_selection(main_db, user_db, *code, selected.word, first_in_group, mode,
+                                                           frequency_adjustment_.linear_step,
+                                                           frequency_adjustment_.trigger_count))
+        {
+            return std::string("Unable to persist quick phrase frequency adjustment.");
+        }
+        return std::nullopt;
+    }
+    if (!local_modes::counts_toward_quick_phrase_slot(selected) ||
+        std::none_of(list.begin(), list.end(),
+                     [](const WordItem &item) { return item.source == CandidateSource::QuickPhrase; }))
+    {
+        return std::nullopt;
+    }
+    const auto ordinary_rank = std::count_if(list.begin(), list.begin() + static_cast<std::ptrdiff_t>(index),
+                                             local_modes::counts_toward_quick_phrase_slot);
+    if (!user_dictionary::learn_quick_phrase_bypass(user_db, *code, static_cast<int>(ordinary_rank), mode,
+                                                    frequency_adjustment_.linear_step,
+                                                    frequency_adjustment_.trigger_count, kQuickPhraseMaxSlot))
+    {
+        return std::string("Unable to persist quick phrase frequency adjustment.");
+    }
+    return std::nullopt;
 }
 
 void InputSession::set_caret(std::optional<std::size_t> caret)
@@ -991,6 +1089,11 @@ std::optional<std::string> InputSession::learn_candidate(std::size_t index)
     }
 
     const WordItem &selected = candidates()[index];
+    std::optional<std::string> quick_phrase_diagnostic = learn_quick_phrase_order(index);
+    if (selected.source == CandidateSource::QuickPhrase)
+    {
+        return quick_phrase_diagnostic;
+    }
     // 整句候选走造词，不走调频：它在词库里没有行可改。不受 frequency_adjustment_
     // 约束（那是候选词频策略），也不跳过 index == 0——首位整句同样没有落库，
     // 下次仍要靠猜，存下来才稳定。

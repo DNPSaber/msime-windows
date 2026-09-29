@@ -72,7 +72,12 @@ struct LocalModeOptions
 {
     bool unicode = true;
     bool date_time = true;
+    // Shift+K 快捷短语模式，按编码前缀查。
     bool quick_phrase = true;
+    // 全拼/双拼里把编码精确匹配的快捷短语混进候选；五笔不混。与 K 模式各自开关。
+    bool quick_phrase_candidates = true;
+    // 快捷短语参与调频：选择会把整组前移，越过它选普通候选会把它后移。关掉时组固定在首位。
+    bool quick_phrase_frequency = true;
     bool emoji = true;
     bool kaomoji = true;
     bool super_jianpin = true;

@@ -232,6 +232,10 @@ if(BUILD_TESTING)
     target_link_libraries(test_english_input_session PRIVATE MetasequoiaIme::Engine)
     add_test(NAME english_input_session COMMAND test_english_input_session)
 
+    add_executable(test_quick_phrase_input_session tests/src/test_quick_phrase_input_session.cpp)
+    target_link_libraries(test_quick_phrase_input_session PRIVATE MetasequoiaIme::Engine)
+    add_test(NAME quick_phrase_input_session COMMAND test_quick_phrase_input_session)
+
     add_executable(test_mixed_expressive_input_session tests/src/test_mixed_expressive_input_session.cpp)
     target_link_libraries(test_mixed_expressive_input_session PRIVATE MetasequoiaIme::Engine)
     add_test(NAME mixed_expressive_input_session COMMAND test_mixed_expressive_input_session)
