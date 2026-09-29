@@ -248,6 +248,9 @@ function applyCandidatePreviewStyle(): void {
     .filter(Boolean)
     .map(quoteFont)
     .join(', ') + ', sans-serif';
+  // The skin list's previews sit outside .cand-preview and are rebuilt with the catalog, so they read the family from the
+  // root; without it they fell back to the settings UI font, which is not what the candidate window draws with.
+  document.documentElement?.style.setProperty('--cand-font-family', family);
   appearancePreviewRoots().forEach((el) => {
     el.style.setProperty('--cand-font-family', family);
     el.style.setProperty('--cand-font-size', `${previewFontSize}px`);

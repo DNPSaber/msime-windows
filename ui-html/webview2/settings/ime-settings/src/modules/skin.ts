@@ -142,7 +142,9 @@ function cornerPreviewCss(skin: ExternalSkin): string {
   const radius = boundedNumber(skin.cornerRadiusDip, 32);
   if (radius === undefined) return '';
   const r = `${radius}px`;
-  let css = `:scope .container { border-radius: ${r}; --wg-radius: ${r}; --ao-radius: ${r}; }\n`;
+  // Anchored on the host like the theme rules: the preview's base rules are ".candidate.skin-graphite .container" and
+  // friends, which a bare ":scope .container" lost to on specificity, so graphite previews kept 3px against D2D's radius.
+  let css = `${CANDIDATE_HOST} .container { border-radius: ${r}; --wg-radius: ${r}; --ao-radius: ${r}; }\n`;
   if (skin.base === 'willow_green') css += `:scope .containerParent { border-radius: ${r}; }\n`;
   if (skin.base === 'fluent' || skin.base === 'wechat') {
     const h = `${CANDIDATE_HOST}.wnd-h .container`;

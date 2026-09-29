@@ -145,7 +145,7 @@ it('previews decoration placement, background image and corner radius from the s
     `:is(:scope, :scope .candidate) .container:not(:empty) { background-image: linear-gradient(${veil}, ${veil}), url("https://candidate-skins.example/custom-art/assets/paper.png?v=3"); background-size: auto, contain;`);
   expect(generatedCss).toContain('background-origin: border-box; background-clip: border-box; }');
   expect(generatedCss).not.toContain('::before {\n  content: ""; position: absolute; inset: 0');
-  expect(generatedCss).toContain(':scope .container { border-radius: 12px; --wg-radius: 12px; --ao-radius: 12px; }');
+  expect(generatedCss).toContain(':is(:scope, :scope .candidate) .container { border-radius: 12px; --wg-radius: 12px; --ao-radius: 12px; }');
   expect(generatedCss).toContain(':is(:scope, :scope .candidate).wnd-h .container > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: 12px; }');
 });
 
