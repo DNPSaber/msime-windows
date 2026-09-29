@@ -134,8 +134,28 @@ CandidateSkinPalette ResolveCandidateSkinPalette(const std::string &skinId, bool
         if (!packageColors->text.empty())
             palette.text = ParseCandidateCssColor(packageColors->text, palette.text);
     }
+    palette.candidateText = palette.text;
+    palette.preeditText = palette.text;
+    if (packageColors)
+    {
+        palette.candidateText = ParseCandidateCssColor(packageColors->candidateText, palette.candidateText);
+        palette.preeditText = ParseCandidateCssColor(packageColors->preeditText, palette.preeditText);
+    }
     palette.text = ParseCandidateCssColor(configuredTextColor, palette.text);
+    palette.candidateText = ParseCandidateCssColor(configuredTextColor, palette.candidateText);
+    palette.preeditText = ParseCandidateCssColor(configuredTextColor, palette.preeditText);
     return palette;
+}
+
+float CandidateSkinBaseItemRadiusDip(const std::string &baseSkinId)
+{
+    if (baseSkinId == "willow_green")
+        return 0.0f;
+    if (baseSkinId == "graphite")
+        return 2.0f;
+    if (baseSkinId == "autumn_osmanthus")
+        return 6.0f;
+    return 4.0f;
 }
 
 CandidateSkinPalette FlattenCandidateSkinPaletteForGdi(const CandidateSkinPalette &palette,

@@ -145,6 +145,29 @@ nlohmann::json CandidateColorsToJson(const CandidateSkinCatalog::CandidateColors
         json["translation"] = colors.translation;
     if (colors.showSelectedBar.has_value())
         json["showSelectedBar"] = *colors.showSelectedBar;
+    const std::pair<const char *, const std::string *> optional[] = {
+        {"candidateText", &colors.candidateText},   {"preeditText", &colors.preeditText},
+        {"preeditCaret", &colors.preeditCaret},     {"selectedText", &colors.selectedText},
+        {"selectedNumber", &colors.selectedNumber}, {"selectedTranslation", &colors.selectedTranslation},
+        {"selectedBar", &colors.selectedBar},       {"preeditBackground", &colors.preeditBackground},
+        {"preeditDivider", &colors.preeditDivider},
+    };
+    for (const auto &[key, value] : optional)
+    {
+        if (!value->empty())
+            json[key] = *value;
+    }
+    nlohmann::json menu = nlohmann::json::object();
+    if (!colors.menuBackground.empty())
+        menu["background"] = colors.menuBackground;
+    if (!colors.menuBorder.empty())
+        menu["border"] = colors.menuBorder;
+    if (!colors.menuText.empty())
+        menu["text"] = colors.menuText;
+    if (!colors.menuHover.empty())
+        menu["hover"] = colors.menuHover;
+    if (!menu.empty())
+        json["menu"] = std::move(menu);
     return json;
 }
 
@@ -370,6 +393,11 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
                  {"decorationImage", skin.decorationImage},
                  {"decorationAlign", skin.decorationAlign},
                  {"cornerRadiusDip", skin.cornerRadiusDip ? nlohmann::json(*skin.cornerRadiusDip) : nlohmann::json()},
+                 {"borderWidthDip", skin.borderWidthDip ? nlohmann::json(*skin.borderWidthDip) : nlohmann::json()},
+                 {"itemCornerRadiusDip",
+                  skin.itemCornerRadiusDip ? nlohmann::json(*skin.itemCornerRadiusDip) : nlohmann::json()},
+                 {"shadow", skin.shadow},
+                 {"fontFamily", skin.fontFamily},
                  {"backgroundImage", skin.backgroundImage},
                  {"backgroundFit", skin.backgroundFit},
                  {"backgroundOpacity", skin.backgroundOpacity},

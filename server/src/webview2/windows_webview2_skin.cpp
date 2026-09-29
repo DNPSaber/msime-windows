@@ -210,6 +210,81 @@ void AppendExternalCandidateColorCss(std::wstring &css, const CandidateSkinCatal
     {
         css.append(L".first::before { display: none; }\n");
     }
+
+    // 细分配色。候选与预编辑文字先读设置页的 --msime-user-text，与 D2D 里用户文字色压过皮肤一致。
+    // :where(.cand) 把特异度压到与基础 .text 相同，基础皮肤 `.first .text` 的选中行配色仍然生效。
+    if (!colors.candidateText.empty())
+        css.append(L":where(.cand) .text { color: var(--msime-user-text, " + string_to_wstring(colors.candidateText) +
+                   L"); }\n");
+    if (!colors.preeditText.empty())
+        css.append(L".pinyin .text { color: var(--msime-user-text, " + string_to_wstring(colors.preeditText) +
+                   L"); }\n");
+    add(colors.preeditCaret, L".cursor", L"background");
+    add(colors.selectedBar, L".first::before", L"background");
+    add(colors.selectedText, L".cand.first .text", L"color");
+    add(colors.selectedNumber, L".cand.first .num, .cand.first .cand-no", L"color");
+    add(colors.selectedTranslation, L".cand.first .cand-translation", L"color");
+    if (!colors.selectedTranslation.empty())
+    {
+        css.append(L".cand.first .cand-translation { opacity: 1; }\n");
+    }
+    add(colors.menuBackground, L".context-menu, .context-submenu", L"background");
+    add(colors.menuBorder, L".context-menu, .context-submenu", L"border-color");
+    add(colors.menuText, L".context-menu, .context-submenu, .context-menu-item", L"color");
+    add(colors.menuHover, L".context-menu-item:hover", L"background");
+}
+
+std::wstring CssRgba(D2D1_COLOR_F color, double alpha)
+{
+    return fmt::format(L"rgba({}, {}, {}, {:.3f})", static_cast<int>(std::lround(color.r * 255.0f)),
+                       static_cast<int>(std::lround(color.g * 255.0f)), static_cast<int>(std::lround(color.b * 255.0f)),
+                       alpha);
+}
+
+// 预编辑底色带、分隔线、外框线宽、高亮圆角与卡片阴影。D2D 端在 CandidatePresenter::ApplySkin 里用同一组值。
+void AppendExternalCandidateGeometryCss(std::wstring &css, const CandidateSkinCatalog::Package &skin, bool light)
+{
+    const CandidateSkinCatalog::CandidateColors &colors = light ? skin.light : skin.dark;
+    const double itemRadius =
+        skin.itemCornerRadiusDip ? *skin.itemCornerRadiusDip : CandidateSkinBaseItemRadiusDip(skin.base);
+    if (!colors.preeditBackground.empty())
+    {
+        css.append(fmt::format(L".row.pinyin {{ background: {}; border-radius: {}px; }}\n",
+                               string_to_wstring(colors.preeditBackground), itemRadius));
+    }
+    if (!colors.preeditDivider.empty())
+    {
+        css.append(L".row.pinyin { border-bottom: 1px solid " + string_to_wstring(colors.preeditDivider) + L"; }\n");
+    }
+    if (skin.borderWidthDip)
+    {
+        // 杨柳青、秋桂的基础 CSS 是 border: none，只改线宽会没有线型，所以连同线型和解析后的边框色一起写。
+        const D2D1_COLOR_F border = ResolveCandidateSkinPalette(skin.base, light, {}, &colors, skin.base).border;
+        css.append(fmt::format(L".container:not(:empty) {{ border: {}px solid {}; }}\n", *skin.borderWidthDip,
+                               CssRgba(border, border.a)));
+    }
+    if (skin.itemCornerRadiusDip)
+    {
+        // 贴着外框四角的那几个角由更高特异度的贴角规则接管，仍跟外框圆角。
+        const std::wstring radius = fmt::format(L"{}px", *skin.itemCornerRadiusDip);
+        css.append(L".container { --ao-item-radius: " + radius + L"; }\n");
+        css.append(L".container .cand, .container .cand.first { border-radius: " + radius + L"; }\n");
+    }
+    if (!skin.shadow.empty())
+    {
+        // 杨柳青的 .container 带 clip-path，阴影挂在 .containerParent 上；其余基础皮肤挂在 .container 上。
+        const wchar_t *selector =
+            skin.base == "willow_green" ? L".containerParent:not(:empty)" : L".container:not(:empty)";
+        std::wstring value = L"none";
+        if (skin.shadow != "none")
+        {
+            const double scale = skin.shadow == "soft" ? 0.5 : 1.6;
+            const D2D1_COLOR_F black = D2D1::ColorF(0, 1.0f);
+            value = L"8px 10px 24px " + CssRgba(black, (std::min)((light ? 0.18 : 0.34) * scale, 1.0)) +
+                    L", 2px 3px 8px " + CssRgba(black, (std::min)((light ? 0.10 : 0.22) * scale, 1.0));
+        }
+        css.append(std::wstring(selector) + L" { box-shadow: " + value + L"; }\n");
+    }
 }
 
 // Image paths come from the package's own skin.toml, so they get the same treatment as a URL
@@ -285,6 +360,7 @@ std::wstring BuildExternalCandidateSkinCss(const CandidateSkinCatalog::Package &
     const bool light = ResolveConfiguredTheme(GetConfiguredThemeCand()) == "light";
     const CandidateSkinCatalog::CandidateColors &colors = light ? skin.light : skin.dark;
     AppendExternalCandidateColorCss(css, colors);
+    AppendExternalCandidateGeometryCss(css, skin, light);
     if (!skin.backgroundImage.empty())
     {
         // 与 D2D 一致：背景图铺满整个卡片（含边框下方），边框画在它上面。不能用 ::before 垫图——
@@ -661,6 +737,9 @@ bool ApplyConfiguredCandidateAppearance()
             family += ", ";
         family += nlohmann::json(font).dump(-1, ' ', false);
     };
+    // 皮肤的 font_family 排在最前，用户配置的字体整体退为回退，与 D2D 端同序。
+    if (activeExternalCandidateSkin && !activeExternalCandidateSkin->fontFamily.empty())
+        appendFont(ResolveSystemFontFamilyForCss(activeExternalCandidateSkin->fontFamily));
     appendFont(ResolveSystemFontFamilyForCss(GetConfiguredCandidateEnglishFont()));
     for (const auto &font : GetConfiguredCandidateFallbackFontFamilies())
         appendFont(font);
@@ -676,9 +755,12 @@ bool ApplyConfiguredCandidateAppearance()
         L"if(color&&color!=='auto'){"
         L"root.style.setProperty('--cand-text', color);"
         L"root.style.setProperty('--cand-num', color.length===7?color+'9d':color);"
+        // 外部皮肤的 candidate_text / preedit_text 写成 var(--msime-user-text, 皮肤色)，设置页的文字色照样压过它们。
+        L"root.style.setProperty('--msime-user-text', color);"
         L"}else{"
         L"root.style.removeProperty('--cand-text');"
         L"root.style.removeProperty('--cand-num');"
+        L"root.style.removeProperty('--msime-user-text');"
         L"}"
         // Drop any stale nowrap fast-layout sheet so the skin's wrap-at-max-width
         // rules apply; forcing a single line makes the card overflow the cap and
