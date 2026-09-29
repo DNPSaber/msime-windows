@@ -312,6 +312,31 @@ jobs:
           echo "dist contents:"
           ls -la dist
 
+  # External skins are plain data, so the checks are the manifest contract the Server catalog
+  # enforces plus the example's installer; both run against the example and the skins/ collection.
+  skins:
+    name: Skins
+    runs-on: windows-2025
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.14'
+      - name: Validate the example manifests and referenced assets
+        working-directory: examples/skin-examples
+        run: python -m unittest discover -s tests -v
+      - name: Validate the skins collection against the same contract
+        working-directory: examples/skin-examples
+        env:
+          MSIME_SKINS_DIR: ../../skins
+        run: python -m unittest discover -s tests -v
+      - name: Test install, activation and repeated installation in a temporary user directory
+        working-directory: examples/skin-examples
+        run: ./tests/install.ps1
+
   packaging:
     name: Package contents
     runs-on: windows-2025
