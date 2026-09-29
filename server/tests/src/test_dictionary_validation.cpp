@@ -1,8 +1,11 @@
 #include "settings/dictionary_manager.h"
 #include "settings/dictionary_validation.h"
+#include "engine/user_dictionary/user_dictionary_journal.h"
 #include "tests/includes/test_framework.h"
+#include "tests/includes/test_utf8_path.h"
 
 #include <windows.h>
+#include <sqlite3.h>
 
 #include <filesystem>
 #include <string>
@@ -201,6 +204,53 @@ class ScopedDataDir
     std::wstring previous_;
     bool had_previous_ = false;
 };
+
+// 端到端导入用的数据目录：一个只含 wubi86 表的 msime.db，种子单字码与上面
+// RealWubiCharCodes 一致。放在临时目录，测试结束后整棵删掉。
+class ScopedWubiDataDir
+{
+  public:
+    ScopedWubiDataDir()
+    {
+        path_ = std::filesystem::temp_directory_path() / L"msime-hans-wubi-import-test";
+        std::filesystem::remove_all(path_);
+        std::filesystem::create_directories(path_);
+
+        sqlite3 *db = nullptr;
+        REQUIRE_EQ(sqlite3_open(test::Utf8(path_ / L"msime.db").c_str(), &db), SQLITE_OK);
+        REQUIRE_EQ(sqlite3_exec(db,
+                                "CREATE TABLE wubi86(key TEXT NOT NULL, value TEXT NOT NULL,"
+                                "weight INTEGER NOT NULL DEFAULT 0, UNIQUE(key,value))",
+                                nullptr, nullptr, nullptr),
+                   SQLITE_OK);
+        for (const auto &entry : RealWubiCharCodes())
+        {
+            sqlite3_stmt *stmt = nullptr;
+            REQUIRE_EQ(
+                sqlite3_prepare_v2(db, "INSERT INTO wubi86(key,value,weight) VALUES(?1,?2,10)", -1, &stmt, nullptr),
+                SQLITE_OK);
+            REQUIRE_EQ(sqlite3_bind_text(stmt, 1, entry.second.c_str(), -1, SQLITE_TRANSIENT), SQLITE_OK);
+            REQUIRE_EQ(sqlite3_bind_text(stmt, 2, entry.first.c_str(), -1, SQLITE_TRANSIENT), SQLITE_OK);
+            REQUIRE_EQ(sqlite3_step(stmt), SQLITE_DONE);
+            sqlite3_finalize(stmt);
+        }
+        sqlite3_close(db);
+    }
+    ~ScopedWubiDataDir()
+    {
+        std::filesystem::remove_all(path_);
+    }
+    ScopedWubiDataDir(const ScopedWubiDataDir &) = delete;
+    ScopedWubiDataDir &operator=(const ScopedWubiDataDir &) = delete;
+
+    std::filesystem::path path() const
+    {
+        return path_;
+    }
+
+  private:
+    std::filesystem::path path_;
+};
 } // namespace
 
 TEST_CASE(WubiPhraseCodeTakesTwoLettersFromEachOfTwoCharWords)
@@ -302,4 +352,67 @@ TEST_CASE(HansImportIsRoutedByTheTargetDictionary)
     REQUIRE(!quanpin.at("ok").as_bool());
     REQUIRE(message_of(quanpin).rfind("打开五笔词库失败", 0) != 0);
     REQUIRE(message_of(quanpin) != "该词库不支持纯汉字导入");
+}
+
+TEST_CASE(HansImportIntoWubiWritesDerivedCodesAtTheWubiWeight)
+{
+    ScopedWubiDataDir data;
+    const ScopedDataDir scoped(data.path());
+
+    // 第 4 行不是纯汉字，第 5 行的「观园」在种子码表里没有编码。两者都应被计为
+    // 失败并带行号，且不中断整批——前 3 行必须照常落库。
+    const std::string content = "环境\n计算机\n诸葛亮\nabc\n观园\n";
+    const auto response =
+        SettingsDictionary::HandleRequest({{"dictionary", "wubi"}, {"action", "importHans"}, {"content", content}});
+    REQUIRE(response.at("ok").as_bool());
+    const std::string message = std::string(response.at("message").as_string());
+    REQUIRE(message.find("成功导入 3 条") != std::string::npos);
+    REQUIRE(message.find("失败 2 条") != std::string::npos);
+    REQUIRE(message.find("第 4 行") != std::string::npos);
+    REQUIRE(message.find("第 5 行") != std::string::npos);
+
+    // 落库的码由规则推出，权重取五笔刻度的 30，而不是拼音的 10000。
+    sqlite3 *db = nullptr;
+    REQUIRE_EQ(sqlite3_open(test::Utf8(data.path() / L"msime.db").c_str(), &db), SQLITE_OK);
+    struct Expect
+    {
+        const char *code;
+        const char *word;
+    };
+    const Expect expected[] = {{"ggfu", "环境"}, {"ytsm", "计算机"}, {"yayp", "诸葛亮"}};
+    for (const auto &row : expected)
+    {
+        sqlite3_stmt *stmt = nullptr;
+        REQUIRE_EQ(sqlite3_prepare_v2(db, "SELECT weight FROM wubi86 WHERE key=?1 AND value=?2", -1, &stmt, nullptr),
+                   SQLITE_OK);
+        REQUIRE_EQ(sqlite3_bind_text(stmt, 1, row.code, -1, SQLITE_TRANSIENT), SQLITE_OK);
+        REQUIRE_EQ(sqlite3_bind_text(stmt, 2, row.word, -1, SQLITE_TRANSIENT), SQLITE_OK);
+        REQUIRE_EQ(sqlite3_step(stmt), SQLITE_ROW);
+        REQUIRE_EQ(sqlite3_column_int(stmt, 0), 30);
+        sqlite3_finalize(stmt);
+    }
+    sqlite3_close(db);
+
+    // record_user_insert 必须落到用户词库，「导出五笔用户词库」才收得回这些词条。
+    sqlite3 *user_db = nullptr;
+    REQUIRE_EQ(sqlite3_open(test::Utf8(user_dictionary::default_user_db_path()).c_str(), &user_db), SQLITE_OK);
+    sqlite3_stmt *count = nullptr;
+    REQUIRE_EQ(sqlite3_prepare_v2(user_db,
+                                  "SELECT COUNT(*) FROM user_dictionary_operations "
+                                  "WHERE dictionary='wubi' AND operation='upsert' AND user_inserted=1",
+                                  -1, &count, nullptr),
+               SQLITE_OK);
+    REQUIRE_EQ(sqlite3_step(count), SQLITE_ROW);
+    REQUIRE_EQ(sqlite3_column_int(count, 0), 3);
+    sqlite3_finalize(count);
+    sqlite3_close(user_db);
+
+    // 再导一次应全部判为已存在，不产生重复行。注意 ok 仍为 false：这批里 2 行失败，
+    // 而 SummarizeImport 的 ok 定义是 inserted>0 || (failed==0 && skipped>0)，与改动前
+    // 拼音路径完全一致——有失败就报失败，不因为「有跳过」而算成功。
+    const auto again =
+        SettingsDictionary::HandleRequest({{"dictionary", "wubi"}, {"action", "importHans"}, {"content", content}});
+    REQUIRE_EQ(again.at("ok").as_bool(), false);
+    const std::string again_message = std::string(again.at("message").as_string());
+    REQUIRE(again_message.find("跳过 3 条（已存在）") != std::string::npos);
 }
