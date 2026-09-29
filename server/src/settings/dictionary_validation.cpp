@@ -51,6 +51,12 @@ std::string ComposeWubiPhraseCode(const std::string &word, const WubiCharCodes &
         const std::string &full = PreferredWubiCode(char_codes, chars[index]);
         if (full.empty())
             return false;
+        // 多字词要求该位恰好取到 width 个字母。取不满说明码表里这个字的码太短，硬拼会
+        // 得到一个短一位的 key——它能查得到、能上屏，但永远凑不满 has_complete_code()
+        // 要求的 4 位。宁可让这一步失败，也不能把这样的码写进 wubi86。
+        // 单字传 npos 表示「全取」，不适用这条约束。
+        if (width != std::string::npos && full.size() < width)
+            return false;
         code.append(full, 0, width);
         return true;
     };
