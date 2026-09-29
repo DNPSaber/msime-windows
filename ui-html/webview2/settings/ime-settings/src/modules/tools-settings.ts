@@ -112,6 +112,12 @@ export function setupToolsSettings(): void {
   setupToggleButton('quickPhraseToggleBtn', (active) => {
     updateConfig('utility.quick_phrase', active);
   });
+  setupToggleButton('quickPhraseCandidatesToggleBtn', (active) => {
+    updateConfig('utility.quick_phrase_candidates', active);
+  });
+  setupToggleButton('quickPhraseFrequencyToggleBtn', (active) => {
+    updateConfig('utility.quick_phrase_frequency', active);
+  });
   setupToggleButton('unicodeModeToggleBtn', (active) => {
     updateConfig('utility.unicode_mode', active);
   });
