@@ -421,6 +421,9 @@ void test_runtime_isolation()
         a.character('K', true);
         a.character('x');
         require(a.snapshot().candidates.front().word == "你短语", "Local mode ignored runtime paths");
+        a.command(Command::Cancel);
+        a.character('x');
+        require(a.snapshot().candidates.front().word == "你短语", "Mixed quick phrases ignored runtime paths");
     }
     {
         SessionOptions options;

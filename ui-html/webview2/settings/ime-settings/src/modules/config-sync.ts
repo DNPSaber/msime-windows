@@ -217,6 +217,12 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (typeof data?.utility?.quick_phrase === 'boolean') {
     applyToggleState('quickPhraseToggleBtn', data.utility.quick_phrase);
   }
+  if (typeof data?.utility?.quick_phrase_candidates === 'boolean') {
+    applyToggleState('quickPhraseCandidatesToggleBtn', data.utility.quick_phrase_candidates);
+  }
+  if (typeof data?.utility?.quick_phrase_frequency === 'boolean') {
+    applyToggleState('quickPhraseFrequencyToggleBtn', data.utility.quick_phrase_frequency);
+  }
   if (typeof data?.utility?.date_time_mode === 'boolean') {
     applyToggleState('dateTimeModeToggleBtn', data.utility.date_time_mode);
   }

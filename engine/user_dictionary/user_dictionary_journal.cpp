@@ -129,7 +129,9 @@ bool ensure_schema(sqlite3 *db)
         "CREATE TABLE IF NOT EXISTS fixed_candidate_positions("
         "context_key TEXT NOT NULL,entry_key TEXT NOT NULL,value TEXT NOT NULL,"
         "position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 5),"
-        "PRIMARY KEY(context_key,entry_key,value),UNIQUE(context_key,position));";
+        "PRIMARY KEY(context_key,entry_key,value),UNIQUE(context_key,position));"
+        "CREATE TABLE IF NOT EXISTS quick_phrase_slots("
+        "code TEXT PRIMARY KEY,slot INTEGER NOT NULL CHECK(slot>=0));";
     if (sqlite3_exec(db, sql, nullptr, nullptr, nullptr) != SQLITE_OK)
         return false;
 
@@ -799,6 +801,173 @@ bool bump_wubi_weight(const std::string &main_db_path, const std::string &user_d
     if (!execute_sql(database.get(), "COMMIT"))
         return rollback();
     return true;
+}
+
+namespace
+{
+// 快捷短语组的选择计数借用 candidate_selection_state，context 按编码区分，promote / bypass
+// 两个方向各数各的。value 写编码本身：状态导出要求它非空。
+const std::string kQuickPhraseSelectionContext = "quick_phrase:";
+
+bool read_quick_phrase_slot(sqlite3 *db, const std::string &schema, const std::string &code, int &slot)
+{
+    auto stmt = prepare(db, "SELECT slot FROM " + schema + "quick_phrase_slots WHERE code=?1");
+    if (!stmt || !bind_text(stmt.get(), 1, code))
+        return false;
+    const int status = sqlite3_step(stmt.get());
+    if (status == SQLITE_ROW)
+    {
+        slot = (std::max)(0, sqlite3_column_int(stmt.get(), 0));
+        return true;
+    }
+    slot = 0;
+    return status == SQLITE_DONE;
+}
+
+bool write_quick_phrase_slot(sqlite3 *db, const std::string &schema, const std::string &code, int slot)
+{
+    auto stmt = slot <= 0 ? prepare(db, "DELETE FROM " + schema + "quick_phrase_slots WHERE code=?1")
+                          : prepare(db, "INSERT INTO " + schema +
+                                            "quick_phrase_slots(code,slot) VALUES(?1,?2)"
+                                            " ON CONFLICT(code) DO UPDATE SET slot=excluded.slot");
+    return stmt && bind_text(stmt.get(), 1, code) &&
+           (slot <= 0 || sqlite3_bind_int(stmt.get(), 2, slot) == SQLITE_OK) && sqlite3_step(stmt.get()) == SQLITE_DONE;
+}
+
+// 计一次数；到 trigger_count 时置 reached 并清零，计数不会越过状态导出允许的上限。
+bool count_quick_phrase_selection(sqlite3 *db, const std::string &schema, const std::string &code,
+                                  const char *direction, int trigger_count, bool &reached)
+{
+    reached = false;
+    const std::string context = kQuickPhraseSelectionContext + code;
+    {
+        auto counter = prepare(db, "INSERT INTO " + schema +
+                                       "candidate_selection_state(context_key,entry_key,value,selection_count)"
+                                       " VALUES(?1,?2,?3,1) ON CONFLICT(context_key,entry_key,value)"
+                                       " DO UPDATE SET selection_count=selection_count+1 RETURNING selection_count");
+        if (!counter || !bind_text(counter.get(), 1, context) || !bind_text(counter.get(), 2, direction) ||
+            !bind_text(counter.get(), 3, code) || sqlite3_step(counter.get()) != SQLITE_ROW)
+            return false;
+        reached = sqlite3_column_int(counter.get(), 0) >= (std::max)(1, (std::min)(10, trigger_count));
+    }
+    if (!reached)
+        return true;
+    auto reset = prepare(db, "DELETE FROM " + schema +
+                                 "candidate_selection_state WHERE context_key=?1 AND entry_key=?2 AND value=?3");
+    return reset && bind_text(reset.get(), 1, context) && bind_text(reset.get(), 2, direction) &&
+           bind_text(reset.get(), 3, code) && sqlite3_step(reset.get()) == SQLITE_DONE;
+}
+} // namespace
+
+int quick_phrase_slot(const std::string &user_db_path, const std::string &code)
+{
+    if (code.empty())
+        return 0;
+    UserDatabase db(user_db_path);
+    int slot = 0;
+    if (!db || !read_quick_phrase_slot(db.get(), "", code, slot))
+        return 0;
+    return slot;
+}
+
+bool learn_quick_phrase_selection(const std::string &main_db_path, const std::string &user_db_path,
+                                  const std::string &code, const std::string &value, bool first_in_group,
+                                  const std::string &mode, int linear_step, int trigger_count)
+{
+    if (code.empty() || value.empty())
+        return false;
+    if (mode == "disabled")
+        return true;
+    // Initialize the journal before attaching it; every operation owns its connections.
+    if (!ensure_user_database(user_db_path))
+        return false;
+    auto database = open_database(main_db_path, SQLITE_OPEN_READWRITE);
+    auto attach = database ? prepare(database.get(), "ATTACH DATABASE ?1 AS candidate_journal") : Stmt{};
+    if (!attach || !bind_text(attach.get(), 1, user_db_path) || sqlite3_step(attach.get()) != SQLITE_DONE)
+        return false;
+    attach.reset();
+    if (!execute_sql(database.get(), "BEGIN IMMEDIATE"))
+        return false;
+    const auto rollback = [&]() {
+        (void)execute_sql(database.get(), "ROLLBACK");
+        return false;
+    };
+    const auto commit = [&]() { return execute_sql(database.get(), "COMMIT") || rollback(); };
+    const std::string schema = "candidate_journal.";
+    int slot = 0;
+    if (!read_quick_phrase_slot(database.get(), schema, code, slot))
+        return rollback();
+    // 组在首位、选的又是组内第一条：这就是默认上屏的那一个，没有可学的。
+    if (slot == 0 && first_in_group)
+        return commit();
+    bool reached = false;
+    if (!count_quick_phrase_selection(database.get(), schema, code, "promote", trigger_count, reached))
+        return rollback();
+    if (!reached)
+        return commit();
+    if (slot > 0 && !write_quick_phrase_slot(database.get(), schema, code,
+                                             static_cast<int>(ranking_target(static_cast<size_t>(slot), mode,
+                                                                             (std::max)(1, linear_step), false))))
+        return rollback();
+    if (!first_in_group)
+    {
+        // 组内顺序按权重走，语义同 bump_wubi_weight：选中的那条升到同码最高 + 1。
+        auto current = prepare(database.get(), "SELECT MAX(weight) FROM main.quick_parases WHERE key=?1");
+        if (!current || !bind_text(current.get(), 1, code) || sqlite3_step(current.get()) != SQLITE_ROW)
+            return rollback();
+        const std::int64_t new_weight = clamp_managed_weight(sqlite3_column_int64(current.get(), 0) + 1);
+        current.reset();
+        auto bump = prepare(database.get(), "UPDATE main.quick_parases SET weight=?1 WHERE key=?2 AND value=?3");
+        if (!bump || sqlite3_bind_int64(bump.get(), 1, new_weight) != SQLITE_OK || !bind_text(bump.get(), 2, code) ||
+            !bind_text(bump.get(), 3, value) || sqlite3_step(bump.get()) != SQLITE_DONE ||
+            sqlite3_changes(database.get()) == 0)
+            return rollback();
+        bump.reset();
+        auto journal =
+            prepare(database.get(), "INSERT INTO candidate_journal.user_dictionary_operations(dictionary,key,value,"
+                                    "operation,weight,display) VALUES(?1,?2,?3,'upsert',?4,'')"
+                                    " ON CONFLICT(dictionary,key,value) DO UPDATE SET operation='upsert',"
+                                    "weight=excluded.weight,display='',updated_at=unixepoch()");
+        if (!journal || !bind_text(journal.get(), 1, kind_name(DictionaryKind::QuickPhrase)) ||
+            !bind_text(journal.get(), 2, code) || !bind_text(journal.get(), 3, value) ||
+            sqlite3_bind_int64(journal.get(), 4, new_weight) != SQLITE_OK || sqlite3_step(journal.get()) != SQLITE_DONE)
+            return rollback();
+    }
+    return commit();
+}
+
+bool learn_quick_phrase_bypass(const std::string &user_db_path, const std::string &code, int ordinary_rank,
+                               const std::string &mode, int linear_step, int trigger_count, int max_slot)
+{
+    if (code.empty() || ordinary_rank < 0)
+        return false;
+    if (mode == "disabled" || max_slot <= 0)
+        return true;
+    UserDatabase db(user_db_path);
+    if (!db || !execute_sql(db.get(), "BEGIN IMMEDIATE"))
+        return false;
+    const auto rollback = [&]() {
+        (void)execute_sql(db.get(), "ROLLBACK");
+        return false;
+    };
+    const auto commit = [&]() { return execute_sql(db.get(), "COMMIT") || rollback(); };
+    int slot = 0;
+    if (!read_quick_phrase_slot(db.get(), "", code, slot))
+        return rollback();
+    // 选中的候选本来就在组前面，或者组已经退到首页最后一位。
+    if (ordinary_rank < slot || slot >= max_slot)
+        return commit();
+    // 整组算作它前面的一个位置：它的目标位置落在组的位置或更前，才算越过了这一组。
+    const size_t target =
+        ranking_target(static_cast<size_t>(ordinary_rank) + 1, mode, (std::max)(1, linear_step), false);
+    if (target > static_cast<size_t>(slot))
+        return commit();
+    bool reached = false;
+    if (!count_quick_phrase_selection(db.get(), "", code, "bypass", trigger_count, reached))
+        return rollback();
+    if (reached && !write_quick_phrase_slot(db.get(), "", code, (std::min)(slot + 1, max_slot)))
+        return rollback();
+    return commit();
 }
 
 bool learn_entered_english_word(const std::string &english_db_path, const std::string &user_db_path,

@@ -390,6 +390,37 @@ TEST_CASE(KaomojiMixedCandidateSitsRightAfterEmoji)
     REQUIRE_EQ(items[5].source, CandidateSource::Kaomoji);
 }
 
+TEST_CASE(QuickPhraseGroupStaysWholeAndAheadOfAsyncCandidates)
+{
+    const auto local = [](std::string word) { return WordItem("ni", std::move(word), 100); };
+    const auto phrase = [](std::string word) {
+        return WordItem("ni", std::move(word), 100000, CandidateSource::QuickPhrase);
+    };
+    const auto english = [](int weight) { return WordItem("ni", "nice", weight, CandidateSource::EnglishDictionary); };
+    const auto cloud = [] { return WordItem("ni", "云候选", 1, CandidateSource::CloudSuggestion); };
+
+    // 组在首位：异步候选排在第一个普通候选之后，不插进组里。
+    std::vector<WordItem> items = {phrase("快捷一"), phrase("快捷二"), local("你"), local("呢"), cloud()};
+    FanyImeIpc::NormalizeMixedCandidateOrder(items);
+    REQUIRE_EQ(items[0].word, std::string("快捷一"));
+    REQUIRE_EQ(items[1].word, std::string("快捷二"));
+    REQUIRE_EQ(items[2].word, std::string("你"));
+    REQUIRE_EQ(items[3].source, CandidateSource::CloudSuggestion);
+
+    // 组退到第一个普通候选之后：同一位置上组在异步候选前面。
+    items = {local("你"), phrase("快捷一"), local("呢"), cloud()};
+    FanyImeIpc::NormalizeMixedCandidateOrder(items);
+    REQUIRE_EQ(items[1].word, std::string("快捷一"));
+    REQUIRE_EQ(items[2].source, CandidateSource::CloudSuggestion);
+
+    // 快捷短语的权重不参与英文提升；提升的英文也排在首位的组后面。
+    items = {phrase("快捷一"), local("你"), english(1100)};
+    FanyImeIpc::NormalizeMixedCandidateOrder(items);
+    REQUIRE_EQ(items[0].word, std::string("快捷一"));
+    REQUIRE_EQ(items[1].word, std::string("nice"));
+    REQUIRE_EQ(items[2].word, std::string("你"));
+}
+
 TEST_CASE(JapaneseSingleKanaPairStaysAheadOfCloudCandidate)
 {
     std::vector<WordItem> items = {

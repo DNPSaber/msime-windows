@@ -7,6 +7,7 @@
 #include <sqlite3.h>
 
 #include <algorithm>
+#include <iterator>
 #include <memory>
 
 namespace metasequoia::local_modes
@@ -26,27 +27,21 @@ struct StatementCloser
 
 using Statement = std::unique_ptr<sqlite3_stmt, StatementCloser>;
 
-bool valid_prefix(const std::string &prefix)
+bool valid_code(const std::string &code)
 {
-    return !prefix.empty() && std::all_of(prefix.begin(), prefix.end(),
-                                          [](unsigned char character) { return character >= 'a' && character <= 'z'; });
+    return !code.empty() && std::all_of(code.begin(), code.end(),
+                                        [](unsigned char character) { return character >= 'a' && character <= 'z'; });
 }
 
 QuickPhraseQueryResult query_failure(const char *diagnostic)
 {
     return {{}, std::string(diagnostic)};
 }
-} // namespace
-
-QuickPhraseQueryResult query_quick_phrases(const std::string &prefix, int limit)
+// 前缀查询给 K 模式用，精确查询给全拼/双拼混排用；上界拼 0x7f 让 key 落在 [code, code+0x7f)。
+QuickPhraseQueryResult query_quick_phrase_rows(const std::string &code, const std::filesystem::path &database_path,
+                                               int limit, bool exact)
 {
-    return query_quick_phrases(prefix, data_file_path(metasequoia::assets::main_dictionary), limit);
-}
-
-QuickPhraseQueryResult query_quick_phrases(const std::string &prefix, const std::filesystem::path &database_path,
-                                           int limit)
-{
-    if (!valid_prefix(prefix) || limit <= 0)
+    if (!valid_code(code) || limit <= 0)
     {
         return {};
     }
@@ -61,17 +56,22 @@ QuickPhraseQueryResult query_quick_phrases(const std::string &prefix, const std:
         return query_failure("Quick phrase database is unavailable.");
     }
 
-    constexpr const char *kSql = "SELECT key,value,weight FROM quick_parases WHERE key>=?1 AND key<?2 "
-                                 "ORDER BY weight DESC,key,value LIMIT ?3";
+    constexpr const char *kPrefixSql = "SELECT key,value,weight FROM quick_parases WHERE key>=?1 AND key<?2 "
+                                       "ORDER BY weight DESC,key,value LIMIT ?3";
+    constexpr const char *kExactSql = "SELECT key,value,weight FROM quick_parases WHERE key=?1 AND key=?2 "
+                                      "ORDER BY weight DESC,value LIMIT ?3";
     sqlite3_stmt *raw_statement = nullptr;
-    if (sqlite3_prepare_v2(database.get(), kSql, -1, &raw_statement, nullptr) != SQLITE_OK)
+    if (sqlite3_prepare_v2(database.get(), exact ? kExactSql : kPrefixSql, -1, &raw_statement, nullptr) != SQLITE_OK)
     {
         return query_failure("Quick phrase database could not be queried.");
     }
     Statement statement(raw_statement);
-    std::string upper_bound = prefix;
-    upper_bound.push_back(static_cast<char>(0x7f));
-    if (sqlite3_bind_text(statement.get(), 1, prefix.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
+    std::string upper_bound = code;
+    if (!exact)
+    {
+        upper_bound.push_back(static_cast<char>(0x7f));
+    }
+    if (sqlite3_bind_text(statement.get(), 1, code.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
         sqlite3_bind_text(statement.get(), 2, upper_bound.c_str(), -1, SQLITE_TRANSIENT) != SQLITE_OK ||
         sqlite3_bind_int(statement.get(), 3, limit) != SQLITE_OK)
     {
@@ -95,5 +95,94 @@ QuickPhraseQueryResult query_quick_phrases(const std::string &prefix, const std:
         return query_failure("Quick phrase database could not be queried.");
     }
     return result;
+}
+} // namespace
+
+QuickPhraseQueryResult query_quick_phrases(const std::string &prefix, int limit)
+{
+    return query_quick_phrases(prefix, data_file_path(metasequoia::assets::main_dictionary), limit);
+}
+
+QuickPhraseQueryResult query_quick_phrases(const std::string &prefix, const std::filesystem::path &database_path,
+                                           int limit)
+{
+    return query_quick_phrase_rows(prefix, database_path, limit, false);
+}
+
+QuickPhraseQueryResult query_quick_phrases_by_code(const std::string &code, int limit)
+{
+    return query_quick_phrases_by_code(code, data_file_path(metasequoia::assets::main_dictionary), limit);
+}
+
+QuickPhraseQueryResult query_quick_phrases_by_code(const std::string &code, const std::filesystem::path &database_path,
+                                                   int limit)
+{
+    return query_quick_phrase_rows(code, database_path, limit, true);
+}
+
+bool counts_toward_quick_phrase_slot(const WordItem &item)
+{
+    if (item.fixed_position > 0)
+    {
+        return false;
+    }
+    switch (item.source)
+    {
+    case CandidateSource::QuickPhrase:
+    case CandidateSource::CloudSuggestion:
+    case CandidateSource::AiSuggestion:
+    case CandidateSource::EnglishDictionary:
+    case CandidateSource::Emoji:
+    case CandidateSource::Kaomoji:
+        return false;
+    default:
+        return true;
+    }
+}
+
+void place_quick_phrases(std::vector<WordItem> &candidates, std::vector<WordItem> phrases, std::size_t slot)
+{
+    candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
+                                    [&](const WordItem &item) {
+                                        return item.source == CandidateSource::QuickPhrase ||
+                                               std::any_of(phrases.begin(), phrases.end(), [&](const WordItem &phrase) {
+                                                   return phrase.word == item.word;
+                                               });
+                                    }),
+                     candidates.end());
+    if (phrases.empty())
+    {
+        return;
+    }
+
+    std::vector<WordItem> fixed;
+    candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
+                                    [&](WordItem &item) {
+                                        if (item.fixed_position <= 0)
+                                            return false;
+                                        fixed.push_back(std::move(item));
+                                        return true;
+                                    }),
+                     candidates.end());
+
+    std::size_t index = 0;
+    for (std::size_t counted = 0; index < candidates.size() && counted < slot; ++index)
+    {
+        if (counts_toward_quick_phrase_slot(candidates[index]))
+        {
+            ++counted;
+        }
+    }
+    candidates.insert(candidates.begin() + static_cast<std::ptrdiff_t>(index), std::make_move_iterator(phrases.begin()),
+                      std::make_move_iterator(phrases.end()));
+
+    std::stable_sort(fixed.begin(), fixed.end(), [](const WordItem &left, const WordItem &right) {
+        return left.fixed_position < right.fixed_position;
+    });
+    for (auto &item : fixed)
+    {
+        const std::size_t position = (std::min)(static_cast<std::size_t>(item.fixed_position - 1), candidates.size());
+        candidates.insert(candidates.begin() + static_cast<std::ptrdiff_t>(position), std::move(item));
+    }
 }
 } // namespace metasequoia::local_modes

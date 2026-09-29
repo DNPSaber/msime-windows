@@ -275,6 +275,13 @@ class InputSession
     void reset_composition();
     void discard_abandoned_phrase_progress();
     std::optional<std::string> learn_candidate(std::size_t index);
+    // 当前组合可以混入快捷短语时返回它的编码：全拼/双拼、非本地模式、未造词、无光标前缀和
+    // 辅助码，且原始输入全是小写字母。
+    std::optional<std::string> quick_phrase_code() const;
+    // candidates() 返回混排列表（固定位置、英文/表情/颜文字混排任一开启）的条件。
+    bool mixed_candidates_active() const;
+    // 选中快捷短语时把组前移，越过组选普通候选时把组后移。
+    std::optional<std::string> learn_quick_phrase_order(std::size_t index);
     // 词格 / Google 解码器猜出来的整句在词库里没有对应行，选中后落成一条用户词组。
     std::optional<std::string> learn_sentence_candidate(const WordItem &selected);
     std::optional<std::string> adjust_candidate_frequency(std::size_t index, FrequencyAdjustmentOptions options,
