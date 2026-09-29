@@ -109,6 +109,8 @@ struct CandSkinTokens
     float itemExtraHeight = 2.0f;
     float itemPadLeft = 0.0f;
     float itemPadRight = 0.0f;
+    // 横排时把卡片多出的宽度均分给同一行各项，铺满高亮的皮肤（杨柳青）末项才能贴到卡片右边。
+    bool justifyRows = false;
     msimeui::Thickness preeditMargin{};
     D2D1_COLOR_F rowTextSelected = D2D1::ColorF(0, 0.0f);
     D2D1_COLOR_F rowLabelSelected = D2D1::ColorF(0, 0.0f);
@@ -424,6 +426,7 @@ void CandidatePresenter::ApplySkin()
         tokens.itemRadius = 0.0f;
         tokens.outerItemRadius = 9.0f;
         tokens.itemGap = 0.0f;
+        tokens.justifyRows = true;
         // 行内边距对齐 CSS 的 .row.cand padding（加上 .text 的左内边距），预编辑行对齐 .row.pinyin。
         if (GetConfiguredCandidateWindowLayout() == "horizontal")
         {
@@ -620,6 +623,9 @@ void CandidatePresenter::ApplySkin()
     appearance.annotationFontSize = fontSize;
     appearance.contentPadLeft = tokens.itemPadLeft;
     appearance.contentPadRight = tokens.itemPadRight;
+    // itemExtraHeight 上下各半：横排翻译换到第二行时从下半段内边距上方开始，内边距留在翻译下面，
+    // 对应 CSS 里 .row.cand 的 padding 包住整个 .text（杨柳青横排上下各 6px）。
+    appearance.contentPadBottom = tokens.itemExtraHeight * 0.5f;
     appearance.textPadLeft = 5.0f;
     appearance.labelGap = 1.5f;
     appearance.selectedBarWidth = 3.0f;
@@ -631,6 +637,7 @@ void CandidatePresenter::ApplySkin()
     const bool preeditHidden = GetConfiguredCandidateWindowPreeditStyle() == "empty";
     appearance.outerCornerRadius = tokens.outerItemRadius;
     appearance.outerTopCornersEnabled = preeditHidden;
+    appearance.justifyHorizontalRows = tokens.justifyRows;
     // 隐藏的预编辑行高度为 0，但 body 仍在它和列表之间留 2px 行距；贴角皮肤把它抵掉，
     // 让首项贴着卡片的内容顶边（秋桂四边内边距一致，杨柳青高亮直抵卡片顶边）。
     if (preeditHidden)
