@@ -2220,7 +2220,34 @@ void TextBlock::ClearCaret()
     InvalidateVisual();
 }
 
+void TextBlock::SetBackground(D2D1_COLOR_F fill, float cornerRadius)
+{
+    background_ = fill;
+    backgroundRadius_ = (std::max)(cornerRadius, 0.0f);
+    InvalidateVisual();
+}
+
+void TextBlock::SetBottomRule(D2D1_COLOR_F color, float width)
+{
+    bottomRuleColor_ = color;
+    bottomRuleWidth_ = (std::max)(width, 0.0f);
+    InvalidateMeasure();
+    InvalidateVisual();
+}
+
+float TextBlock::BottomRuleWidth() const
+{
+    return bottomRuleColor_.a > 0.001f ? bottomRuleWidth_ : 0.0f;
+}
+
 SizeF TextBlock::Measure(const SizeF &availableSize)
+{
+    MeasureText(availableSize);
+    measured_.height += BottomRuleWidth();
+    return measured_;
+}
+
+SizeF TextBlock::MeasureText(const SizeF &availableSize)
 {
     const float maxWidth = std::max(availableSize.width, 1.0f);
     IDWriteFactory *dwriteFactory = GetSharedDWriteFactory();
@@ -2343,7 +2370,34 @@ void TextBlock::Render(DeviceResources &deviceResources)
     const std::wstring &fontFamily = fontFamilyOverride_.empty() ? theme.uiFontFamily : fontFamilyOverride_;
     if (!cachedTextLayout_ || cachedLayoutWidth_ != std::max(bounds_.width, 1.0f) || cachedFontFamily_ != fontFamily)
     {
-        Measure({std::max(bounds_.width, 1.0f), std::max(bounds_.height, 1.0f)});
+        MeasureText({std::max(bounds_.width, 1.0f), std::max(bounds_.height, 1.0f)});
+    }
+
+    // A collapsed block (a hidden preedit arranged at zero height) paints neither its band nor its rule.
+    const float ruleWidth = BottomRuleWidth();
+    if (bounds_.height > ruleWidth && bounds_.width > 0.0f)
+    {
+        if (background_.a > 0.001f)
+        {
+            if (ID2D1SolidColorBrush *fill = deviceResources.GetSolidColorBrush(background_))
+            {
+                const D2D1_RECT_F rect = D2D1::RectF(bounds_.x, bounds_.y, bounds_.x + bounds_.width,
+                                                     bounds_.y + bounds_.height - ruleWidth);
+                if (backgroundRadius_ > 0.0f)
+                    target->FillRoundedRectangle(D2D1::RoundedRect(rect, backgroundRadius_, backgroundRadius_), fill);
+                else
+                    target->FillRectangle(rect, fill);
+            }
+        }
+        if (ruleWidth > 0.0f)
+        {
+            if (ID2D1SolidColorBrush *rule = deviceResources.GetSolidColorBrush(bottomRuleColor_))
+            {
+                target->FillRectangle(D2D1::RectF(bounds_.x, bounds_.y + bounds_.height - ruleWidth,
+                                                  bounds_.x + bounds_.width, bounds_.y + bounds_.height),
+                                      rule);
+            }
+        }
     }
 
     ID2D1SolidColorBrush *brush = deviceResources.GetSolidColorBrush(color_);

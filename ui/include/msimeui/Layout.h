@@ -427,12 +427,19 @@ class TextBlock : public Visual
     void SetCaretIndex(size_t index);
     void SetCaretColor(D2D1_COLOR_F color);
     void ClearCaret();
+    // Fills the block's bounds behind the text. Alpha 0 draws nothing.
+    void SetBackground(D2D1_COLOR_F fill, float cornerRadius);
+    // A horizontal rule along the bottom edge, below the text. The block grows
+    // by the rule's width; width <= 0 or alpha 0 removes it.
+    void SetBottomRule(D2D1_COLOR_F color, float width);
 
     SizeF Measure(const SizeF &availableSize) override;
     void Arrange(const RectF &finalRect) override;
     void Render(DeviceResources &deviceResources) override;
 
   private:
+    SizeF MeasureText(const SizeF &availableSize);
+    float BottomRuleWidth() const;
     void InvalidateTextLayoutCache();
     void InvalidateTextFormatCache();
 
@@ -449,6 +456,10 @@ class TextBlock : public Visual
     float letterSpacing_ = 0.0f;
     bool showCaret_ = false;
     size_t caretIndex_ = 0;
+    D2D1_COLOR_F background_ = D2D1::ColorF(0, 0.0f);
+    float backgroundRadius_ = 0.0f;
+    D2D1_COLOR_F bottomRuleColor_ = D2D1::ColorF(0, 0.0f);
+    float bottomRuleWidth_ = 0.0f;
     SizeF measured_ = {};
     std::wstring cachedFontFamily_;
     float cachedLayoutWidth_ = -1.0f;

@@ -556,6 +556,9 @@ class CandidateList : public Visual
         // (including the selected-row override) at 62% opacity, like the
         // CSS default. Otherwise it is drawn as-is on every row.
         D2D1_COLOR_F translationColor = D2D1::ColorF(0, 0.0f);
+        // Translation color for the selected (and pressed) row. Alpha 0
+        // falls back to translationColor, then to the derived color above.
+        D2D1_COLOR_F rowTranslationSelected = D2D1::ColorF(0, 0.0f);
     };
 
     using SelectionChangedHandler = std::function<void(size_t selectedIndex)>;
