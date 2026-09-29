@@ -1,5 +1,20 @@
+/// <reference types="node" />
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { applyCandidateSkin, applyCandidateSkinCatalog } from './skin';
+
+const readStyle = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
+
+it('keeps horizontal skin previews inside their card', () => {
+  // The wrapper skin.ts inserts is not stretched by the column flexbox, so a max-content .container drags it past the card.
+  expect(readStyle('../styles/modules/candidate/style-h.css'))
+    .toMatch(/\.containerParent\s*\{\s*max-width:\s*100%;\s*min-width:\s*0;/);
+  const skinCss = readStyle('../styles/modules/skin.css');
+  for (const [, selector, body] of skinCss.matchAll(/([^{}]*\.wnd-h[^{}]*)\{([^}]*)\}/g)) {
+    expect(`${selector.trim()} { ${body.trim()} }`).not.toMatch(/\bwidth:\s*max-content/);
+  }
+});
 
 class PreviewElement {
   dataset: Record<string, string> = {};

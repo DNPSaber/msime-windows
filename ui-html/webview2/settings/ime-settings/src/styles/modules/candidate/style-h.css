@@ -5,6 +5,15 @@
   min-width: 0;
   box-sizing: border-box;
 
+  /* skin.ts 在 .candidate 与 .container 之间插的包装层。它在列向 flex 里不被拉伸，宽度取内容的
+     fit-content；只要哪个皮肤给 .container 写了 max-content 之类的宽度，它的 min-content 就等于整行
+     候选的宽度，.container 的 max-width: 100% 跟着失效，预览会冲出卡片。在这一层把宽度钉死在宿主内，
+     任何皮肤（包括外部皮肤生成的规则）都只能在这个宽度里换行。 */
+  .containerParent {
+    max-width: 100%;
+    min-width: 0;
+  }
+
   .container {
     margin-top: 0px;
     margin-left: 0px;
