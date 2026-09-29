@@ -101,7 +101,21 @@ std::string NormalizeAnnotatedSyllable(std::string syllable)
     return syllable;
 }
 
-bool IsPureHanPhrase(const std::string &word)
+// cpp-pinyin only supports CJK Unified Ideographs in [0x4E00, 0x9FFF].
+bool IsPinyinAnnotatableHan(uint32_t codepoint)
+{
+    return codepoint >= 0x4E00 && codepoint <= 0x9FFF;
+}
+
+// 五笔按字查 wubi86，不受 cpp-pinyin 的范围限制：扩展 A、兼容表意字，以及 2/3 平面上的
+// 扩展 B 及以后各区都放行，查不到码的字交给取码那一步去报「缺少编码」。
+bool IsWubiComposableHan(uint32_t codepoint)
+{
+    return (codepoint >= 0x3400 && codepoint <= 0x4DBF) || IsPinyinAnnotatableHan(codepoint) ||
+           (codepoint >= 0xF900 && codepoint <= 0xFAFF) || (codepoint >= 0x20000 && codepoint <= 0x3FFFF);
+}
+
+bool IsPureHanPhrase(const std::string &word, bool (*is_han)(uint32_t) = IsPinyinAnnotatableHan)
 {
     if (word.empty())
         return false;
@@ -112,8 +126,7 @@ bool IsPureHanPhrase(const std::string &word)
         while (it != word.end())
         {
             const uint32_t codepoint = utf8::next(it, word.end());
-            // cpp-pinyin only supports CJK Unified Ideographs in [0x4E00, 0x9FFF].
-            if (codepoint < 0x4E00 || codepoint > 0x9FFF)
+            if (!is_han(codepoint))
                 return false;
             ++count;
         }
@@ -468,6 +481,45 @@ json::object SummarizeImport(int inserted, int skipped, int failed, const std::v
 // idx(key,weight)，两个索引的首列都不是 value，所以「按字查码」是全表扫描——
 // EXPLAIN QUERY PLAN 走 SCAN wubi86 USING COVERING INDEX，实测 3.38ms/字，
 // 2000 字的人名文件要 6.8 秒。整表读一次约 25ms，之后全内存查。
+// 用户在设置页自造的单字码（日志里 user_inserted=1 的 wubi 单字行）。它们和出厂码同住
+// wubi86，只看 wubi86 分不出来；不排除的话，给「张」自造的 aaaa 会按字典序压过出厂的
+// xtay，此后每个含「张」的词都取错码，导入还照样报成功。读不到日志时返回空集，退回
+// 只看 wubi86 的行为。
+std::set<std::pair<std::string, std::string>> LoadUserInsertedWubiChars()
+{
+    std::set<std::pair<std::string, std::string>> entries;
+    const std::string path = user_dictionary::default_user_db_path();
+    std::error_code exists_error;
+    if (!std::filesystem::exists(path, exists_error))
+        return entries;
+
+    sqlite3 *raw = nullptr;
+    if (sqlite3_open_v2(path.c_str(), &raw, SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nullptr) != SQLITE_OK)
+    {
+        if (raw)
+            sqlite3_close(raw);
+        return entries;
+    }
+    Db db(raw);
+    sqlite3_busy_timeout(db.get(), 3000);
+
+    std::string error;
+    Stmt stmt = Prepare(db.get(),
+                        "SELECT key,value FROM user_dictionary_operations "
+                        "WHERE dictionary='wubi' AND operation='upsert' AND user_inserted=1 AND length(value)=1",
+                        error);
+    if (!stmt)
+        return entries;
+    while (sqlite3_step(stmt.get()) == SQLITE_ROW)
+    {
+        const unsigned char *key = sqlite3_column_text(stmt.get(), 0);
+        const unsigned char *value = sqlite3_column_text(stmt.get(), 1);
+        if (key && value)
+            entries.emplace(reinterpret_cast<const char *>(key), reinterpret_cast<const char *>(value));
+    }
+    return entries;
+}
+
 bool LoadWubiCharCodes(sqlite3 *db, Validation::WubiCharCodes &codes, std::string &error)
 {
     // 排序是为了让「多个 4 级全码时取第一个」确定：同值内按 key 升序，先遇到的就是
@@ -479,25 +531,34 @@ bool LoadWubiCharCodes(sqlite3 *db, Validation::WubiCharCodes &codes, std::strin
         const unsigned char *raw = sqlite3_column_text(s, column);
         return raw ? std::string(reinterpret_cast<const char *>(raw)) : std::string{};
     };
+    const auto consider = [](Validation::WubiCharCodes &target, const std::string &value, const std::string &key) {
+        const auto existing = target.find(value);
+        if (existing == target.end())
+        {
+            target.emplace(value, key);
+            return;
+        }
+        // 全码(4 位)优先；都不是全码时取更长的那个。已有全码就不再被替换，
+        // 这同时实现了「多个全码取字典序第一个」。
+        if (existing->second.size() == 4)
+            return;
+        if (key.size() == 4 || key.size() > existing->second.size())
+            existing->second = key;
+    };
+
+    const auto user_inserted = LoadUserInsertedWubiChars();
+    Validation::WubiCharCodes user_codes;
     while (sqlite3_step(stmt.get()) == SQLITE_ROW)
     {
         const std::string key = text(stmt.get(), 0);
         const std::string value = text(stmt.get(), 1);
         if (key.empty() || value.empty())
             continue;
-        const auto existing = codes.find(value);
-        if (existing == codes.end())
-        {
-            codes.emplace(value, key);
-            continue;
-        }
-        // 全码(4 位)优先；都不是全码时取更长的那个。已有全码就不再被替换，
-        // 这同时实现了「多个全码取字典序第一个」。
-        if (existing->second.size() == 4)
-            continue;
-        if (key.size() == 4 || key.size() > existing->second.size())
-            existing->second = key;
+        consider(user_inserted.count({key, value}) ? user_codes : codes, value, key);
     }
+    // 自造码只给出厂码表里没有的字兜底（比如用户自己补的扩展区字），不和出厂码竞争。
+    for (auto &entry : user_codes)
+        codes.emplace(entry.first, std::move(entry.second));
     return true;
 }
 
@@ -716,7 +777,7 @@ json::object ImportHansWubi(const json::object &request)
         const auto end = line.find_last_not_of(" \t");
         const std::string word = line.substr(begin, end - begin + 1);
 
-        if (!IsPureHanPhrase(word))
+        if (!IsPureHanPhrase(word, IsWubiComposableHan))
         {
             append_error(line_no, "仅支持纯汉字词组");
             continue;

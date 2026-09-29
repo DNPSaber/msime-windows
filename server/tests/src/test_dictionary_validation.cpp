@@ -467,3 +467,40 @@ TEST_CASE(HansImportIntoWubiWritesDerivedCodesAtTheWubiWeight)
     const std::string again_message = std::string(again.at("message").as_string());
     REQUIRE(again_message.find("跳过 3 条（已存在）") != std::string::npos);
 }
+
+TEST_CASE(HansImportIntoWubiIgnoresUserCharCodesAndAcceptsExtensionHan)
+{
+    ScopedWubiDataDir data;
+    const ScopedDataDir scoped(data.path());
+
+    const auto create = [](const char *code, const char *word) {
+        const auto response = SettingsDictionary::HandleRequest(
+            {{"dictionary", "wubi"}, {"action", "create"}, {"code", code}, {"word", word}, {"weight", 10}});
+        REQUIRE(response.at("ok").as_bool());
+    };
+    // 用户给「张」自造的 aaaa 字典序在出厂 xtay 前面。它不能参与取码，否则张三会变成 aadg。
+    create("aaaa", "张");
+    // 「䶮」(U+4DAE, 扩展 A) 出厂码表里没有，用户补的码是它唯一的来源，应当兜底用上。
+    create("dxyb", "\xE4\xB6\xAE");
+
+    const std::string content = "张三\n\xE4\xB6\xAE张\n";
+    const auto response =
+        SettingsDictionary::HandleRequest({{"dictionary", "wubi"}, {"action", "importHans"}, {"content", content}});
+    REQUIRE(response.at("ok").as_bool());
+    REQUIRE(std::string(response.at("message").as_string()).find("成功导入 2 条") != std::string::npos);
+
+    sqlite3 *db = nullptr;
+    REQUIRE_EQ(sqlite3_open(test::Utf8(data.path() / L"msime.db").c_str(), &db), SQLITE_OK);
+    const auto code_of = [db](const char *word) {
+        sqlite3_stmt *stmt = nullptr;
+        REQUIRE_EQ(sqlite3_prepare_v2(db, "SELECT key FROM wubi86 WHERE value=?1", -1, &stmt, nullptr), SQLITE_OK);
+        REQUIRE_EQ(sqlite3_bind_text(stmt, 1, word, -1, SQLITE_TRANSIENT), SQLITE_OK);
+        REQUIRE_EQ(sqlite3_step(stmt), SQLITE_ROW);
+        std::string code(reinterpret_cast<const char *>(sqlite3_column_text(stmt, 0)));
+        sqlite3_finalize(stmt);
+        return code;
+    };
+    REQUIRE_EQ(code_of("张三"), std::string("xtdg"));
+    REQUIRE_EQ(code_of("\xE4\xB6\xAE张"), std::string("dxxt"));
+    sqlite3_close(db);
+}
