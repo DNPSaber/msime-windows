@@ -417,7 +417,12 @@ int InitIpc()
 
 HANDLE CreateMainNamedPipeInstance()
 {
-    return CreateNamedPipeInstance(FANY_IME_NAMED_PIPE, BUFFER_SIZE, BUFFER_SIZE);
+    // The TSF side writes Main with PIPE_NOWAIT, so a burst that outruns this
+    // quota is refused and tears the session down. Hosts such as WeChat fire a
+    // dozen layout changes per key; 4 KiB held only 13 frames.
+    constexpr DWORD kMainPipeInboundFrames = 128;
+    return CreateNamedPipeInstance(FANY_IME_NAMED_PIPE, BUFFER_SIZE,
+                                   static_cast<DWORD>(sizeof(FanyImeNamedpipeData) * kMainPipeInboundFrames));
 }
 
 HANDLE CreateAuxNamedPipeInstance()
