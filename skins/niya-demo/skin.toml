@@ -42,10 +42,11 @@ opacity = 0.3          # 0–1
 accent = "#e08aa8"
 selected = "rgba(224, 138, 168, 0.28)"
 hover = "rgba(224, 138, 168, 0.16)"
+translation = "#9d68d3"          # 翻译文字，不写时取候选文字色的 62% 不透明度
+selected_translation = "#c4a4e5"
 # 细分配色，都可省略：不写时文字色回落到 text，光标和选中竖条回落到 accent。
 preedit_text = "#f0b8cb"
 selected_text = "#fff4f8"
-selected_translation = "#f6c1d3"
 preedit_background = "rgba(224, 138, 168, 0.10)"
 preedit_divider = "rgba(224, 138, 168, 0.30)"
 
@@ -60,6 +61,8 @@ hover = "rgba(224, 138, 168, 0.20)"
 accent = "#c45c7a"
 selected = "rgba(196, 92, 122, 0.18)"
 hover = "rgba(196, 92, 122, 0.10)"
+translation = "#9065b0"
+selected_translation = "#795594"
 surface = "#fff7fa"
 border = "rgba(176, 80, 110, 0.22)"
 preedit_text = "#9c3f5c"

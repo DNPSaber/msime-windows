@@ -21,7 +21,8 @@ surface = "#1A1E24"
 border = "rgba(232,64,10,.35)"
 text = "#7FA5FF"
 number = "#7FA5FF"
-translation = "#9FB0C4"
+translation = "#529E72"
+selected_translation = "#67AA83"
 show_selected_bar = false
 
 [candidate.light]
@@ -32,7 +33,8 @@ surface = "#FFFFFF"
 border = "#C5CEDA"
 text = "#1235CC"
 number = "#1235CC"
-translation = "#4A5A70"
+translation = "#448361"
+selected_translation = "#3A6F52"
 show_selected_bar = false
 
 # 工具栏跟候选窗同一套底色、边框，橙红拖动条、蓝色图标；不写会沿用 fluent 的黑底紫条。

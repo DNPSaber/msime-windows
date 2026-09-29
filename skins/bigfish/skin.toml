@@ -36,7 +36,8 @@ surface = "#141B33"
 border = "rgba(91, 155, 255, 0.38)"
 text = "#E3EAFF"
 number = "#E0C07A"
-translation = "#9FB4E0"
+translation = "#529E72"
+selected_translation = "#7FB797"
 
 [candidate.light]
 accent = "#2F5BD3"
@@ -46,7 +47,8 @@ surface = "#F4F8FF"
 border = "rgba(42, 53, 112, 0.24)"
 text = "#1C2550"
 number = "#A67C2E"
-translation = "#5A6A96"
+translation = "#448361"
+selected_translation = "#386D51"
 
 [toolbar]
 corner_radius_dip = 8
