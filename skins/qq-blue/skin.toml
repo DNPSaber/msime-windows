@@ -34,3 +34,20 @@ text = "#1A1A1A"
 number = "#0052D9"
 translation = "#F97D0A"
 show_selected_bar = false
+
+# 工具栏跟候选窗同一套底色、边框和亮蓝拖动条；不写会沿用 fluent 的黑底紫条。
+[toolbar.dark]
+background = "#1F2226"
+border = "rgba(18,161,245,.35)"
+handle = "#12B7F5"
+divider = "rgba(18,161,245,.24)"
+icon = "#E9E8E8"
+hover = "rgba(18,161,245,.24)"
+
+[toolbar.light]
+background = "#FFFFFF"
+border = "#DCE6F0"
+handle = "#0091EA"
+divider = "#DCE6F0"
+icon = "#1A1A1A"
+hover = "rgba(0,145,234,.12)"
