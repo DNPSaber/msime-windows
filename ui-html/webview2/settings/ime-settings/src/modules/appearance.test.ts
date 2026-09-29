@@ -36,10 +36,12 @@ class Element extends EventTarget {
 let list: Element;
 let preview: Element;
 let caretPreview: Element;
+let root: Element;
 let postMessage: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   list = new Element();
   preview = new Element();
+  root = new Element();
   caretPreview = new Element();
   caretPreview.id = 'caretStatePreviewHost';
   postMessage = vi.fn();
@@ -50,6 +52,7 @@ beforeEach(() => {
       return id === 'candFallbackFontList' ? list : id.startsWith('candidate-wnd-') ? preview
         : id === 'caretStatePreviewHost' ? caretPreview : find(list);
     },
+    documentElement: root,
     addEventListener: vi.fn(),
     querySelector: () => null,
     querySelectorAll: (selector: string) => selector.startsWith('.cand-preview .candidate') ? [preview] : [],
@@ -76,6 +79,13 @@ it('shows ordered selectors separated by fullwidth commas and saves replacement/
   expect(saved).toBe('["Font A","Font C"]');
   choose(0, '');
   expect(labels()).toEqual(['Font C']);
+});
+
+it('publishes the candidate font on the root for the skin list previews', () => {
+  applyAppearanceConfig(undefined, undefined, undefined, {
+    english_font: 'Segoe UI', fallback_fonts: ['Font A'], fallback_font_css_families: ['Family A']
+  });
+  expect(root.style.setProperty).toHaveBeenLastCalledWith('--cand-font-family', '"Segoe UI", "Family A", sans-serif');
 });
 
 it('keeps an explicit empty list and quotes punctuation inside font names', () => {
