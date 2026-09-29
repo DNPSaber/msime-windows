@@ -9,6 +9,7 @@
 #include <stdlib.h>
 
 #include <filesystem>
+#include <memory>
 #include <string>
 
 TEST_CASE(DictionaryFullPinyinValidationRejectsAbbreviatedSyllables)
@@ -503,4 +504,111 @@ TEST_CASE(HansImportIntoWubiIgnoresUserCharCodesAndAcceptsExtensionHan)
     REQUIRE_EQ(code_of("张三"), std::string("xtdg"));
     REQUIRE_EQ(code_of("\xE4\xB6\xAE张"), std::string("dxxt"));
     sqlite3_close(db);
+}
+
+namespace
+{
+class ScopedQuickPhraseDataDir
+{
+  public:
+    ScopedQuickPhraseDataDir() : dir_(L"msime-quick-phrase-test"), scoped_(dir_.path()), db_(nullptr, sqlite3_close)
+    {
+        sqlite3 *db = nullptr;
+        const int result = sqlite3_open(test::Utf8(dir_.path() / L"msime.db").c_str(), &db);
+        db_.reset(db);
+        REQUIRE_EQ(result, SQLITE_OK);
+        exec("CREATE TABLE quick_parases(key TEXT NOT NULL, value TEXT NOT NULL,"
+             "weight INTEGER NOT NULL DEFAULT 0, UNIQUE(key,value));"
+             "INSERT INTO quick_parases VALUES('abc','测试短语',10),('abc','另一短语',20)");
+    }
+    ~ScopedQuickPhraseDataDir()
+    {
+        user_dictionary::close_default_user_database();
+    }
+
+    void exec(const char *sql)
+    {
+        REQUIRE_EQ(sqlite3_exec(db_.get(), sql, nullptr, nullptr, nullptr), SQLITE_OK);
+    }
+
+    boost::json::value rows() const
+    {
+        const auto response = SettingsDictionary::HandleRequest({{"dictionary", "quick"}, {"action", "query"}});
+        REQUIRE(response.at("ok").as_bool());
+        return response.at("rows");
+    }
+
+  private:
+    ScopedTempDir dir_;
+    ScopedDataDir scoped_;
+    std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db_;
+};
+} // namespace
+
+TEST_CASE(QuickPhraseDuplicateCreateReportsExistingPhrase)
+{
+    ScopedQuickPhraseDataDir data;
+    const auto before = data.rows();
+    const auto response = SettingsDictionary::HandleRequest(
+        {{"dictionary", "quick"}, {"action", "create"}, {"code", "ABC"}, {"word", "测试短语"}, {"weight", 99}});
+
+    REQUIRE(!response.at("ok").as_bool());
+    REQUIRE_EQ(std::string(response.at("message").as_string()), std::string("相同编码和内容的快捷短语已存在"));
+    REQUIRE_EQ(data.rows(), before);
+    REQUIRE(!std::filesystem::exists(std::filesystem::u8path(user_dictionary::default_user_db_path())));
+}
+
+TEST_CASE(QuickPhraseDuplicateUpdatePreservesBothPhrases)
+{
+    ScopedQuickPhraseDataDir data;
+    const auto before = data.rows();
+    const auto response = SettingsDictionary::HandleRequest({{"dictionary", "quick"},
+                                                             {"action", "update"},
+                                                             {"code", "abc"},
+                                                             {"word", "测试短语"},
+                                                             {"weight", 99},
+                                                             {"oldCode", "abc"},
+                                                             {"oldWord", "另一短语"}});
+
+    REQUIRE(!response.at("ok").as_bool());
+    REQUIRE_EQ(std::string(response.at("message").as_string()), std::string("相同编码和内容的快捷短语已存在"));
+    REQUIRE_EQ(data.rows(), before);
+    REQUIRE(!std::filesystem::exists(std::filesystem::u8path(user_dictionary::default_user_db_path())));
+}
+
+TEST_CASE(QuickPhraseAllowsSharedCodesAndWeightUpdates)
+{
+    ScopedQuickPhraseDataDir data;
+    for (const auto &request : {
+             boost::json::object{{"dictionary", "quick"}, {"action", "create"}, {"code", "abc"}, {"word", "新短语"}},
+             boost::json::object{{"dictionary", "quick"}, {"action", "create"}, {"code", "def"}, {"word", "测试短语"}},
+             boost::json::object{{"dictionary", "quick"},
+                                 {"action", "update"},
+                                 {"code", "abc"},
+                                 {"word", "测试短语"},
+                                 {"weight", 99},
+                                 {"oldCode", "abc"},
+                                 {"oldWord", "测试短语"}},
+         })
+    {
+        REQUIRE(SettingsDictionary::HandleRequest(request).at("ok").as_bool());
+    }
+    const auto rows = data.rows().as_array();
+    REQUIRE_EQ(rows.size(), static_cast<size_t>(4));
+    REQUIRE_EQ(std::string(rows.front().as_object().at("word").as_string()), std::string("测试短语"));
+    REQUIRE_EQ(rows.front().as_object().at("weight").as_int64(), 99);
+}
+
+TEST_CASE(QuickPhraseOtherConstraintsKeepTheirErrorDetails)
+{
+    ScopedQuickPhraseDataDir data;
+    data.exec("CREATE TRIGGER reject_quick_phrase BEFORE INSERT ON quick_parases "
+              "BEGIN SELECT RAISE(ABORT, 'test rejection'); END");
+    const auto before = data.rows();
+    const auto response = SettingsDictionary::HandleRequest(
+        {{"dictionary", "quick"}, {"action", "create"}, {"code", "abc"}, {"word", "新短语"}});
+
+    REQUIRE(!response.at("ok").as_bool());
+    REQUIRE_EQ(std::string(response.at("message").as_string()), std::string("新增失败：test rejection"));
+    REQUIRE_EQ(data.rows(), before);
 }
