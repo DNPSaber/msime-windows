@@ -6,6 +6,7 @@
 
 #include <windows.h>
 #include <sqlite3.h>
+#include <stdlib.h>
 
 #include <filesystem>
 #include <string>
@@ -177,23 +178,32 @@ std::string Compose(const std::string &word)
     return SettingsDictionary::Validation::ComposeWubiPhraseCode(word, RealWubiCharCodes());
 }
 
-// 指向一个空目录，让每条分支都在写库之前就返回——本文件不碰任何真实词库。
-// ime_paths 每次调用都重读这个环境变量（不缓存），所以改动不会漏给别的用例。
+// 指向一个空目录，让每条分支都在写库之前就返回。
+//
+// 必须同时写两处环境变量，否则会静默污染用户真实词库：
+//   - server 的 get_ime_data_path() 走 GetEnvironmentVariableW，读 Win32 环境块；
+//   - 引擎的 data_file_path()（default_user_db_path 用它）走 _wdupenv_s，读 CRT 副本。
+// 只调 SetEnvironmentVariableW 的话前者生效、后者看不到，引擎侧仍指向真实数据目录，
+// record_user_insert 就把测试数据写进了 %LOCALAPPDATA% 的真实词库。
+// ime_paths 每次调用都重读、不缓存，所以改动不会漏给别的用例。
 class ScopedDataDir
 {
   public:
     explicit ScopedDataDir(const std::filesystem::path &path)
     {
-        const std::wstring value = path.wstring();
         wchar_t buffer[32768];
         const DWORD length = GetEnvironmentVariableW(kName, buffer, 32768);
         had_previous_ = length != 0 || GetLastError() != ERROR_ENVVAR_NOT_FOUND;
         previous_.assign(buffer, length);
+
+        const std::wstring value = path.wstring();
         SetEnvironmentVariableW(kName, value.c_str());
+        _wputenv_s(kName, value.c_str());
     }
     ~ScopedDataDir()
     {
         SetEnvironmentVariableW(kName, had_previous_ ? previous_.c_str() : nullptr);
+        _wputenv_s(kName, had_previous_ ? previous_.c_str() : L"");
     }
 
     ScopedDataDir(const ScopedDataDir &) = delete;
@@ -205,19 +215,45 @@ class ScopedDataDir
     bool had_previous_ = false;
 };
 
+// 临时数据目录，析构时整棵删掉。PID 后缀不是洁癖：目录开场会 remove_all，固定名在
+// 并行 ctest 或多个工作树同时跑时会互相删掉——同样的理由见 test_caret_prefix_input_session.cpp:27。
+class ScopedTempDir
+{
+  public:
+    explicit ScopedTempDir(const wchar_t *name)
+        : path_(std::filesystem::temp_directory_path() /
+                (std::wstring(name) + L"-" + std::to_wstring(GetCurrentProcessId())))
+    {
+        std::error_code error;
+        std::filesystem::remove_all(path_, error);
+        std::filesystem::create_directories(path_, error);
+    }
+    ~ScopedTempDir()
+    {
+        std::error_code error;
+        std::filesystem::remove_all(path_, error);
+    }
+    ScopedTempDir(const ScopedTempDir &) = delete;
+    ScopedTempDir &operator=(const ScopedTempDir &) = delete;
+
+    const std::filesystem::path &path() const
+    {
+        return path_;
+    }
+
+  private:
+    std::filesystem::path path_;
+};
+
 // 端到端导入用的数据目录：一个只含 wubi86 表的 msime.db，种子单字码与上面
-// RealWubiCharCodes 一致。放在临时目录，测试结束后整棵删掉。
+// RealWubiCharCodes 一致。
 class ScopedWubiDataDir
 {
   public:
-    ScopedWubiDataDir()
+    ScopedWubiDataDir() : dir_(L"msime-hans-wubi-import-test")
     {
-        path_ = std::filesystem::temp_directory_path() / L"msime-hans-wubi-import-test";
-        std::filesystem::remove_all(path_);
-        std::filesystem::create_directories(path_);
-
         sqlite3 *db = nullptr;
-        REQUIRE_EQ(sqlite3_open(test::Utf8(path_ / L"msime.db").c_str(), &db), SQLITE_OK);
+        REQUIRE_EQ(sqlite3_open(test::Utf8(dir_.path() / L"msime.db").c_str(), &db), SQLITE_OK);
         REQUIRE_EQ(sqlite3_exec(db,
                                 "CREATE TABLE wubi86(key TEXT NOT NULL, value TEXT NOT NULL,"
                                 "weight INTEGER NOT NULL DEFAULT 0, UNIQUE(key,value))",
@@ -236,20 +272,16 @@ class ScopedWubiDataDir
         }
         sqlite3_close(db);
     }
-    ~ScopedWubiDataDir()
-    {
-        std::filesystem::remove_all(path_);
-    }
     ScopedWubiDataDir(const ScopedWubiDataDir &) = delete;
     ScopedWubiDataDir &operator=(const ScopedWubiDataDir &) = delete;
 
-    std::filesystem::path path() const
+    const std::filesystem::path &path() const
     {
-        return path_;
+        return dir_.path();
     }
 
   private:
-    std::filesystem::path path_;
+    ScopedTempDir dir_;
 };
 } // namespace
 
@@ -295,6 +327,26 @@ TEST_CASE(WubiPhraseCodeFailsWhenAnyCharacterHasNoCode)
     REQUIRE(Compose("节观").empty()); // 首字有码也不放过
 }
 
+TEST_CASE(WubiPhraseCodeRejectsCharsWhoseCodeIsShorterThanTheRuleNeeds)
+{
+    // 取码规则要求每一位都取到指定字母数。某个字只有 1 位码时，硬拼会得到一个短一位的
+    // key——它能查得到、能上屏，但永远凑不满 has_complete_code() 的 4 位，静默写进
+    // wubi86 就是一条永远选不中的垃圾词条。所以这一步必须失败而不是凑合。
+    SettingsDictionary::Validation::WubiCharCodes short_codes{{"甲", "g"}, {"乙", "aaaa"}};
+    const auto compose = [&short_codes](const std::string &word) {
+        return SettingsDictionary::Validation::ComposeWubiPhraseCode(word, short_codes);
+    };
+
+    REQUIRE(compose("甲乙").empty()); // 甲 只 1 位，取 2 位取不满
+    REQUIRE(compose("甲甲").empty());
+    REQUIRE_EQ(compose("乙乙"), std::string("aaaa")); // 两个都是 4 位码，取 2+2 正常
+    // 4 字以上每位只取 1 位，所以 1 位码够用——这条守卫不该误伤长词。
+    REQUIRE_EQ(compose("甲甲乙乙"), std::string("ggaa"));
+
+    // 单字走 npos「全取」分支，不设长度下限：1 位码原样出码。
+    REQUIRE_EQ(compose("甲"), std::string("g"));
+}
+
 TEST_CASE(WubiImportDefaultWeightSitsOnTheWubiScaleNotThePinyinScale)
 {
     // 出厂词库实测：拼音 2 字词 p50=2805/max=9931703，五笔 2 字词 p50=10/max=110。
@@ -321,9 +373,8 @@ TEST_CASE(WubiImportDefaultWeightSitsOnTheWubiScaleNotThePinyinScale)
 
 TEST_CASE(HansImportIsRoutedByTheTargetDictionary)
 {
-    const std::filesystem::path empty_data_dir = std::filesystem::temp_directory_path() / L"msime-empty-hans-import";
-    std::filesystem::create_directories(empty_data_dir);
-    const ScopedDataDir scoped(empty_data_dir);
+    const ScopedTempDir dir(L"msime-empty-hans-import");
+    const ScopedDataDir scoped(dir.path());
 
     const auto response_for = [](const char *dictionary) {
         return SettingsDictionary::HandleRequest(
