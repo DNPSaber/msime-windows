@@ -103,6 +103,9 @@ set(TEST_SOURCE_FILES
     "${CMAKE_SOURCE_DIR}/src/utils/common_utils.cpp"
     "${CMAKE_SOURCE_DIR}/src/utils/ime_paths.cpp"
     "${CMAKE_SOURCE_DIR}/src/settings/dictionary_validation.cpp"
+    # Routing lives in dictionary_manager.cpp's HandleRequest, so the importHans dispatch test has
+    # to link the real translation unit rather than restate the branch order.
+    "${CMAKE_SOURCE_DIR}/src/settings/dictionary_manager.cpp"
 )
 
 add_executable(${TEST_EXECUTABLE_NAME} ${TEST_SOURCE_FILES})
@@ -141,7 +144,11 @@ target_link_libraries(${TEST_EXECUTABLE_NAME}
     Boost::json
     CURL::libcurl
     unofficial::sqlite3::sqlite3
+    # dictionary_manager.cpp annotates pure-Chinese imports with cpp-pinyin and clears the
+    # candidate cache through user32 window messages.
+    cpp-pinyin::cpp-pinyin
     dwrite
+    user32
     shell32
     advapi32
     ole32
