@@ -325,6 +325,10 @@ CandidateList::ItemGeometry CandidateList::MeasureItem(size_t index, float width
     geometry.text = {textX, 0.0f, textW, textH};
     float height = textH;
     float lineEnd = textW;
+    // height 末尾属于行底内边距的部分：只有单行高度（itemHeight）里才含这段内边距，
+    // 换到下方的辅助码和翻译从它上面开始排，排完再把它补回最后一行下面。
+    const float padBottom = std::clamp(appearance_.contentPadBottom, 0.0f, appearance_.itemHeight * 0.5f);
+    float padBelow = textH > appearance_.itemHeight ? 0.0f : padBottom;
 
     // 短字段保持原有并排方式；空间不足时让辅助码和翻译完整换行。
     if (!item.annotation.empty())
@@ -334,9 +338,13 @@ CandidateList::ItemGeometry CandidateList::MeasureItem(size_t index, float width
         const bool inlineAnnotation = lineEnd + 4.0f + annotationW <= contentWidth;
         const float annotationH = std::max(
             appearance_.itemHeight, MeasureTextHeight(item.annotation, appearance_.annotationFontSize, annotationW));
-        geometry.annotation = {textX + (inlineAnnotation ? lineEnd + 4.0f : 0.0f), inlineAnnotation ? 0.0f : height,
-                               annotationW, annotationH};
-        height = std::max(height, geometry.annotation.y + annotationH);
+        geometry.annotation = {textX + (inlineAnnotation ? lineEnd + 4.0f : 0.0f),
+                               inlineAnnotation ? 0.0f : height - padBelow, annotationW, annotationH};
+        if (geometry.annotation.y + annotationH > height)
+        {
+            height = geometry.annotation.y + annotationH;
+            padBelow = annotationH > appearance_.itemHeight ? 0.0f : padBottom;
+        }
         lineEnd = geometry.annotation.x - textX + annotationW;
     }
     if (!item.translation.empty())
@@ -353,9 +361,9 @@ CandidateList::ItemGeometry CandidateList::MeasureItem(size_t index, float width
                 : (naturalTranslationWidth <= contentWidth
                        ? fontSize * 1.25f
                        : std::max(fontSize * 1.25f, MeasureTextHeight(item.translation, fontSize, translationW)));
-        geometry.translation = {textX + (inlineTranslation ? lineEnd + gap : 0.0f), inlineTranslation ? 0.0f : height,
-                                translationW, translationH};
-        height = std::max(height, geometry.translation.y + translationH);
+        geometry.translation = {textX + (inlineTranslation ? lineEnd + gap : 0.0f),
+                                inlineTranslation ? 0.0f : height - padBelow, translationW, translationH};
+        height = std::max(height, geometry.translation.y + translationH + (inlineTranslation ? 0.0f : padBelow));
     }
     geometry.bounds = {0.0f, 0.0f, width, height};
     return geometry;
@@ -376,6 +384,26 @@ RectF CandidateList::ItemRect(size_t index) const
     {
         rect.x = bounds_.x;
         rect.width = bounds_.width;
+    }
+    else if (appearance_.justifyHorizontalRows)
+    {
+        // 横排铺满：列表比这一行的自然宽度宽时（卡片保持了同一输入下更宽的尺寸），把多出的宽度
+        // 均分给这一行的每一项，末项右边贴着列表右边，高亮不会在行尾留下一截空白。
+        const float lineY = itemGeometry_[index].bounds.y;
+        size_t first = index;
+        while (first > 0 && itemGeometry_[first - 1].bounds.y == lineY)
+            --first;
+        size_t last = index;
+        while (last + 1 < itemGeometry_.size() && itemGeometry_[last + 1].bounds.y == lineY)
+            ++last;
+        const RectF &tail = itemGeometry_[last].bounds;
+        const float extra = bounds_.width - (tail.x + tail.width);
+        if (extra > 0.0f)
+        {
+            const float share = extra / static_cast<float>(last - first + 1);
+            rect.x += share * static_cast<float>(index - first);
+            rect.width += share;
+        }
     }
     return rect;
 }

@@ -244,6 +244,46 @@ TEST_CASE(horizontal_candidate_translation_uses_a_second_line)
     REQUIRE_NEAR(list.MeasureInLayout({1000.0f, 1000.0f}).height, plain.height);
 }
 
+TEST_CASE(horizontal_candidate_translation_keeps_the_row_bottom_padding_below_it)
+{
+    // 行高里的底部内边距挪到翻译下面，而不是夹在候选与翻译之间；挪动不应让整行变高。
+    CandidateList list(38.0f);
+    CandidateList::Appearance appearance;
+    appearance.itemHeight = 38.0f;
+    appearance.contentPadBottom = 5.0f;
+    list.SetAppearance(appearance);
+    list.SetOrientation(CandidateList::Orientation::Horizontal);
+    list.SetItems({{L"1", L"candidate", L"", L"word"}});
+    const float translationH = appearance.fontSize * 0.78f * 1.25f;
+    REQUIRE_NEAR(list.MeasureInLayout({1000.0f, 1000.0f}).height, 38.0f + translationH);
+    list.ArrangeInLayout({0.0f, 0.0f, 1000.0f, 38.0f + translationH});
+    const RectF item = list.GetItemBounds(0);
+    REQUIRE_NEAR(item.height, 38.0f + translationH);
+}
+
+TEST_CASE(justified_horizontal_candidates_spread_spare_width_to_the_right_edge)
+{
+    CandidateList list(28.0f);
+    CandidateList::Appearance appearance;
+    appearance.itemHeight = 28.0f;
+    appearance.itemGap = 0.0f;
+    appearance.justifyHorizontalRows = true;
+    list.SetAppearance(appearance);
+    list.SetOrientation(CandidateList::Orientation::Horizontal);
+    list.SetItems({{L"1", L"候选", L"", L""}, {L"2", L"候选", L"", L""}});
+    const SizeF natural = list.MeasureInLayout({1000.0f, 1000.0f});
+    const float naturalFirstWidth = list.GetItemBounds(0).width;
+
+    // 卡片保持了更宽的尺寸：多出的 40 均分给两项，末项右边贴着列表右边。
+    list.ArrangeInLayout({10.0f, 0.0f, natural.width + 40.0f, natural.height});
+    const RectF first = list.GetItemBounds(0);
+    const RectF second = list.GetItemBounds(1);
+    REQUIRE_NEAR(first.x, 10.0f);
+    REQUIRE_NEAR(first.width, naturalFirstWidth + 20.0f);
+    REQUIRE_NEAR(second.x, first.x + first.width);
+    REQUIRE_NEAR(second.x + second.width, 10.0f + natural.width + 40.0f);
+}
+
 TEST_CASE(vertical_candidate_rows_fill_a_wider_arranged_width)
 {
     // 竖排候选项的自然宽度较窄，但被分配到更宽的行宽时（如卡片最小宽度撑大），
