@@ -234,7 +234,7 @@
   max-width: 100%;
 }
 .candidate.skin-willow-green.wnd-h .container {
-  width: max-content;
+  width: fit-content;
   max-width: 100%;
   letter-spacing: -0.31em;
 }
@@ -331,7 +331,7 @@
   max-width: 100%;
 }
 .candidate.skin-autumn-osmanthus.wnd-h .container {
-  width: max-content;
+  width: fit-content;
   max-width: 100%;
   letter-spacing: -0.31em;
 }
