@@ -171,9 +171,14 @@ Root: HKLM; Subkey: "Software\Metasequoia\MetasequoiaIME"; \
 
 [Code]
 const
-  { 放在数据目录里，标记「这个目录是安装器建的」。覆盖安装和卸载只有看到它才敢
-    整目录清理——用户可能把数据目录指到一个本来就有自己文件的文件夹。}
+  { 放在数据目录里，标记「输入法用过这个目录」。}
   DataDirMarkerName = '.metasequoiaime-data';
+  { 标记文件里带上这一行，才表示目录是安装器在它为空时接手的，整个目录都归输入法，
+    覆盖安装和卸载可以整目录清理。旧版安装器不管目录里原来有什么都写标记（#537），
+    所以只有标记、没有这一行的目录只能按名单删输入法自己的文件。}
+  DataDirExclusiveTag = 'exclusive: adopted empty by the installer';
+  { 用户选的目录里已有别的文件时，数据改放到这个子目录里。}
+  DataDirSubfolderName = 'metasequoiaime';
 
   { WebView2 Evergreen Runtime 在 EdgeUpdate 里的固定客户端 ID。}
   WebView2ClientKey =
@@ -194,6 +199,7 @@ var
   NetworkPage: TInputOptionWizardPage;
   CloudCandidatesIndex: Integer;
   UserConfigExistedBeforeInstall: Boolean;
+  DataDirAdoptedEmpty: Boolean;
 
 { WebView2 Runtime 与 VC 运行库都不随包分发：前者有自己的 Evergreen 更新通道，
   后者是系统级共享组件，安装器不该替用户装。但缺了任何一个，输入法装完就是坏的，
@@ -373,26 +379,61 @@ begin
   Result := AddBackslash(Directory) + DataDirMarkerName;
 end;
 
-{ 只有这两种目录允许整目录清理：带标记的（我们建的），
-  以及历史默认位置（老版本装的，那时还没有标记文件）。}
-function OwnsDataDir(const Directory: String): Boolean;
+{ 输入法用过这个目录（新旧标记都算）。只凭这一点，只能删名单里输入法自己的文件。}
+function DataDirHasMarker(const Directory: String): Boolean;
+begin
+  Result := (Directory <> '') and FileExists(DataDirMarkerPath(Directory));
+end;
+
+function DataDirMarkerIsExclusive(const Directory: String): Boolean;
+var
+  Lines: TArrayOfString;
+  Index: Integer;
+begin
+  Result := False;
+  if not LoadStringsFromFile(DataDirMarkerPath(Directory), Lines) then
+    exit;
+  for Index := 0 to GetArrayLength(Lines) - 1 do
+    if Trim(Lines[Index]) = DataDirExclusiveTag then
+    begin
+      Result := True;
+      exit;
+    end;
+end;
+
+{ 只有这两种目录允许整目录清理：标记里写明是安装器在空目录上接手的，
+  以及历史默认位置（老版本装的，那时还没有标记文件，而且它的名字本身就是输入法专用的）。}
+function OwnsDataDirExclusively(const Directory: String): Boolean;
 begin
   Result :=
     (Directory <> '') and
-    (FileExists(DataDirMarkerPath(Directory)) or
-     (CompareText(
+    ((CompareText(
         Directory,
-        ExpandConstant('{localappdata}\metasequoiaime')) = 0));
+        ExpandConstant('{localappdata}\metasequoiaime')) = 0) or
+     (DataDirHasMarker(Directory) and DataDirMarkerIsExclusive(Directory)));
 end;
 
-procedure WriteDataDirMarker(const Directory: String);
+{ Exclusive 只能在确认目录接手时为空（或本来就归我们）时传 True。
+  已有的旧标记不会因为一次覆盖安装就升级成独占：那时目录里已经有东西，说不清是谁的。}
+procedure WriteDataDirMarker(const Directory: String; Exclusive: Boolean);
 var
   Lines: TArrayOfString;
 begin
-  if FileExists(DataDirMarkerPath(Directory)) then
-    exit;
-  SetArrayLength(Lines, 1);
-  Lines[0] := 'Metasequoia IME user data directory.';
+  if Exclusive then
+  begin
+    if DataDirMarkerIsExclusive(Directory) then
+      exit;
+    SetArrayLength(Lines, 2);
+    Lines[0] := 'Metasequoia IME user data directory.';
+    Lines[1] := DataDirExclusiveTag;
+  end
+  else
+  begin
+    if DataDirHasMarker(Directory) then
+      exit;
+    SetArrayLength(Lines, 1);
+    Lines[0] := 'Metasequoia IME user data directory.';
+  end;
   SaveStringsToFile(DataDirMarkerPath(Directory), Lines, False);
 end;
 
@@ -488,6 +529,20 @@ begin
     end;
   end;
 
+  { AdoptableDataDir 已经把有别的文件的目录换成了子目录；走到这里还不空，说明连那个子目录
+    里都有不归输入法的东西。}
+  if
+    (not DirectoryIsEmpty(Directory)) and
+    (not DataDirHasMarker(Directory)) and
+    (not OwnsDataDirExclusively(Directory))
+  then
+  begin
+    Result :=
+      '目录 ' + Directory + ' 里已经有其他文件。' +
+      '为避免卸载时误删，请选择一个空目录。';
+    exit;
+  end;
+
   if not ForceDirectories(Directory) then
   begin
     Result := '无法创建目录 ' + Directory + '，请检查权限或换一个位置。';
@@ -500,6 +555,21 @@ begin
     exit;
   end;
   DeleteFile(ProbePath);
+end;
+
+{ 数据目录必须整个归输入法：用户选了一个本来就有东西的文件夹（或者驱动器根目录），
+  就在里面建一个专用子目录。输入法用过的目录（有标记，或历史默认位置）原样沿用。}
+function AdoptableDataDir(const Chosen: String): String;
+begin
+  Result := Chosen;
+  if (Length(Chosen) = 3) and (Chosen[2] = ':') and (Chosen[3] = '\') then
+    Result := Chosen + DataDirSubfolderName
+  else if
+    (not DirectoryIsEmpty(Chosen)) and
+    (not DataDirHasMarker(Chosen)) and
+    (not OwnsDataDirExclusively(Chosen))
+  then
+    Result := AddBackslash(Chosen) + DataDirSubfolderName;
 end;
 
 { CreateInputDirPage 自带的浏览按钮调用 BrowseForFolder 时不给新建文件夹按钮，用户没法在对话框里
@@ -621,6 +691,7 @@ end;
 function NextButtonClick(CurPageID: Integer): Boolean;
 var
   Chosen: String;
+  Adopted: String;
   Reason: String;
 begin
   Result := True;
@@ -628,29 +699,31 @@ begin
   if (DataDirPage <> nil) and (CurPageID = DataDirPage.ID) then
   begin
     Chosen := RemoveBackslashUnlessRoot(Trim(DataDirPage.Values[0]));
-    Reason := DataDirRejectionReason(Chosen);
+    Adopted := AdoptableDataDir(Chosen);
+    { 用户可能指到一个本来就有东西的文件夹（#537）。数据目录会被覆盖安装清理、被卸载整个删除，
+      所以不能和别人的文件混在一起：改用里面的专用子目录，并先让用户看到实际位置。}
+    if
+      (CompareText(Adopted, Chosen) <> 0) and
+      (MsgBox(
+         '目录 ' + Chosen + ' 里已经有其他文件（或是驱动器根目录）。' + #13#10 +
+         '为了卸载时不误删这些文件，输入法数据将放在它的子目录里：' + #13#10 + #13#10 +
+         '    ' + Adopted + #13#10 + #13#10 +
+         '确定吗？',
+         mbConfirmation, MB_OKCANCEL) <> IDOK)
+    then
+    begin
+      Result := False;
+      exit;
+    end;
+    Reason := DataDirRejectionReason(Adopted);
     if Reason <> '' then
     begin
       MsgBox(Reason, mbError, MB_OK);
       Result := False;
       exit;
     end;
-    { 用户可能指到一个本来就有东西的文件夹。装进去没问题（清理和卸载都认标记文件），
-      但得先说清楚里面的既有文件不归输入法管。}
-    if
-      (not DirectoryIsEmpty(Chosen)) and
-      (not OwnsDataDir(Chosen)) and
-      (MsgBox(
-         '目录 ' + Chosen + ' 里已经有其他文件。' + #13#10 +
-         '输入法会在其中创建自己的文件，不会动你原有的内容，卸载时也只删除自己的部分。' + #13#10 + #13#10 +
-         '确定使用这个目录吗？',
-         mbConfirmation, MB_YESNO) <> IDYES)
-    then
-    begin
-      Result := False;
-      exit;
-    end;
-    DataDirValue := Chosen;
+    DataDirPage.Values[0] := Adopted;
+    DataDirValue := Adopted;
     exit;
   end;
 
@@ -746,6 +819,61 @@ begin
     IsUserSkinDirectory(FileName) or
     IsUserShuangpinDirectory(FileName) or
     (CompareText(FileName, DataDirMarkerName) = 0);
+end;
+
+{ app_data 里随包装进数据目录根下的条目。installer/tests/package-files.ps1 拿真正打出来的
+  app_data 对这份名单，打包新增文件而漏改这里会红。}
+function IsShippedAppDataItem(const FileName: String): Boolean;
+begin
+  Result :=
+    (CompareText(FileName, 'pinyin.txt') = 0) or
+    (CompareText(FileName, 'dict_pinyin.dat') = 0) or
+    (CompareText(FileName, 'msime.db') = 0) or
+    (CompareText(FileName, 'dictionary-manifest.json') = 0) or
+    (CompareText(FileName, 'dict_japanese.dat') = 0) or
+    (CompareText(FileName, 'MOZC_DICTIONARY_LICENSE.txt') = 0) or
+    (CompareText(FileName, 'english.db') = 0) or
+    (CompareText(FileName, 'others.db') = 0) or
+    (CompareText(FileName, 'sc.lm') = 0) or
+    (CompareText(FileName, 'libime-lm-NOTICE.md') = 0) or
+    (CompareText(FileName, 'sentence-model-desktop.safetensors') = 0) or
+    (CompareText(FileName, 'sentence-model.safetensors') = 0) or
+    (CompareText(FileName, 'chinese-ime-lm-NOTICE.md') = 0) or
+    (CompareText(FileName, 'config.default.toml') = 0) or
+    (CompareText(FileName, 'helpcodes') = 0) or
+    (CompareText(FileName, 'html') = 0);
+end;
+
+{ Server、引擎和安装器自己运行时在数据目录根下写出来的条目（不含 IsPreservedAppDataItem 已列的）。}
+function IsRuntimeAppDataItem(const FileName: String): Boolean;
+begin
+  Result :=
+    (CompareText(FileName, 'msime.db-wal') = 0) or
+    (CompareText(FileName, 'msime.db-shm') = 0) or
+    (CompareText(FileName, 'msime.db-journal') = 0) or
+    (CompareText(FileName, 'english.db-wal') = 0) or
+    (CompareText(FileName, 'english.db-shm') = 0) or
+    (CompareText(FileName, 'english.db-journal') = 0) or
+    (CompareText(FileName, 'others.db-wal') = 0) or
+    (CompareText(FileName, 'others.db-shm') = 0) or
+    (CompareText(FileName, 'others.db-journal') = 0) or
+    (CompareText(FileName, 'user_dict.dat') = 0) or
+    (CompareText(FileName, 'clipboard_history.json') = 0) or
+    (CompareText(FileName, 'voice_system_audio_mute_state.txt') = 0) or
+    (CompareText(FileName, 'config.toml.tmp') = 0) or
+    (CompareText(FileName, 'config.base.toml.tmp') = 0) or
+    (CompareText(Copy(FileName, 1, 20), 'config.toml.corrupt-') = 0) or
+    (CompareText(FileName, '.ime-write-probe') = 0) or
+    (CompareText(FileName, 'msime-write-probe.tmp') = 0) or
+    (CompareText(FileName, 'logs') = 0);
+end;
+
+{ 数据目录不整个归我们时，只有这些名字允许删（#537）。html、logs 这种通用目录名
+  由 DeleteKnownAppDataDir 只删输入法自己写进去的部分。log\、webview2\ 等只会出现在
+  历史默认位置，那里整个目录归我们，不必列。}
+function IsKnownAppDataItem(const FileName: String): Boolean;
+begin
+  Result := IsShippedAppDataItem(FileName) or IsRuntimeAppDataItem(FileName);
 end;
 
 function InitializeUninstall(): Boolean;
@@ -922,6 +1050,74 @@ begin
   DelTree(Path, True, True, True);
 end;
 
+{ 不独占的数据目录里删一个名单上的子目录。名字通用的几个只删我们写进去的内容，
+  目录空了才删掉它：用户自己恰好也有一个 html、logs 或 skins 文件夹时不能跟着没了。
+  skins 里分不清哪些是外部皮肤、哪些是别人的东西，宁可留下。}
+procedure DeleteKnownAppDataDir(const ItemPath, FileName: String);
+begin
+  if CompareText(FileName, 'skins') = 0 then
+  begin
+    { 只删空目录。}
+  end
+  else if CompareText(FileName, 'html') = 0 then
+    TryDeleteTree(AddBackslash(ItemPath) + 'webview2')
+  else if CompareText(FileName, 'logs') = 0 then
+  begin
+    DeleteFile(AddBackslash(ItemPath) + '水杉IME诊断日志.log');
+    DeleteFile(AddBackslash(ItemPath) + '水杉IME诊断日志.log.1');
+  end
+  else
+  begin
+    TryDeleteTree(ItemPath);
+    exit;
+  end;
+  RemoveDir(ItemPath);
+end;
+
+{ 卸载、换数据目录时删掉旧数据目录。整个目录归我们才整目录删；只有旧版标记的目录里
+  可能混着用户自己的文件（#537），只删名单里输入法的东西，目录空了才顺手删掉。
+  两样都不是就一个文件也不碰。}
+procedure RemoveDataDir(const Directory: String);
+var
+  FindRec: TFindRec;
+  ItemPath: String;
+begin
+  if (Directory = '') or (not DirExists(Directory)) then
+    exit;
+  if OwnsDataDirExclusively(Directory) then
+  begin
+    TryDeleteTree(Directory);
+    exit;
+  end;
+  if not DataDirHasMarker(Directory) then
+    exit;
+
+  Log('Data directory ' + Directory + ' is not exclusively ours; removing known items only.');
+  if FindFirst(AddBackslash(Directory) + '*', FindRec) then
+  begin
+    try
+      repeat
+        if
+          (FindRec.Name <> '.') and
+          (FindRec.Name <> '..') and
+          (IsPreservedAppDataItem(FindRec.Name) or IsKnownAppDataItem(FindRec.Name))
+        then
+        begin
+          ItemPath := AddBackslash(Directory) + FindRec.Name;
+          if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
+            DeleteKnownAppDataDir(ItemPath, FindRec.Name)
+          else
+            DeleteFile(ItemPath);
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+  { 只删得掉空目录；用户的文件还在，目录就留着。}
+  RemoveDir(Directory);
+end;
+
 { helpcodes 里的内置表由本次安装重写，custom 子目录是用户自己放的辅助码，升级不得清掉。}
 procedure CleanHelpcodesExceptCustom(const HelpcodesPath: String);
 var
@@ -953,6 +1149,7 @@ end;
 
 procedure CleanAppDataExceptUserFiles;
 var
+  Exclusive: Boolean;
   AppDataPath: String;
   FindRec: TFindRec;
   ItemPath: String;
@@ -960,9 +1157,10 @@ begin
   AppDataPath := GetDataDir('');
   if not DirExists(AppDataPath) then
     exit;
-  { 只清理我们自己建的目录。用户可能把数据目录指到一个本来就有文件的文件夹，
-    那里除了输入法自己的文件之外的一切都不归我们删。}
-  if not OwnsDataDir(AppDataPath) then
+  { 整个目录归我们时清掉除用户数据以外的一切；旧版安装器可能把标记写进了一个本来就有
+    别的文件的文件夹（#537），那里只动名单里输入法自己的东西。}
+  Exclusive := OwnsDataDirExclusively(AppDataPath);
+  if (not Exclusive) and (not DataDirHasMarker(AppDataPath)) then
     exit;
 
   if FindFirst(AddBackslash(AppDataPath) + '*', FindRec) then
@@ -972,7 +1170,8 @@ begin
         if
           (FindRec.Name <> '.') and
           (FindRec.Name <> '..') and
-          (not IsPreservedAppDataItem(FindRec.Name))
+          (not IsPreservedAppDataItem(FindRec.Name)) and
+          (Exclusive or IsKnownAppDataItem(FindRec.Name))
         then
         begin
           ItemPath := AddBackslash(AppDataPath) + FindRec.Name;
@@ -980,8 +1179,10 @@ begin
             DeleteFile(ItemPath)
           else if CompareText(FindRec.Name, 'helpcodes') = 0 then
             CleanHelpcodesExceptCustom(ItemPath)
+          else if Exclusive then
+            TryDeleteTree(ItemPath)
           else
-            TryDeleteTree(ItemPath);
+            DeleteKnownAppDataDir(ItemPath, FindRec.Name);
         end;
       until not FindNext(FindRec);
     finally
@@ -1187,9 +1388,8 @@ begin
     exit;
   end;
 
-  { 旧目录里剩下的是可重建的资源（词库、html、cache 等），只在确定是我们建的时候才整个删掉。}
-  if OwnsDataDir(OldDir) then
-    TryDeleteTree(OldDir);
+  { 旧目录里剩下的是可重建的资源（词库、html、cache 等）。}
+  RemoveDataDir(OldDir);
 end;
 
 function PrepareToInstall(var NeedsRestart: Boolean): String;
@@ -1199,13 +1399,18 @@ var
   FailedPath: String;
 #endif
 begin
-  { 静默安装不会走向导页，/DATADIR= 传进来的值在这里才第一次被检查。}
+  { 静默安装不会走向导页，/DATADIR= 传进来的值在这里才第一次被检查，
+    有别的文件时同样改用子目录。向导里选的值已经换过一次，这里再换是空操作。}
+  DataDirValue := AdoptableDataDir(GetDataDir(''));
   DataDirProblem := DataDirRejectionReason(GetDataDir(''));
   if DataDirProblem <> '' then
   begin
     Result := '数据目录 ' + GetDataDir('') + ' 不可用：' + DataDirProblem;
     exit;
   end;
+  { 迁移会往目录里搬文件，所以要在那之前记下它是不是空着被接手的。}
+  DataDirAdoptedEmpty :=
+    OwnsDataDirExclusively(GetDataDir('')) or DirectoryIsEmpty(GetDataDir(''));
 
   { 先锁定本次目录名，再清理能够释放的旧版本 DLL。}
   VersionDirName := GetVersionDir('');
@@ -1251,7 +1456,7 @@ begin
   if CurStep = ssPostInstall then
   begin
     { 先打标记，再调整权限：之后的覆盖安装和卸载靠它判断这个目录是不是我们建的。}
-    WriteDataDirMarker(GetDataDir(''));
+    WriteDataDirMarker(GetDataDir(''), DataDirAdoptedEmpty);
 #ifndef LightPackage
     ReplayUserDictionary;
     ApplyNetworkChoiceToUserConfig;
@@ -1294,10 +1499,8 @@ begin
     end;
     TryDeleteTree(ExpandConstant('{commonpf32}\metasequoiaime'));
     TryDeleteTree(ExpandConstant('{commonpf64}\metasequoiaime'));
-    { 数据目录可能被用户指到了别的盘，甚至指到一个本来就有文件的文件夹：
-      只有确认是安装器建的（带标记文件，或历史默认位置）才整个删除。}
-    if OwnsDataDir(ResolvePreviousDataDir) then
-      TryDeleteTree(ResolvePreviousDataDir);
+    { 数据目录可能被用户指到了别的盘，甚至指到一个本来就有文件的文件夹（#537）。}
+    RemoveDataDir(ResolvePreviousDataDir);
     TryDeleteTree(ExpandConstant('{commonappdata}\metasequoiaime'));
   end;
 end;
