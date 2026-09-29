@@ -1249,10 +1249,15 @@ bool SendToNamedpipe(bool *deliveryAmbiguous = nullptr)
     }
 
     DWORD bytesWritten = 0;
-    if (WriteFile(hPipe, &packet, sizeof(packet), &bytesWritten, nullptr) && bytesWritten == sizeof(packet))
+    const BOOL writeOk = WriteFile(hPipe, &packet, sizeof(packet), &bytesWritten, nullptr);
+    if (writeOk && bytesWritten == sizeof(packet))
     {
         return true;
     }
+    // PIPE_NOWAIT reports a full inbound quota as success with zero bytes.
+    QueueTsfDiagnosticLog(fmt::format(L"[msime][ipc] main-pipe write failed event_type={} ok={} bytes={} gle={}",
+                                      packet.event_type, writeOk ? 1 : 0, bytesWritten,
+                                      writeOk ? 0UL : static_cast<unsigned long>(GetLastError())));
 
     // Delivery is ambiguous after any failed write. Never replay an old
     // activation token, key, status, or UI command on a replacement Main.
@@ -1573,9 +1578,7 @@ int SendShowCandidateWndEventToUIProcessViaNamedPipe()
     // fields for this logical event.
     namedpipeData.request_id = 0;
     namedpipeData.event_type = FanyImePipeEventType::ShowCandidateWnd;
-    SendToNamedpipe();
-
-    return 0;
+    return SendToNamedpipe() ? 0 : -1;
 }
 
 int SendMoveCandidateWndEventToUIProcessViaNamedPipe()
@@ -1583,9 +1586,7 @@ int SendMoveCandidateWndEventToUIProcessViaNamedPipe()
     // The caller has already staged the new caret point in namedpipeData.
     namedpipeData.request_id = 0;
     namedpipeData.event_type = FanyImePipeEventType::MoveCandidateWnd;
-    SendToNamedpipe();
-
-    return 0;
+    return SendToNamedpipe() ? 0 : -1;
 }
 
 int SendLangbarRightClickEventToUIProcessViaNamedPipe(const RECT *prcArea)

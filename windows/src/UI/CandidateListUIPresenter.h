@@ -132,6 +132,7 @@ class CCandidateListUIPresenter : public CTfTextLayoutSink,
     void BeginCandidateUiSession();
     void UpdateCandidateUiSession();
     void MoveCandidateUiSession();
+    void _RecordSentCaretPoint(bool sent);
     void EndCandidateUiSession();
     void _LoadUiLessCandidatesFromSharedMemory();
     void _RequestCancelComposition();
@@ -151,6 +152,10 @@ class CCandidateListUIPresenter : public CTfTextLayoutSink,
     CMetasequoiaIME *_pTextService;
     LONG _refCount;
     BOOL _candidateUiSessionActive;
+    // Caret last delivered to Server by Show/Move. Some hosts (WeChat) raise a
+    // dozen identical layout changes per key; resending each one floods Main.
+    bool _hasSentCaretPoint = false;
+    int _sentCaretPoint[2] = {};
     BOOL _asyncCleanupPending;
     std::wstring _lastUiLessCandidatePage;
 };
