@@ -352,8 +352,15 @@ bool GetConfiguredAssocSentenceSourceBadge();
 bool SetConfiguredAssocSentenceSourceBadge(bool enabled);
 bool GetConfiguredUnicodeModeEnabled();
 bool SetConfiguredUnicodeModeEnabled(bool enabled);
+// Shift+K 快捷短语模式。
 bool GetConfiguredQuickPhraseEnabled();
 bool SetConfiguredQuickPhraseEnabled(bool enabled);
+// 全拼/双拼里把编码精确匹配的快捷短语混进候选，与 K 模式各自开关。
+bool GetConfiguredQuickPhraseCandidatesEnabled();
+bool SetConfiguredQuickPhraseCandidatesEnabled(bool enabled);
+// 快捷短语参与调频：关掉后快捷短语组固定在首位，选择也不再学习。
+bool GetConfiguredQuickPhraseFrequencyEnabled();
+bool SetConfiguredQuickPhraseFrequencyEnabled(bool enabled);
 bool GetConfiguredDateTimeModeEnabled();
 bool SetConfiguredDateTimeModeEnabled(bool enabled);
 bool GetConfiguredEmojiModeEnabled();

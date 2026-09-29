@@ -108,6 +108,33 @@ bool IsQuickPhraseInput(const std::string &raw)
            std::all_of(raw.begin() + 1, raw.end(), [](unsigned char ch) { return ch >= 'a' && ch <= 'z'; });
 }
 
+// 快捷短语混进全拼/双拼的普通候选（Shift+K 模式另走
+// IsQuickPhraseInput）：按整串编码精确匹配，只在输入是纯小写字母、没有辅助码、
+// 不在造词、光标前缀没截断时出现。整组插在第 slot 个普通候选之前，槽位由调频学出来，
+// 最多退到首页末位。
+void PlaceQuickPhrases(std::vector<WordItem> &items, const std::string &current_input)
+{
+    const SchemeType scheme = g_inputSession->current_scheme_type();
+    if (!GetConfiguredQuickPhraseCandidatesEnabled() ||
+        (scheme != SchemeType::Quanpin && scheme != SchemeType::Shuangpin) || g_inputSession->has_active_helpcode() ||
+        GlobalIme::composition.creating_word.active || g_inputSession->prefix_end() != current_input.size() ||
+        current_input.empty() || !std::all_of(current_input.begin(), current_input.end(), [](unsigned char ch) {
+            return ch >= 'a' && ch <= 'z';
+        }))
+        return;
+    auto phrases = metasequoia::local_modes::query_quick_phrases_by_code(current_input).candidates;
+    if (phrases.empty())
+        return;
+    std::size_t slot = 0;
+    if (GetConfiguredQuickPhraseFrequencyEnabled() && GetConfiguredFrequencyAdjustment().mode != "disabled")
+    {
+        const int stored = user_dictionary::quick_phrase_slot(user_dictionary::default_user_db_path(), current_input);
+        const int max_slot = (std::max)(GetConfiguredCandidatePageSize() - 1, 0);
+        slot = static_cast<std::size_t>(std::clamp(stored, 0, max_slot));
+    }
+    metasequoia::local_modes::place_quick_phrases(items, std::move(phrases), slot);
+}
+
 bool IsUnicodeInput(const std::string &raw)
 {
     if (!IsUnicodeCompositionActive(raw) || raw.size() <= 1)
@@ -441,6 +468,7 @@ bool ExpandCandidatesKeepingPagePosition()
         user_dictionary::default_user_db_path(), CurrentRankingContextKey(), expanded, true,
         [](const std::string &key, const std::string &value) { return g_inputSession->find_candidate(key, value); },
         g_inputSession->has_active_helpcode());
+    PlaceQuickPhrases(expanded, g_inputSession->get_pinyin_sequence_with_cases());
     ui.set_items(std::move(expanded));
     ui.page_index = current_page;
     ui.selected_index_in_page = current_selection;
@@ -611,6 +639,7 @@ void PrepareCandidateList(uint64_t client_id, uint64_t activation_epoch)
             g_inputSession->get_pinyin_sequence().size() == 1,
             [](const std::string &key, const std::string &value) { return g_inputSession->find_candidate(key, value); },
             g_inputSession->has_active_helpcode());
+        PlaceQuickPhrases(items, current_input);
         fixedPosMs = segment.Split();
         if (g_inputSession->get_pinyin_sequence().size() == 1 && items.size() > 24)
             items.resize(24);

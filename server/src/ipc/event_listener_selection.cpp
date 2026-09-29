@@ -2,6 +2,7 @@
 #include "ipc/event_listener_internal.h"
 #include <Windows.h>
 #include <string>
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include "ipc.h"
@@ -11,6 +12,7 @@
 #include "utils/common_utils.h"
 #include "global/globals.h"
 #include "config/ime_config.h"
+#include "engine/local_modes/quick_phrase_query.h"
 #include "log/candidate_diag_log.h"
 
 using namespace event_listener_detail;
@@ -33,6 +35,38 @@ std::wstring BuildCreateWordPipePayloadWithCaret(bool client_supports_restore,
         payload += L'\t' + std::to_wstring(GlobalIme::composition.caret_position);
     }
     return payload;
+}
+
+// 快捷短语组的调频：选中组里的一条让组前移，越过整组选了排在后面的普通候选让组后退。
+// 编码要在 reset_state() 之前取；列表里有快捷短语就说明当前输入就是它们的编码。
+void LearnQuickPhraseOrder(const WordItem &selected, size_t absolute_index, uint64_t client_id,
+                           uint64_t activation_epoch)
+{
+    const auto &items = Global::candidate_ui.items;
+    if (!GetConfiguredQuickPhraseFrequencyEnabled() || absolute_index >= items.size())
+        return;
+    const auto group = std::find_if(items.begin(), items.end(),
+                                    [](const WordItem &item) { return item.source == CandidateSource::QuickPhrase; });
+    if (group == items.end())
+        return;
+    const size_t group_index = static_cast<size_t>(group - items.begin());
+    // Shift+K 模式的编码带大写 K 前缀，那里的快捷短语按前缀列出，不是混排组，不学槽位。
+    const std::string code = g_inputSession->get_pinyin_sequence_with_cases();
+    if (code.empty() || !std::all_of(code.begin(), code.end(), [](unsigned char ch) { return ch >= 'a' && ch <= 'z'; }))
+        return;
+    if (selected.source == CandidateSource::QuickPhrase)
+    {
+        FanyNamedPipe::EnqueueLearnQuickPhraseOrderTask(code, selected.word, absolute_index == group_index, 0,
+                                                        client_id, activation_epoch);
+        return;
+    }
+    if (absolute_index < group_index || !metasequoia::local_modes::counts_toward_quick_phrase_slot(selected))
+        return;
+    const auto ordinary_rank = std::count_if(
+        items.begin(), items.begin() + static_cast<std::ptrdiff_t>(absolute_index),
+        [](const WordItem &item) { return metasequoia::local_modes::counts_toward_quick_phrase_slot(item); });
+    FanyNamedPipe::EnqueueLearnQuickPhraseOrderTask(code, "", false, static_cast<int>(ordinary_rank), client_id,
+                                                    activation_epoch);
 }
 } // namespace
 
@@ -174,6 +208,11 @@ void ProcessSelectionKey(UINT keycode, uint64_t client_id, uint64_t activation_e
         // should only learn when the user picked something else.
         const bool is_first_page_first = Global::candidate_ui.page_index == 0 && index == 0;
         isNeedUpdateWeight = !is_first_page_first;
+        LearnQuickPhraseOrder(curWordItem,
+                              static_cast<size_t>(Global::candidate_ui.page_index) *
+                                      static_cast<size_t>(Global::candidate_ui.page_size) +
+                                  static_cast<size_t>(index),
+                              client_id, activation_epoch);
         Global::candidate_ui.selected_text = Global::candidate_ui.page_words[index];
         std::string curWord = curWordItem.word;
         std::string curWordPinyin = curWordItem.pinyin;

@@ -164,6 +164,8 @@ extern bool g_emoji_mixed_input_enabled;
 extern bool g_kaomoji_mixed_input_enabled;
 extern bool g_unicode_mode_enabled;
 extern bool g_quick_phrase_enabled;
+extern bool g_quick_phrase_candidates_enabled;
+extern bool g_quick_phrase_frequency_enabled;
 extern bool g_date_time_mode_enabled;
 extern bool g_emoji_mode_enabled;
 extern bool g_kaomoji_mode_enabled;

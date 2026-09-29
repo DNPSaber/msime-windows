@@ -1040,6 +1040,22 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                                     PostSettingsConfig();
                                 }
                             }
+                            else if (path == "utility.quick_phrase_candidates")
+                            {
+                                const bool value = json::value_to<bool>(data.at("value"));
+                                if (SetConfiguredQuickPhraseCandidatesEnabled(value))
+                                {
+                                    PostSettingsConfig();
+                                }
+                            }
+                            else if (path == "utility.quick_phrase_frequency")
+                            {
+                                const bool value = json::value_to<bool>(data.at("value"));
+                                if (SetConfiguredQuickPhraseFrequencyEnabled(value))
+                                {
+                                    PostSettingsConfig();
+                                }
+                            }
                             else if (path == "utility.date_time_mode")
                             {
                                 const bool value = json::value_to<bool>(data.at("value"));
@@ -1409,6 +1425,8 @@ void PostSettingsConfig()
           {"utility",
            {{"unicode_mode", GetConfiguredUnicodeModeEnabled()},
             {"quick_phrase", GetConfiguredQuickPhraseEnabled()},
+            {"quick_phrase_candidates", GetConfiguredQuickPhraseCandidatesEnabled()},
+            {"quick_phrase_frequency", GetConfiguredQuickPhraseFrequencyEnabled()},
             {"date_time_mode", GetConfiguredDateTimeModeEnabled()},
             {"emoji_mode", GetConfiguredEmojiModeEnabled()},
             {"kaomoji_mode", GetConfiguredKaomojiModeEnabled()},

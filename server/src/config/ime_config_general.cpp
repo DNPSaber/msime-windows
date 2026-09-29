@@ -267,6 +267,36 @@ bool SetConfiguredQuickPhraseEnabled(bool enabled)
     return true;
 }
 
+bool GetConfiguredQuickPhraseCandidatesEnabled()
+{
+    return g_quick_phrase_candidates_enabled;
+}
+
+bool SetConfiguredQuickPhraseCandidatesEnabled(bool enabled)
+{
+    if (!WriteConfiguredValue("utility", "quick_phrase_candidates", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_quick_phrase_candidates_enabled = enabled;
+    return true;
+}
+
+bool GetConfiguredQuickPhraseFrequencyEnabled()
+{
+    return g_quick_phrase_frequency_enabled;
+}
+
+bool SetConfiguredQuickPhraseFrequencyEnabled(bool enabled)
+{
+    if (!WriteConfiguredValue("utility", "quick_phrase_frequency", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_quick_phrase_frequency_enabled = enabled;
+    return true;
+}
+
 bool GetConfiguredDateTimeModeEnabled()
 {
     return g_date_time_mode_enabled;

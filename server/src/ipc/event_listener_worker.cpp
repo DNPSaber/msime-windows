@@ -976,6 +976,30 @@ void EnqueueAdjustCandidateRankingTask(bool english, bool wubi, const std::strin
     });
 }
 
+// 快捷短语每次都现查，不进引擎的候选缓存，写完不用清缓存。
+void EnqueueLearnQuickPhraseOrderTask(const std::string &code, const std::string &word, bool first_in_group,
+                                      int ordinary_rank, uint64_t client_id, uint64_t activation_epoch)
+{
+    static FanyImeIpc::SelectionRankingReplayGuard replay_guard;
+    const std::string replay_key = "q\x1f" + code + '\x1f' + (word.empty() ? std::to_string(ordinary_rank) : word);
+    if (code.empty() || !replay_guard.should_apply(replay_key, client_id, activation_epoch, GetTickCount64()))
+        return;
+    const auto &frequency = GetConfiguredFrequencyAdjustment();
+    const int max_slot = (std::max)(GetConfiguredCandidatePageSize() - 1, 0);
+    DictionaryWriter().Post([code, word, first_in_group, ordinary_rank, max_slot, mode = frequency.mode,
+                             linear_step = frequency.linear_step, trigger_count = frequency.trigger_count] {
+        if (word.empty())
+        {
+            (void)user_dictionary::learn_quick_phrase_bypass(user_dictionary::default_user_db_path(), code,
+                                                             ordinary_rank, mode, linear_step, trigger_count, max_slot);
+            return;
+        }
+        (void)user_dictionary::learn_quick_phrase_selection(CommonUtils::get_ime_data_path() + "\\msime.db",
+                                                            user_dictionary::default_user_db_path(), code, word,
+                                                            first_in_group, mode, linear_step, trigger_count);
+    });
+}
+
 void EnqueueLearnEnteredEnglishWordTask(const std::string &word)
 {
     if (word.empty())

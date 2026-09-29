@@ -79,6 +79,21 @@ inline bool ShouldStoreEarlyReturnPhrase(CandidateSource source, bool creating_w
     return !prefix_canonical_pinyin.empty();
 }
 
+// 异步候选的槽位按普通候选数，快捷短语不占槽位：越过 count 个非快捷短语候选后，再越过
+// 紧跟着的整组快捷短语，所以同一位置上快捷短语排在异步候选前面，组也不会被拆开。
+inline size_t IndexAfterLocalCandidates(const std::vector<WordItem> &items, size_t count)
+{
+    size_t index = 0;
+    for (size_t counted = 0; index < items.size() && counted < count; ++index)
+    {
+        if (items[index].source != CandidateSource::QuickPhrase)
+            ++counted;
+    }
+    while (index < items.size() && items[index].source == CandidateSource::QuickPhrase)
+        ++index;
+    return index;
+}
+
 // Keep asynchronous mixed-input candidates in stable priority slots regardless
 // of the order in which their workers finish. English keeps its legacy slotting
 // (promoted ahead of AI unless a cloud result forces it behind cloud+AI), and
@@ -131,7 +146,7 @@ inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t lo
         items.insert(items.begin() + offset, std::move(candidate));
     };
 
-    size_t slot = (std::min)(local_prefix_slots, items.size());
+    size_t slot = IndexAfterLocalCandidates(items, local_prefix_slots);
     if (cloud_candidate)
     {
         insert_at(slot++, std::move(*cloud_candidate));
@@ -163,17 +178,22 @@ inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t lo
     for (auto &candidate : kaomoji_candidates)
         items.push_back(std::move(candidate));
 
-    const auto promoted_english =
-        std::max_element(items.begin(), items.end(),
-                         [](const WordItem &left, const WordItem &right) { return left.weight < right.weight; });
+    // 快捷短语的权重是另一套量级，不参与英文提升的比较。
+    const auto ranked = [](const WordItem &item) { return item.source != CandidateSource::QuickPhrase; };
+    auto promoted_english = items.end();
+    for (auto candidate = items.begin(); candidate != items.end(); ++candidate)
+    {
+        if (ranked(*candidate) && (promoted_english == items.end() || promoted_english->weight < candidate->weight))
+            promoted_english = candidate;
+    }
     if (promoted_english != items.end() && promoted_english->source == CandidateSource::EnglishDictionary &&
         promoted_english->fixed_position == 0 && std::count_if(items.begin(), items.end(), [&](const WordItem &item) {
-                                                     return item.weight == promoted_english->weight;
+                                                     return ranked(item) && item.weight == promoted_english->weight;
                                                  }) == 1)
     {
         WordItem candidate = std::move(*promoted_english);
         items.erase(promoted_english);
-        insert_at(0, std::move(candidate));
+        insert_at(IndexAfterLocalCandidates(items, 0), std::move(candidate));
     }
 
     std::vector<WordItem> fixed_english_candidates;
