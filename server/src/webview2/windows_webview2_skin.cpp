@@ -195,6 +195,9 @@ void AppendExternalCandidateColorCss(std::wstring &css, const CandidateSkinCatal
     add(colors.hover, L".hover-active .cand:not(.first):hover", L"background-color");
     add(colors.surface, L".container", L"background");
     add(colors.border, L".container", L"border-color");
+    // .text 画的是 var(--cand-text)，只改 .container 的 color 够不着它。设置页的候选文字色写在 :root 的内联样式里，
+    // 仍然压过这一条，与 D2D 的优先级一致。
+    add(colors.text, L":root", L"--cand-text");
     add(colors.text, L".container", L"color");
     add(colors.number, L".num, .cand-no", L"color");
     // 翻译默认继承 .text 的颜色再叠 opacity .62；单独配色时取原值，不再叠透明度。

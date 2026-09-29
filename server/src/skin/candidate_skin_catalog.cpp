@@ -136,20 +136,25 @@ bool ReadResource(const toml::table &table, const char *key, std::string &out)
     return !table.contains(key) || (ReadString(table, key, out, 256, true) && IsSafeRelativeResource(out));
 }
 
+// 皮肤颜色会被拼进 WebView2 的 CSS 声明，只放行颜色值会用到的字符，挡住 `;`、`{}` 之类能跳出声明的写法。
+bool ReadCssColor(const toml::table &table, const char *key, std::string &out)
+{
+    return ReadString(table, key, out, 80, false) && std::all_of(out.begin(), out.end(), [](unsigned char ch) {
+               return std::isalnum(ch) || ch == '#' || ch == '(' || ch == ')' || ch == ',' || ch == '.' || ch == '%' ||
+                      ch == ' ' || ch == '-' || ch == '/';
+           });
+}
+
 bool ReadColors(const toml::table *table, CandidateColors &out)
 {
     if (!table)
     {
         return true;
     }
-    if ((table->contains("accent") && !ReadString(*table, "accent", out.accent, 80, false)) ||
-        (table->contains("selected") && !ReadString(*table, "selected", out.selected, 80, false)) ||
-        (table->contains("hover") && !ReadString(*table, "hover", out.hover, 80, false)) ||
-        (table->contains("surface") && !ReadString(*table, "surface", out.surface, 80, false)) ||
-        (table->contains("border") && !ReadString(*table, "border", out.border, 80, false)) ||
-        (table->contains("text") && !ReadString(*table, "text", out.text, 80, false)) ||
-        (table->contains("number") && !ReadString(*table, "number", out.number, 80, false)) ||
-        (table->contains("translation") && !ReadString(*table, "translation", out.translation, 80, false)))
+    if (!ReadCssColor(*table, "accent", out.accent) || !ReadCssColor(*table, "selected", out.selected) ||
+        !ReadCssColor(*table, "hover", out.hover) || !ReadCssColor(*table, "surface", out.surface) ||
+        !ReadCssColor(*table, "border", out.border) || !ReadCssColor(*table, "text", out.text) ||
+        !ReadCssColor(*table, "number", out.number) || !ReadCssColor(*table, "translation", out.translation))
     {
         return false;
     }
@@ -163,15 +168,6 @@ bool ReadColors(const toml::table *table, CandidateColors &out)
         out.showSelectedBar = flag->get();
     }
     return true;
-}
-
-// 工具栏颜色会被拼进 WebView2 的 CSS 声明，只放行颜色值会用到的字符，挡住 `;`、`{}` 之类能跳出声明的写法。
-bool ReadCssColor(const toml::table &table, const char *key, std::string &out)
-{
-    return ReadString(table, key, out, 80, false) && std::all_of(out.begin(), out.end(), [](unsigned char ch) {
-               return std::isalnum(ch) || ch == '#' || ch == '(' || ch == ')' || ch == ',' || ch == '.' || ch == '%' ||
-                      ch == ' ' || ch == '-' || ch == '/';
-           });
 }
 
 bool ReadToolbarColors(const toml::node *node, ToolbarColors &out)

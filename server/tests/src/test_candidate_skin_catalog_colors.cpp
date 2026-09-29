@@ -75,3 +75,18 @@ translation = 42
     std::error_code ec;
     std::filesystem::remove_all(root, ec);
 }
+
+// Candidate colours are pasted into the WebView2 stylesheet, so a value that could close the declaration or the
+// rule it lands in must reject the whole skin instead of rewriting the candidate window.
+TEST_CASE(candidate_skin_catalog_rejects_candidate_color_that_escapes_css)
+{
+    const auto root = WriteSkin(L"inject", R"(
+[candidate.dark]
+selected = "red; } body { display: none"
+)");
+    std::string error;
+    REQUIRE(!CandidateSkinCatalog::Load(root, "gloss", &error).has_value());
+    REQUIRE(!error.empty());
+    std::error_code ec;
+    std::filesystem::remove_all(root, ec);
+}
