@@ -1327,7 +1327,7 @@ void CCandidateListUIPresenter::BeginCandidateUiSession()
         return;
     }
     WriteCandidateUiPayload(0b111111);
-    SendShowCandidateWndEventToUIProcess();
+    _RecordSentCaretPoint(SendShowCandidateWndEventToUIProcess() == 0);
     _candidateUiSessionActive = TRUE;
 }
 
@@ -1338,7 +1338,7 @@ void CCandidateListUIPresenter::UpdateCandidateUiSession()
         return;
     }
     WriteCandidateUiPayload(0b111111);
-    SendShowCandidateWndEventToUIProcess();
+    _RecordSentCaretPoint(SendShowCandidateWndEventToUIProcess() == 0);
 }
 
 void CCandidateListUIPresenter::MoveCandidateUiSession()
@@ -1348,8 +1348,21 @@ void CCandidateListUIPresenter::MoveCandidateUiSession()
         // UILess hosts draw candidates themselves; never chase an IME HWND.
         return;
     }
+    if (_hasSentCaretPoint && _sentCaretPoint[0] == Global::Point[0] && _sentCaretPoint[1] == Global::Point[1])
+    {
+        // Server already holds this caret; a Move would only be coalesced there.
+        return;
+    }
     WriteCandidateUiPayload(0b001000);
-    SendMoveCandidateWndEventToUIProcess();
+    _RecordSentCaretPoint(SendMoveCandidateWndEventToUIProcess() == 0);
+}
+
+void CCandidateListUIPresenter::_RecordSentCaretPoint(bool sent)
+{
+    // A frame that did not reach Server must not suppress the next attempt.
+    _hasSentCaretPoint = sent;
+    _sentCaretPoint[0] = Global::Point[0];
+    _sentCaretPoint[1] = Global::Point[1];
 }
 
 void CCandidateListUIPresenter::_ReplaceCandidateListFromPage(_In_ const std::wstring &page)
@@ -1518,4 +1531,5 @@ void CCandidateListUIPresenter::EndCandidateUiSession()
 
     SendHideCandidateWndEventToUIProcess();
     _candidateUiSessionActive = FALSE;
+    _hasSentCaretPoint = false;
 }
