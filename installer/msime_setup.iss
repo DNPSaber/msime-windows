@@ -79,6 +79,8 @@ Name: "{commonpf64}\metasequoiaime\server"
 Name: "{code:GetDataDir}"; Permissions: users-modify
 ; 用户自己的辅助码方案放这里，Server 扫描后列进设置页，升级时保留。
 Name: "{code:GetDataDir}\helpcodes\custom"
+; 用户自己的双拼方案（.toml）放这里，同样由 Server 扫描、升级时保留。
+Name: "{code:GetDataDir}\shuangpin\custom"
 ; WebView2 子进程是中完整性，写不进内置 Administrator 的高完整性 LocalAppData。
 Name: "{commonappdata}\metasequoiaime"
 Name: "{commonappdata}\metasequoiaime\webview2"; Permissions: users-modify
@@ -727,6 +729,12 @@ begin
   Result := CompareText(FileName, 'skins') = 0;
 end;
 
+function IsUserShuangpinDirectory(const FileName: String): Boolean;
+begin
+  { shuangpin\custom 放的是用户自定义双拼方案，安装包不往 shuangpin 里写任何东西，整个目录都归用户。}
+  Result := CompareText(FileName, 'shuangpin') = 0;
+end;
+
 function IsPreservedAppDataItem(const FileName: String): Boolean;
 begin
   { 标记文件也要留下。它虽然会在 ssPostInstall 重写一遍，但安装若在中途失败，
@@ -736,6 +744,7 @@ begin
     IsUserStatisticsDatabase(FileName) or
     IsUserConfigFile(FileName) or
     IsUserSkinDirectory(FileName) or
+    IsUserShuangpinDirectory(FileName) or
     (CompareText(FileName, DataDirMarkerName) = 0);
 end;
 
@@ -1143,6 +1152,19 @@ begin
       Exec(
         ExpandConstant('{sys}\robocopy.exe'),
         '"' + AddBackslash(OldDir) + 'helpcodes\custom" "' + AddBackslash(NewDir) + 'helpcodes\custom" ' +
+        '/E /MOVE /R:2 /W:1 /NJH /NJS /NP /NFL /NDL',
+        '',
+        SW_HIDE,
+        ewWaitUntilTerminated,
+        ResultCode
+      ) and (ResultCode < 8) and Moved;
+
+  { 自定义双拼方案同理。}
+  if DirExists(AddBackslash(OldDir) + 'shuangpin') then
+    Moved :=
+      Exec(
+        ExpandConstant('{sys}\robocopy.exe'),
+        '"' + AddBackslash(OldDir) + 'shuangpin" "' + AddBackslash(NewDir) + 'shuangpin" ' +
         '/E /MOVE /R:2 /W:1 /NJH /NJS /NP /NFL /NDL',
         '',
         SW_HIDE,

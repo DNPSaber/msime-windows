@@ -73,6 +73,32 @@
     </div>
   </div>
 
+  <!-- 自定义双拼 -->
+  <div class="section chinese-scheme-settings">
+    <div class="section-header">
+      <div>
+        <div class="section-title">自定义双拼</div>
+        <div class="helpcode-description">
+          把 UTF-8 编码的 <code>.toml</code> 双拼方案文件放进下面的文件夹，点击“刷新方案”后即可在上方双拼方案中选择。
+          文件里用 <code>zero_initial_rule</code> 选择零声母规则，在 <code>[initials]</code> 和 <code>[finals]</code>
+          中写声母、韵母对应的按键，完整写法见项目文档中的 <code>docs/custom-shuangpin.example.toml</code>。
+          有错误的方案会显示为灰色，鼠标悬停可查看原因。修改正在使用的方案文件后，需要切换一次方案或重启输入法才会生效。
+        </div>
+        <div class="helpcode-description helpcode-custom-directory" id="customShuangpinDirectory"></div>
+      </div>
+      <div class="helpcode-custom-actions">
+        <button type="button" class="helpcode-custom-button" id="openCustomShuangpinDirectory">打开目录</button>
+        <button type="button" class="helpcode-custom-button" id="refreshCustomShuangpins">刷新方案</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="shuangpinToast" class="dict-toast" role="status" aria-live="polite">
+    <div id="shuangpinToastIcon" class="dict-toast-icon" aria-hidden="true"></div>
+    <div id="shuangpinToastMessage" class="dict-toast-message"></div>
+    <button id="shuangpinToastClose" class="dict-toast-close" type="button" aria-label="关闭通知">×</button>
+  </div>
+
   <!-- 五笔方案 -->
   <div class="section wubi-option-content chinese-scheme-settings">
     <div class="section-header">

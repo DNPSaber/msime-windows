@@ -339,6 +339,11 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (applies('input') || applies('helpcode') || applies('tools-settings')) {
     void import('./input').then((module) => {
       if (data !== lastSnapshot) return;
+      // 先建好自定义双拼菜单项，再回填选中值。
+      module.applyCustomShuangpinSchemas(
+        data?.input?.custom_shuangpin_schemas,
+        data?.input?.custom_shuangpin_directory
+      );
       module.applyInputConfig(
         data?.input?.mode,
         data?.input?.schema,

@@ -21,6 +21,11 @@
         "settings"
       ]
     },
+    "openShuangpinDirectory": {
+      "surfaces": [
+        "settings"
+      ]
+    },
     "openHandwritingPanel": {
       "surfaces": [
         "settings"

@@ -187,8 +187,7 @@ bool IsConfiguredShuangpinSemicolonFinal()
 
 bool SetConfiguredShuangpinSchema(const std::string &schema)
 {
-    // The resolver falls back to Xiaohe for unknown names, so a name round-trip means "built in".
-    if (GetShuangpinProfile(schema).name != schema)
+    if (!LoadShuangpinSchema(schema))
     {
         return false;
     }

@@ -365,6 +365,15 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                         if (!ec)
                             ShellExecuteW(hwnd, L"open", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
                     }
+                    else if (type == "openShuangpinDirectory")
+                    {
+                        const std::filesystem::path directory =
+                            metasequoia::path_from_utf8(GetCustomShuangpinDirectory().c_str());
+                        std::error_code ec;
+                        std::filesystem::create_directories(directory, ec);
+                        if (!ec)
+                            ShellExecuteW(hwnd, L"open", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+                    }
                     else if (type == "configUpdate")
                     {
                         try
@@ -1300,6 +1309,17 @@ static nlohmann::json CustomHelpcodeSchemasJson()
     return schemas;
 }
 
+static nlohmann::json CustomShuangpinSchemasJson()
+{
+    nlohmann::json schemas = nlohmann::json::array();
+    for (const auto &schema : GetCustomShuangpinSchemas())
+    {
+        schemas.push_back(
+            {{"id", schema.schema}, {"name", schema.name}, {"name_en", schema.name_en}, {"error", schema.error}});
+    }
+    return schemas;
+}
+
 void PostSettingsConfig()
 {
     if (!::webviewSettingsWnd)
@@ -1438,6 +1458,8 @@ void PostSettingsConfig()
            {{"enabled", GetConfiguredStatisticsEnabled()}, {"retention", GetConfiguredStatisticsRetention()}}}}}};
     payload["data"]["helpcode"]["custom_schemas"] = CustomHelpcodeSchemasJson();
     payload["data"]["helpcode"]["custom_directory"] = GetCustomHelpcodeDirectory();
+    payload["data"]["input"]["custom_shuangpin_schemas"] = CustomShuangpinSchemasJson();
+    payload["data"]["input"]["custom_shuangpin_directory"] = GetCustomShuangpinDirectory();
     const std::wstring message = string_to_wstring(payload.dump());
     ::webviewSettingsWnd->PostWebMessageAsJson(message.c_str());
 }

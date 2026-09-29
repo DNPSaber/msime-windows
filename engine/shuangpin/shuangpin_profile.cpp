@@ -1,4 +1,30 @@
 #include "shuangpin_profile.h"
+#include <deque>
+#include <mutex>
+
+namespace
+{
+struct ProfileRegistry
+{
+    std::mutex mutex;
+    std::deque<ShuangpinProfile> storage;
+    std::unordered_map<std::string, const ShuangpinProfile *> by_name;
+};
+
+ProfileRegistry &Registry()
+{
+    static ProfileRegistry registry;
+    return registry;
+}
+
+const ShuangpinProfile *FindRegisteredProfile(std::string_view name)
+{
+    auto &registry = Registry();
+    std::lock_guard lock(registry.mutex);
+    const auto found = registry.by_name.find(std::string(name));
+    return found == registry.by_name.end() ? nullptr : found->second;
+}
+} // namespace
 
 const ShuangpinProfile &GetXiaoheShuangpinProfile()
 {
@@ -384,5 +410,29 @@ const ShuangpinProfile &GetShuangpinProfile(std::string_view name)
     {
         return GetMicrosoftShuangpinProfile();
     }
+    if (const ShuangpinProfile *registered = FindRegisteredProfile(name))
+    {
+        return *registered;
+    }
     return GetXiaoheShuangpinProfile();
+}
+
+const ShuangpinProfile &RegisterShuangpinProfile(ShuangpinProfile profile)
+{
+    auto &registry = Registry();
+    std::lock_guard lock(registry.mutex);
+    // Config reloads re-register the same file; only an edited layout needs new storage.
+    if (const auto found = registry.by_name.find(profile.name); found != registry.by_name.end())
+    {
+        const ShuangpinProfile &current = *found->second;
+        if (current.initials == profile.initials && current.zero_initials == profile.zero_initials &&
+            current.finals == profile.finals)
+        {
+            return current;
+        }
+    }
+    // Sessions hold profiles by reference, so a replaced version is kept rather than freed.
+    const ShuangpinProfile &stored = registry.storage.emplace_back(std::move(profile));
+    registry.by_name[stored.name] = &stored;
+    return stored;
 }

@@ -215,6 +215,9 @@ extern FrequencyAdjustmentConfig g_frequency_adjustment;
 extern std::filesystem::path g_config_path;
 
 bool IsHelpcodeSchemaAvailable(const std::string &schema);
+// ime_config_shuangpin.cpp：内置方案直接返回 true；自定义方案重新读文件、解析并登记给引擎，
+// 文件缺失或写错时返回 false，调用方据此回落到小鹤。
+bool LoadShuangpinSchema(const std::string &schema);
 VoiceInputConfig SnapshotVoiceInput();
 std::string NormalizeSmallWindowUiBackend(const std::string &value);
 bool IsValidCandidateSkinId(const std::string &skin);
