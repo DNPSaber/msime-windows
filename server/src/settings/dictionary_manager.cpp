@@ -1482,6 +1482,8 @@ json::object HandleQuickPhrase(const json::object &request)
             ok = BindText(stmt.get(), 4, old_code) && BindText(stmt.get(), 5, old_phrase);
     }
     ok = ok && sqlite3_step(stmt.get()) == SQLITE_DONE && sqlite3_changes(db.get()) > 0;
+    if (!ok && sqlite3_extended_errcode(db.get()) == SQLITE_CONSTRAINT_UNIQUE)
+        return Result(false, "相同编码和内容的快捷短语已存在");
     if (ok)
     {
         const bool user_inserted =
