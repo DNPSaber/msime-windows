@@ -63,27 +63,23 @@ D2D1_COLOR_F ParseCandidateCssColor(const std::string &text, D2D1_COLOR_F fallba
     }
     if (value[0] == '#')
         value.erase(value.begin());
-    try
+    // 与 CSS 一致：#rgb、#rgba、#rrggbb、#rrggbbaa。先整体校验，stoul 遇到非十六进制字符会截断而不是报错。
+    if (!std::all_of(value.begin(), value.end(), [](unsigned char ch) { return std::isxdigit(ch) != 0; }))
+        return fallback;
+    if (value.size() == 3 || value.size() == 4)
     {
-        if (value.size() == 3)
-        {
-            const auto hexByte = [](char digit) {
-                return static_cast<int>(std::stoul(std::string(2, digit), nullptr, 16));
-            };
-            return D2D1::ColorF(hexByte(value[0]) / 255.0f, hexByte(value[1]) / 255.0f, hexByte(value[2]) / 255.0f,
-                                1.0f);
-        }
-        if (value.size() == 6)
-            return CandidateColorFromRgb(static_cast<UINT>(std::stoul(value, nullptr, 16)));
-        if (value.size() == 8)
-        {
-            const unsigned long packed = std::stoul(value, nullptr, 16);
-            return CandidateColorFromRgb(static_cast<UINT>((packed >> 8) & 0xFFFFFFu),
-                                         static_cast<float>(packed & 0xFFu) / 255.0f);
-        }
+        std::string expanded;
+        for (const char digit : value)
+            expanded.append(2, digit);
+        value = expanded;
     }
-    catch (...)
+    if (value.size() == 6)
+        return CandidateColorFromRgb(static_cast<UINT>(std::stoul(value, nullptr, 16)));
+    if (value.size() == 8)
     {
+        const unsigned long packed = std::stoul(value, nullptr, 16);
+        return CandidateColorFromRgb(static_cast<UINT>((packed >> 8) & 0xFFFFFFu),
+                                     static_cast<float>(packed & 0xFFu) / 255.0f);
     }
     return fallback;
 }
@@ -134,8 +130,28 @@ CandidateSkinPalette ResolveCandidateSkinPalette(const std::string &skinId, bool
         if (!packageColors->text.empty())
             palette.text = ParseCandidateCssColor(packageColors->text, palette.text);
     }
+    palette.candidateText = palette.text;
+    palette.preeditText = palette.text;
+    if (packageColors)
+    {
+        palette.candidateText = ParseCandidateCssColor(packageColors->candidateText, palette.candidateText);
+        palette.preeditText = ParseCandidateCssColor(packageColors->preeditText, palette.preeditText);
+    }
     palette.text = ParseCandidateCssColor(configuredTextColor, palette.text);
+    palette.candidateText = ParseCandidateCssColor(configuredTextColor, palette.candidateText);
+    palette.preeditText = ParseCandidateCssColor(configuredTextColor, palette.preeditText);
     return palette;
+}
+
+float CandidateSkinBaseItemRadiusDip(const std::string &baseSkinId)
+{
+    if (baseSkinId == "willow_green")
+        return 0.0f;
+    if (baseSkinId == "graphite")
+        return 2.0f;
+    if (baseSkinId == "autumn_osmanthus")
+        return 6.0f;
+    return 4.0f;
 }
 
 CandidateSkinPalette FlattenCandidateSkinPaletteForGdi(const CandidateSkinPalette &palette,

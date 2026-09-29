@@ -11,6 +11,10 @@ export type CandidateSkin = string;
 type CandidateColors = {
   accent?: string; selected?: string; hover?: string; surface?: string;
   border?: string; text?: string; number?: string; translation?: string; showSelectedBar?: boolean;
+  candidateText?: string; preeditText?: string; preeditCaret?: string; selectedText?: string;
+  selectedNumber?: string; selectedTranslation?: string; selectedBar?: string;
+  preeditBackground?: string; preeditDivider?: string;
+  menu?: { background?: string; border?: string; text?: string; hover?: string };
 };
 type ToolbarColors = {
   background?: string; border?: string; handle?: string; divider?: string; icon?: string; hover?: string;
@@ -23,6 +27,7 @@ type ExternalSkin = {
   backgroundImage?: string; backgroundFit?: string; backgroundOpacity?: number;
   candidate?: { dark?: CandidateColors; light?: CandidateColors };
   toolbar?: { dark?: ToolbarColors; light?: ToolbarColors }; toolbarCornerRadiusDip?: number | null;
+  borderWidthDip?: number | null; itemCornerRadiusDip?: number | null; shadow?: string; fontFamily?: string;
 };
 type SkinScanIssue = { folder: string; reason: string };
 
@@ -174,6 +179,69 @@ function decorationHorizontalCss(align: string | undefined): string {
   return 'right: 0;';
 }
 
+// The base skins' highlight corner, the same values as CandidateSkinBaseItemRadiusDip on the host side.
+function baseItemRadius(base: string): number {
+  if (base === 'willow_green') return 0;
+  if (base === 'graphite') return 2;
+  if (base === 'autumn_osmanthus') return 6;
+  return 4;
+}
+
+// A font name ends up inside a quoted CSS string, so anything that could close the string or the declaration is refused,
+// matching the host-side check that rejects the whole skin.
+function skinFontFamily(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const trimmed = value.trim();
+  return trimmed && trimmed.length <= 64 && !/[\u0000-\u001f\u007f"'\\,;{}<>`]/.test(trimmed) ? trimmed : undefined;
+}
+
+// Mirrors AppendExternalCandidateGeometryCss: preedit band and divider, frame width, highlight corners and card shadow.
+function geometryPreviewCss(skin: ExternalSkin, colors: CandidateColors, prefix: string): string {
+  const light = prefix.includes('.theme-light');
+  const itemRadius = boundedNumber(skin.itemCornerRadiusDip, 16);
+  const borderWidth = boundedNumber(skin.borderWidthDip, 4);
+  const preeditBackground = skinColor(colors.preeditBackground);
+  const preeditDivider = skinColor(colors.preeditDivider);
+  let css = '';
+  if (preeditBackground) {
+    css += `${prefix}.row.pinyin { background: ${preeditBackground}; border-radius: ${itemRadius ?? baseItemRadius(skin.base)}px; }\n`;
+  }
+  if (preeditDivider) css += `${prefix}.row.pinyin { border-bottom: 1px solid ${preeditDivider}; }\n`;
+  if (borderWidth !== undefined) {
+    // Willow green and autumn osmanthus draw no frame (border: none), so they need a style and, without a manifest
+    // border colour, the transparent frame their palette resolves to.
+    const noFrame = skin.base === 'willow_green' || skin.base === 'autumn_osmanthus';
+    const color = skinColor(colors.border) ?? (noFrame ? 'transparent' : undefined);
+    css += `${prefix}.container:not(:empty) { border-width: ${borderWidth}px; border-style: solid;${color ? ` border-color: ${color};` : ''} }\n`;
+  }
+  if (itemRadius !== undefined) {
+    css += `${prefix}.container { --ao-item-radius: ${itemRadius}px; }\n`;
+    css += `${prefix}.container .cand, ${prefix}.container .cand.first { border-radius: ${itemRadius}px; }\n`;
+  }
+  if (skin.shadow === 'none' || skin.shadow === 'soft' || skin.shadow === 'strong') {
+    const target = skin.base === 'willow_green' ? '.containerParent:not(:empty)' : '.container:not(:empty)';
+    let value = 'none';
+    if (skin.shadow !== 'none') {
+      const scale = skin.shadow === 'soft' ? 0.5 : 1.6;
+      const alpha = (base: number) => Math.min(base * scale, 1).toFixed(3);
+      value = `8px 10px 24px rgba(0, 0, 0, ${alpha(light ? 0.18 : 0.34)}), 2px 3px 8px rgba(0, 0, 0, ${alpha(light ? 0.10 : 0.22)})`;
+    }
+    css += `${prefix}${target} { box-shadow: ${value}; }\n`;
+  }
+  return css;
+}
+
+// The skin font goes in front of the user's fonts, which stay as fallbacks for missing glyphs. The preview's own rules
+// pin the font with !important, so this one has to as well.
+function fontPreviewCss(skin: ExternalSkin): string {
+  const family = skinFontFamily(skin.fontFamily);
+  if (!family) return '';
+  const value = `"${family}", var(--cand-font-family, inherit)`;
+  // Not CANDIDATE_HOST for the host itself: in the skin list the scope root is the whole card, header included.
+  const host = ':is(:scope.candidate, :scope .candidate)';
+  return `${host}, ${host} :is(.container, .text, .cand-content, .cand-helpcode, .num, .cand-no, .pinyin) { font-family: ${value} !important; }\n`;
+}
+
 function candidatePreviewCss(skin: ExternalSkin): string {
   const dark = skin.candidate?.dark || {};
   const light = skin.candidate?.light || {};
@@ -206,6 +274,25 @@ function candidatePreviewCss(skin: ExternalSkin): string {
     // Mirrors the candidate window: an explicit translation colour is used as-is instead of the inherited text colour at opacity .62.
     if (translation) css += `${prefix}.cand-translation { color: ${translation}; opacity: 1; }\n`;
     if (colors.showSelectedBar === false) css += `${prefix}.first::before { display: none; }\n`;
+    // Detailed colours, mirroring AppendExternalCandidateColorCss. The user's text colour (--msime-user-text) still wins
+    // over candidate_text / preedit_text, and :where(.cand) keeps the base skin's selected-row text colour in force.
+    const candidateText = skinColor(colors.candidateText);
+    const preeditText = skinColor(colors.preeditText);
+    const preeditCaret = skinColor(colors.preeditCaret);
+    const selectedBar = skinColor(colors.selectedBar);
+    const selectedText = skinColor(colors.selectedText);
+    const selectedNumber = skinColor(colors.selectedNumber);
+    const selectedTranslation = skinColor(colors.selectedTranslation);
+    if (candidateText) css += `${prefix}:where(.cand) .text { color: var(--msime-user-text, ${candidateText}); }\n`;
+    if (preeditText) css += `${prefix}.pinyin .text { color: var(--msime-user-text, ${preeditText}); }\n`;
+    if (preeditCaret) css += `${prefix}.cursor { background: ${preeditCaret}; }\n`;
+    if (selectedBar) css += `${prefix}.first::before { background: ${selectedBar}; }\n`;
+    if (selectedText) css += `${prefix}.cand.first .text { color: ${selectedText}; }\n`;
+    if (selectedNumber) css += `${prefix}.cand.first .num, ${prefix}.cand.first .cand-no { color: ${selectedNumber}; }\n`;
+    if (selectedTranslation) {
+      css += `${prefix}.cand.first .cand-translation { color: ${selectedTranslation}; opacity: 1; }\n`;
+    }
+    css += geometryPreviewCss(skin, colors, prefix);
     return css;
   };
   // Same geometry as the candidate window: the card is at least as wide as the decoration, and the decoration box
@@ -226,6 +313,7 @@ function candidatePreviewCss(skin: ExternalSkin): string {
   css += themeRules('.theme-light', light);
   // After the theme rules: their `background` shorthand for the surface would otherwise reset the image layers.
   css += backgroundPreviewCss(skin);
+  css += fontPreviewCss(skin);
   css += toolbarPreviewCss(skin);
   return css;
 }

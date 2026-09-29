@@ -1,6 +1,8 @@
 #include "tests/includes/test_framework.h"
 #include "window/candidate_skin_palette.h"
 
+#include <cmath>
+
 TEST_CASE(candidate_skin_palette_resolves_builtin_theme_and_text_override)
 {
     const CandidateSkinPalette dark = ResolveCandidateSkinPalette("wechat", false, "auto");
@@ -61,6 +63,30 @@ TEST_CASE(candidate_skin_palette_applies_custom_colors_with_builtin_fallbacks)
     REQUIRE_EQ(FlattenCandidateColor(palette.surface, palette.surface), RGB(16, 32, 48));
     REQUIRE_EQ(FlattenCandidateColor(palette.border, palette.surface), RGB(41, 54, 67));
     REQUIRE_EQ(FlattenCandidateColor(palette.text, palette.surface), RGB(136, 144, 152));
+}
+
+// The WebView2 renderer takes every CSS hex notation, so D2D must read the same ones instead of silently falling back.
+TEST_CASE(candidate_skin_palette_parses_every_css_hex_notation)
+{
+    const D2D1_COLOR_F fallback = D2D1::ColorF(0.0f, 0.0f, 1.0f, 1.0f);
+    const D2D1_COLOR_F black = D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f);
+    REQUIRE_EQ(FlattenCandidateColor(ParseCandidateCssColor("#f80", fallback), black), RGB(255, 136, 0));
+    REQUIRE_EQ(FlattenCandidateColor(ParseCandidateCssColor("#ff8800", fallback), black), RGB(255, 136, 0));
+    REQUIRE_EQ(FlattenCandidateColor(ParseCandidateCssColor("#FF8800", fallback), black), RGB(255, 136, 0));
+
+    const D2D1_COLOR_F shortAlpha = ParseCandidateCssColor("#f808", fallback);
+    REQUIRE_EQ(FlattenCandidateColor(D2D1::ColorF(shortAlpha.r, shortAlpha.g, shortAlpha.b), black), RGB(255, 136, 0));
+    REQUIRE(std::abs(shortAlpha.a - 0x88 / 255.0f) < 0.001f);
+    const D2D1_COLOR_F longAlpha = ParseCandidateCssColor("#ff880080", fallback);
+    REQUIRE(std::abs(longAlpha.a - 0x80 / 255.0f) < 0.001f);
+}
+
+TEST_CASE(candidate_skin_palette_rejects_malformed_hex_colors)
+{
+    const D2D1_COLOR_F fallback = D2D1::ColorF(0.0f, 0.0f, 1.0f, 1.0f);
+    const D2D1_COLOR_F black = D2D1::ColorF(0.0f, 0.0f, 0.0f, 1.0f);
+    for (const char *text : {"#12zz56", "#ggg", "#12345", "#-12345", "#"})
+        REQUIRE_EQ(FlattenCandidateColor(ParseCandidateCssColor(text, fallback), black), RGB(0, 0, 255));
 }
 
 TEST_CASE(candidate_skin_palette_flattens_alpha_for_gdi)

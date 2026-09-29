@@ -22,7 +22,9 @@ skins/
 
 外部皮肤使用 `skin.toml` 声明几何与候选配色，可选 `[toolbar]`、`[toolbar.dark]`、`[toolbar.light]` 覆盖悬浮工具栏的圆角与配色（D2D 与 WebView2 两个渲染器都生效）。不提供候选框 HTML、`cand.css` 或工具栏 CSS。
 
-候选配色写在 `[candidate.dark]` / `[candidate.light]` 下，键都可省略：`accent`、`selected`、`hover`、`surface`、`border`、`text`、`number`、`translation` 和布尔值 `show_selected_bar`。`translation` 是候选后面的翻译文本：不写时沿用候选文字色并降到 62% 不透明度；写了就按原值绘制（含选中行），D2D 与 WebView2 两个后端一致。
+候选配色写在 `[candidate.dark]` / `[candidate.light]` 下，键都可省略：`accent`、`selected`、`hover`、`surface`、`border`、`text`、`number`、`translation` 和布尔值 `show_selected_bar`。`translation` 是候选后面的翻译文本：不写时沿用候选文字色并降到 62% 不透明度；写了就按原值绘制（选中行另写 `selected_translation` 时用后者），D2D 与 WebView2 两个后端一致。
+
+细分配色 `candidate_text`、`preedit_text`、`preedit_caret`、`selected_text`、`selected_number`、`selected_translation`、`selected_bar`、`preedit_background`、`preedit_divider`，右键菜单 `[candidate.<theme>.menu]`，以及 `[candidate_window]` 下的 `border_width_dip`、`item_corner_radius_dip`、`shadow`、`font_family`，字段和回落规则见 [examples/skin-examples/schema/README.md](../../../examples/skin-examples/schema/README.md)。WebView2 一侧由 Server 的 `BuildExternalCandidateSkinCss` 生成 CSS，追加在 base 皮肤样式之后；用户设置的候选文字色通过 `--msime-user-text` 压过皮肤的 `candidate_text` / `preedit_text`。
 
 ```toml
 [candidate.dark]

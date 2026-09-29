@@ -236,6 +236,72 @@ it('previews toolbar colours and corner radius per theme from the skin manifest'
   expect(generatedCss).not.toContain('display: none');
 });
 
+it('previews detailed candidate colours with the user text colour still winning', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-detail', name: 'Custom Detail', version: '1', base: 'fluent', layouts: ['horizontal'],
+      themes: ['dark', 'light'], compatible: true,
+      candidate: {
+        dark: {
+          candidateText: '#dddddd', preeditText: '#aaaaaa', preeditCaret: '#ff8800', selectedBar: '#00aaff',
+          selectedText: '#ffffff', selectedNumber: '#cccccc', selectedTranslation: '#ffe0a0'
+        },
+        light: { preeditCaret: 'red; } body { display: none' }
+      }
+    }
+  ], [], '', true, 10);
+  applyCandidateSkin('custom-detail');
+
+  const host = ':is(:scope, :scope .candidate)';
+  expect(generatedCss).toContain(`${host} :where(.cand) .text { color: var(--msime-user-text, #dddddd); }`);
+  expect(generatedCss).toContain(`${host} .pinyin .text { color: var(--msime-user-text, #aaaaaa); }`);
+  expect(generatedCss).toContain(`${host} .cursor { background: #ff8800; }`);
+  expect(generatedCss).toContain(`${host} .first::before { background: #00aaff; }`);
+  expect(generatedCss).toContain(`${host} .cand.first .text { color: #ffffff; }`);
+  expect(generatedCss).toContain(`${host} .cand.first .num, ${host} .cand.first .cand-no { color: #cccccc; }`);
+  expect(generatedCss).toContain(`${host} .cand.first .cand-translation { color: #ffe0a0; opacity: 1; }`);
+  expect(generatedCss).not.toContain('display: none');
+});
+
+it('previews preedit band, frame width, highlight corners, shadow and font from the skin manifest', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-shape', name: 'Custom Shape', version: '1', base: 'willow_green', layouts: ['horizontal'],
+      themes: ['dark', 'light'], compatible: true,
+      borderWidthDip: 2, itemCornerRadiusDip: 8, shadow: 'soft', fontFamily: 'LXGW WenKai',
+      candidate: { dark: { preeditBackground: 'rgba(255, 255, 255, 0.08)', preeditDivider: '#444444' } }
+    }
+  ], [], '', true, 11);
+  applyCandidateSkin('custom-shape');
+
+  const host = ':is(:scope, :scope .candidate)';
+  expect(generatedCss).toContain(`${host} .row.pinyin { background: rgba(255, 255, 255, 0.08); border-radius: 8px; }`);
+  expect(generatedCss).toContain(`${host} .row.pinyin { border-bottom: 1px solid #444444; }`);
+  // Willow green has no frame of its own, so the width comes with a style and its transparent palette colour.
+  expect(generatedCss).toContain(`${host} .container:not(:empty) { border-width: 2px; border-style: solid; border-color: transparent; }`);
+  expect(generatedCss).toContain(`${host} .container .cand, ${host} .container .cand.first { border-radius: 8px; }`);
+  // Willow green clips .container, so the shadow goes on its parent.
+  expect(generatedCss).toContain(`${host} .containerParent:not(:empty) { box-shadow: 8px 10px 24px rgba(0, 0, 0, 0.170), 2px 3px 8px rgba(0, 0, 0, 0.110); }`);
+  expect(generatedCss).toContain(`${host}.theme-light .containerParent:not(:empty) { box-shadow: 8px 10px 24px rgba(0, 0, 0, 0.090), 2px 3px 8px rgba(0, 0, 0, 0.050); }`);
+  expect(generatedCss).toContain('font-family: "LXGW WenKai", var(--cand-font-family, inherit) !important;');
+});
+
+it('drops out-of-range geometry and unsafe font names from preview css', () => {
+  applyCandidateSkinCatalog([
+    {
+      id: 'custom-unsafe', name: 'Custom Unsafe', version: '1', base: 'fluent', layouts: ['horizontal'],
+      themes: ['dark'], compatible: true, borderWidthDip: 5, itemCornerRadiusDip: 17, shadow: 'huge',
+      fontFamily: 'Foo"; } body { display: none'
+    }
+  ], [], '', true, 12);
+  applyCandidateSkin('custom-unsafe');
+
+  expect(generatedCss).not.toContain('border-width');
+  expect(generatedCss).not.toContain('box-shadow');
+  expect(generatedCss).not.toContain('font-family');
+  expect(generatedCss).not.toContain('display: none');
+});
+
 it('emits no toolbar rules for a skin without a toolbar table', () => {
   applyCandidateSkinCatalog([
     {

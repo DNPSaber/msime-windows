@@ -593,7 +593,9 @@ void CandidateList::Render(DeviceResources &deviceResources)
                                                   ? appearance_.rowTextSelected
                                                   : appearance_.annotationColor;
         ID2D1SolidColorBrush *annotationBrush = deviceResources.GetSolidColorBrush(annotationColor);
-        D2D1_COLOR_F translationColor = appearance_.translationColor;
+        D2D1_COLOR_F translationColor = highlighted && appearance_.rowTranslationSelected.a > 0.001f
+                                            ? appearance_.rowTranslationSelected
+                                            : appearance_.translationColor;
         if (translationColor.a <= 0.001f)
         {
             translationColor = annotationColor;

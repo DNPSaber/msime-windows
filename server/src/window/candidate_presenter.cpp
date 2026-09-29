@@ -116,10 +116,42 @@ struct CandSkinTokens
     D2D1_COLOR_F menuBorder = ParseCssColor("#9b9b9b2e", D2D1::ColorF(0x3A3A3A, 0.18f));
     D2D1_COLOR_F menuText = D2D1::ColorF(0xE9E8E8);
     D2D1_COLOR_F menuHover = ColorFromRgb(0x414141);
+    // 外部皮肤的细分配色。alpha 0 表示没写：光标与选中条跟 accent，选中行翻译跟 translation，
+    // 预编辑背景与分隔线不画。
+    D2D1_COLOR_F preeditCaret = D2D1::ColorF(0, 0.0f);
+    D2D1_COLOR_F selectedBar = D2D1::ColorF(0, 0.0f);
+    D2D1_COLOR_F rowTranslationSelected = D2D1::ColorF(0, 0.0f);
+    D2D1_COLOR_F preeditBackground = D2D1::ColorF(0, 0.0f);
+    D2D1_COLOR_F preeditDivider = D2D1::ColorF(0, 0.0f);
 };
+
+// 皮肤阴影档位只缩放两层阴影的不透明度，几何不变；none 由调用方直接关掉阴影。
+float ShadowAlphaScale(const std::string &shadow)
+{
+    if (shadow == "soft")
+        return 0.5f;
+    if (shadow == "strong")
+        return 1.6f;
+    return 1.0f;
+}
 
 void ApplyPackageColors(const CandidateSkinCatalog::CandidateColors &colors, CandSkinTokens &tokens)
 {
+    const auto apply = [](const std::string &value, D2D1_COLOR_F &out) {
+        if (!value.empty())
+            out = ParseCssColor(value, out);
+    };
+    apply(colors.preeditCaret, tokens.preeditCaret);
+    apply(colors.selectedBar, tokens.selectedBar);
+    apply(colors.selectedText, tokens.rowTextSelected);
+    apply(colors.selectedNumber, tokens.rowLabelSelected);
+    apply(colors.selectedTranslation, tokens.rowTranslationSelected);
+    apply(colors.preeditBackground, tokens.preeditBackground);
+    apply(colors.preeditDivider, tokens.preeditDivider);
+    apply(colors.menuBackground, tokens.menuFill);
+    apply(colors.menuBorder, tokens.menuBorder);
+    apply(colors.menuText, tokens.menuText);
+    apply(colors.menuHover, tokens.menuHover);
     if (!colors.accent.empty())
     {
         tokens.accent = ParseCssColor(colors.accent, tokens.accent);
@@ -516,6 +548,11 @@ void CandidatePresenter::ApplySkin()
             if (tokens.outerItemRadius > 0.0f)
                 tokens.outerItemRadius = (std::max)(tokens.radius, 0.01f);
         }
+        if (package->borderWidthDip)
+            tokens.borderWidth = static_cast<float>(*package->borderWidthDip);
+        // 只改普通高亮角；贴着卡片四角的那几个角仍跟卡片圆角。
+        if (package->itemCornerRadiusDip)
+            tokens.itemRadius = static_cast<float>(*package->itemCornerRadiusDip);
     }
     const CandidateSkinCatalog::CandidateColors *packageColors =
         package ? &(candLight ? package->light : package->dark) : nullptr;
@@ -530,12 +567,15 @@ void CandidatePresenter::ApplySkin()
     // σ = blur ÷ 2。默认皮肤（webview 端只有 body HTML，无 box-shadow）直接关阴影。
     if (impl_->card)
     {
-        if (CandidateSkinCatalog::IsBuiltIn(skinId) || package)
+        const std::string shadow = package ? package->shadow : std::string{};
+        if ((CandidateSkinCatalog::IsBuiltIn(skinId) || package) && shadow != "none")
         {
-            // 暂不解析自定义包内 CSS 的 box-shadow，先沿用内置皮肤的标准对，后续可加。
+            // 外部皮肤的 shadow = soft / strong 按同一系数缩放两层不透明度，与 WebView2 端一致。
+            const float scale = ShadowAlphaScale(shadow);
+            const auto alpha = [scale](float value) { return (std::min)(value * scale, 1.0f); };
             const std::vector<msimeui::ShadowPass> shadowPasses = {
-                {12.0f, candLight ? 0.18f : 0.34f, 8.0f, 10.0f},
-                {4.0f, candLight ? 0.10f : 0.22f, 2.0f, 3.0f},
+                {12.0f, alpha(candLight ? 0.18f : 0.34f), 8.0f, 10.0f},
+                {4.0f, alpha(candLight ? 0.10f : 0.22f), 2.0f, 3.0f},
             };
             impl_->card->SetShadowEnabled(true);
             impl_->card->SetShadowPasses(shadowPasses);
@@ -565,6 +605,12 @@ void CandidatePresenter::ApplySkin()
     const float preeditSize = static_cast<float>((std::max)(12, GetConfiguredCandidateWindowPreeditFontSize()));
     msimeui::CandidateList::Appearance appearance;
     appearance.fontFamily = string_to_wstring(ResolveSystemFontFamilyForCss(GetConfiguredCandidateEnglishFont()));
+    // 皮肤的 font_family 排在最前，用户配置的字体整体退为回退，与 WebView2 端的 font-family 列表同序。
+    if (package && !package->fontFamily.empty())
+    {
+        appearance.fallbackFontFamilies.push_back(appearance.fontFamily);
+        appearance.fontFamily = string_to_wstring(ResolveSystemFontFamilyForCss(package->fontFamily));
+    }
     for (const auto &font : GetConfiguredCandidateFallbackFontFamilies())
         appearance.fallbackFontFamilies.push_back(string_to_wstring(font));
     appearance.itemHeight = fontSize * 1.35f + tokens.itemExtraHeight;
@@ -579,7 +625,7 @@ void CandidatePresenter::ApplySkin()
     appearance.selectedBarWidth = 3.0f;
     appearance.selectedBarHeight = fontSize * 0.85f;
     appearance.showSelectedBar = tokens.showSelectedBar;
-    appearance.selectedBarColor = tokens.accent;
+    appearance.selectedBarColor = tokens.selectedBar.a > 0.001f ? tokens.selectedBar : tokens.accent;
     appearance.cornerRadius = tokens.itemRadius;
     // 预编辑行隐藏时列表顶边才贴着卡片顶边，与 CSS 的 .preedit-hidden 同一判据。
     const bool preeditHidden = GetConfiguredCandidateWindowPreeditStyle() == "empty";
@@ -591,10 +637,11 @@ void CandidatePresenter::ApplySkin()
         impl_->preedit->SetMargin({0.0f, 0.0f, 0.0f, tokens.outerItemRadius > 0.0f ? -2.0f : 0.0f});
     else
         impl_->preedit->SetMargin(tokens.preeditMargin);
-    appearance.textColor = theme.textPrimary;
+    appearance.textColor = palette.candidateText;
     appearance.labelColor = tokens.number;
-    appearance.annotationColor = theme.textPrimary;
+    appearance.annotationColor = palette.candidateText;
     appearance.translationColor = tokens.translation;
+    appearance.rowTranslationSelected = tokens.rowTranslationSelected;
     appearance.rowFillSelected = tokens.selected;
     appearance.rowFillHover = tokens.hover;
     appearance.rowFillPressed = tokens.selected;
@@ -611,10 +658,17 @@ void CandidatePresenter::ApplySkin()
     impl_->preedit->SetFontFamily(appearance.fontFamily);
     impl_->preedit->SetFallbackFontFamilies(appearance.fallbackFontFamilies);
     impl_->preedit->SetFontSize(preeditSize);
-    impl_->preedit->SetColor(theme.textPrimary);
-    impl_->preedit->SetCaretColor(tokens.accent);
+    impl_->preedit->SetColor(palette.preeditText);
+    impl_->preedit->SetCaretColor(tokens.preeditCaret.a > 0.001f ? tokens.preeditCaret : tokens.accent);
     impl_->preedit->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_LEADING);
     impl_->preedit->SetTextLayoutPadding({5.0f, 0.0f, 5.0f, 0.0f});
+    // 预编辑背景与分隔线对应 CSS 的 .pinyin background / border-bottom：底色带与高亮同圆角，分隔线固定 1px；
+    // 有其一时预编辑行横向铺满，否则底色只包住文字。
+    impl_->preedit->SetBackground(tokens.preeditBackground, tokens.itemRadius);
+    impl_->preedit->SetBottomRule(tokens.preeditDivider, 1.0f);
+    impl_->preedit->SetHorizontalAlignment(tokens.preeditBackground.a > 0.001f || tokens.preeditDivider.a > 0.001f
+                                               ? msimeui::HorizontalAlignment::Stretch
+                                               : msimeui::HorizontalAlignment::Leading);
 
     // 装饰图与 WebView2 端的 .containerParent::before 同一几何：宽 width_dip、高 top_inset_dip 的盒子
     // 底边贴着卡片顶边、不与卡片重叠，按 align 贴卡片左/中/右，图片在盒内等比居中（contain）。

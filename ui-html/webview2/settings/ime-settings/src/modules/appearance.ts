@@ -256,9 +256,12 @@ function applyCandidatePreviewStyle(): void {
     el.style.fontSize = `${previewFontSize}px`;
     if (previewTextColor && previewTextColor !== 'auto') {
       el.style.setProperty('--cand-text', previewTextColor);
+      // Read by an external skin's candidate_text / preedit_text rules so the user's colour still wins, as in the candidate window.
+      el.style.setProperty('--msime-user-text', previewTextColor);
       el.style.setProperty('--cand-num', previewTextColor.length === 7 ? `${previewTextColor}9d` : previewTextColor);
     } else {
       el.style.removeProperty('--cand-text');
+      el.style.removeProperty('--msime-user-text');
       el.style.removeProperty('--cand-num');
     }
 

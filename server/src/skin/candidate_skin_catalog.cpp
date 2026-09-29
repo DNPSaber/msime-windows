@@ -7,6 +7,7 @@
 #include <cmath>
 #include <fstream>
 #include <iterator>
+#include <string_view>
 #include <system_error>
 
 namespace CandidateSkinCatalog
@@ -136,22 +137,46 @@ bool ReadResource(const toml::table &table, const char *key, std::string &out)
     return !table.contains(key) || (ReadString(table, key, out, 256, true) && IsSafeRelativeResource(out));
 }
 
+// 皮肤颜色会被拼进 WebView2 的 CSS 声明，只放行颜色值会用到的字符，挡住 `;`、`{}` 之类能跳出声明的写法。
+bool ReadCssColor(const toml::table &table, const char *key, std::string &out)
+{
+    return ReadString(table, key, out, 80, false) && std::all_of(out.begin(), out.end(), [](unsigned char ch) {
+               return std::isalnum(ch) || ch == '#' || ch == '(' || ch == ')' || ch == ',' || ch == '.' || ch == '%' ||
+                      ch == ' ' || ch == '-' || ch == '/';
+           });
+}
+
 bool ReadColors(const toml::table *table, CandidateColors &out)
 {
     if (!table)
     {
         return true;
     }
-    if ((table->contains("accent") && !ReadString(*table, "accent", out.accent, 80, false)) ||
-        (table->contains("selected") && !ReadString(*table, "selected", out.selected, 80, false)) ||
-        (table->contains("hover") && !ReadString(*table, "hover", out.hover, 80, false)) ||
-        (table->contains("surface") && !ReadString(*table, "surface", out.surface, 80, false)) ||
-        (table->contains("border") && !ReadString(*table, "border", out.border, 80, false)) ||
-        (table->contains("text") && !ReadString(*table, "text", out.text, 80, false)) ||
-        (table->contains("number") && !ReadString(*table, "number", out.number, 80, false)) ||
-        (table->contains("translation") && !ReadString(*table, "translation", out.translation, 80, false)))
+    if (!ReadCssColor(*table, "accent", out.accent) || !ReadCssColor(*table, "selected", out.selected) ||
+        !ReadCssColor(*table, "hover", out.hover) || !ReadCssColor(*table, "surface", out.surface) ||
+        !ReadCssColor(*table, "border", out.border) || !ReadCssColor(*table, "text", out.text) ||
+        !ReadCssColor(*table, "number", out.number) || !ReadCssColor(*table, "translation", out.translation) ||
+        !ReadCssColor(*table, "candidate_text", out.candidateText) ||
+        !ReadCssColor(*table, "preedit_text", out.preeditText) ||
+        !ReadCssColor(*table, "preedit_caret", out.preeditCaret) ||
+        !ReadCssColor(*table, "selected_text", out.selectedText) ||
+        !ReadCssColor(*table, "selected_number", out.selectedNumber) ||
+        !ReadCssColor(*table, "selected_translation", out.selectedTranslation) ||
+        !ReadCssColor(*table, "selected_bar", out.selectedBar) ||
+        !ReadCssColor(*table, "preedit_background", out.preeditBackground) ||
+        !ReadCssColor(*table, "preedit_divider", out.preeditDivider))
     {
         return false;
+    }
+    if (const toml::node *menuNode = table->get("menu"))
+    {
+        const auto *menu = menuNode->as_table();
+        if (!menu || !ReadCssColor(*menu, "background", out.menuBackground) ||
+            !ReadCssColor(*menu, "border", out.menuBorder) || !ReadCssColor(*menu, "text", out.menuText) ||
+            !ReadCssColor(*menu, "hover", out.menuHover))
+        {
+            return false;
+        }
     }
     if (const toml::node *bar = table->get("show_selected_bar"))
     {
@@ -165,13 +190,37 @@ bool ReadColors(const toml::table *table, CandidateColors &out)
     return true;
 }
 
-// 工具栏颜色会被拼进 WebView2 的 CSS 声明，只放行颜色值会用到的字符，挡住 `;`、`{}` 之类能跳出声明的写法。
-bool ReadCssColor(const toml::table &table, const char *key, std::string &out)
+// 字体族会被拼进 WebView2 的 font-family（加引号）与脚本字符串，挡住引号、反斜杠、分号、花括号、尖括号和控制字符；
+// 字体名可以是中文，所以非 ASCII 字节一律放行。
+bool ReadFontFamily(const toml::table &table, const char *key, std::string &out)
 {
-    return ReadString(table, key, out, 80, false) && std::all_of(out.begin(), out.end(), [](unsigned char ch) {
-               return std::isalnum(ch) || ch == '#' || ch == '(' || ch == ')' || ch == ',' || ch == '.' || ch == '%' ||
-                      ch == ' ' || ch == '-' || ch == '/';
-           });
+    if (!table.contains(key))
+    {
+        return true;
+    }
+    if (!ReadString(table, key, out, 64, true))
+    {
+        return false;
+    }
+    return std::all_of(out.begin(), out.end(), [](unsigned char ch) {
+        return ch >= 0x80 || (ch >= 0x20 && ch != 0x7f &&
+                              std::string_view("\"'\\,;{}<>`").find(static_cast<char>(ch)) == std::string_view::npos);
+    });
+}
+
+bool ReadOptionalBounded(const toml::table &table, const char *key, double maximum, std::optional<double> &out)
+{
+    if (!table.contains(key))
+    {
+        return true;
+    }
+    const double value = BoundedNumber(table, key, maximum);
+    if (value < 0.0)
+    {
+        return false;
+    }
+    out = value;
+    return true;
 }
 
 bool ReadToolbarColors(const toml::node *node, ToolbarColors &out)
@@ -295,6 +344,26 @@ std::optional<Package> Load(const std::filesystem::path &skinsRoot, const std::s
                 return std::nullopt;
             }
             package.cornerRadiusDip = radius;
+        }
+        if (!ReadOptionalBounded(*window, "border_width_dip", 4.0, package.borderWidthDip))
+        {
+            SetError(error, "candidate_window.border_width_dip 超出范围");
+            return std::nullopt;
+        }
+        if (!ReadOptionalBounded(*window, "item_corner_radius_dip", 16.0, package.itemCornerRadiusDip))
+        {
+            SetError(error, "candidate_window.item_corner_radius_dip 超出范围");
+            return std::nullopt;
+        }
+        if (!ReadEnum(*window, "shadow", {"none", "soft", "strong"}, package.shadow))
+        {
+            SetError(error, "candidate_window.shadow 只能是 none、soft 或 strong");
+            return std::nullopt;
+        }
+        if (!ReadFontFamily(*window, "font_family", package.fontFamily))
+        {
+            SetError(error, "candidate_window.font_family 无效");
+            return std::nullopt;
         }
         if (const toml::node *backgroundNode = window->get("background"))
         {
