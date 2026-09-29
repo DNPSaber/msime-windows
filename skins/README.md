@@ -51,7 +51,7 @@ my-skin/
 | `[toolbar]` / `[toolbar.dark]` / `[toolbar.light]` | 悬浮工具栏：`corner_radius_dip`，以及 `background`、`border`、`handle`、`divider`、`icon`、`hover` |
 | `[license]` | `code`、`assets`、`source`：代码与素材的授权信息 |
 
-颜色支持 `#RRGGBB` 与 `rgba(r, g, b, a)` 写法。图片路径相对于皮肤目录，且不能指向目录之外。完整的带注释示例见 [`niya-demo/skin.toml`](niya-demo/skin.toml)。
+颜色支持十六进制 `#RGB`、`#RGBA`、`#RRGGBB`、`#RRGGBBAA` 与 `rgb(r, g, b)`、`rgba(r, g, b, a)` 写法。图片路径相对于皮肤目录，且不能指向目录之外。完整的带注释示例见 [`niya-demo/skin.toml`](niya-demo/skin.toml)。
 
 ## 授权说明
 

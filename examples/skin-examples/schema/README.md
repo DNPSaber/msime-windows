@@ -69,4 +69,4 @@
 
 ## 颜色格式
 
-支持 `#rgb` / `#rrggbb` / `#rrggbbaa` 和 `rgb()` / `rgba()`。
+支持十六进制 `#rgb` / `#rgba` / `#rrggbb` / `#rrggbbaa`（大小写均可，末尾两位或一位是不透明度），以及 `rgb()` / `rgba()`。十六进制必须带 `#`。
