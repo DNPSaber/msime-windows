@@ -15,6 +15,10 @@
 
 - `min_width_dip`：卡片最小宽度；实际最小宽度还会被装饰图的 `width_dip` 撑大
 - `corner_radius_dip`：卡片圆角，`0`–`32`；不写则沿用 `base`
+- `border_width_dip`：卡片外框线宽，`0`–`4`；颜色取 `border`，不写 `border` 时取 `base` 的边框色（杨柳青、秋桂没有外框，此时仍不可见）
+- `item_corner_radius_dip`：选中 / 悬停高亮的圆角，`0`–`16`；贴着卡片四角的那几个角仍跟 `corner_radius_dip`
+- `shadow`：卡片阴影，`none` | `soft` | `strong`；不写则沿用 `base`。只影响候选卡片，不影响右键菜单
+- `font_family`：候选字体名，UTF-8 编码后最长 64 字节（约 21 个汉字），不能含引号、反斜杠、逗号、分号、尖括号、花括号和反引号。排在用户设置的字体前面，缺字时仍回落到用户字体；字号不由皮肤决定
 
 ### `[candidate_window.decoration]`（可选）
 
@@ -34,7 +38,27 @@
 
 ## `[candidate.dark]` / `[candidate.light]`
 
-`accent`、`selected`、`hover`、`surface`、`border`、`text`、`number`、`show_selected_bar`
+`accent`、`selected`、`hover`、`surface`、`border`、`text`、`number`、`translation`、`show_selected_bar`
+
+细分配色，都可省略，不写时按右列回落：
+
+| 键 | 作用 | 不写时 |
+|---|---|---|
+| `candidate_text` | 普通候选的文字 | `text` |
+| `preedit_text` | 预编辑（拼音）文字 | `text` |
+| `preedit_caret` | 预编辑光标 | `accent` |
+| `selected_text` | 选中候选的文字 | `base` 的选中行文字色 |
+| `selected_number` | 选中候选的序号 | `base` 的选中行序号色 |
+| `selected_translation` | 选中候选的翻译 | `translation`，再不写则取选中文字色的 62% 不透明度 |
+| `selected_bar` | 选中项左侧竖条 | `accent` |
+| `preedit_background` | 预编辑行底色，圆角同高亮圆角 | 透明 |
+| `preedit_divider` | 预编辑行下方 1px 分隔线 | 无 |
+
+设置页里的「候选文字颜色」优先于 `text`、`candidate_text` 和 `preedit_text`。
+
+### `[candidate.dark.menu]` / `[candidate.light.menu]`（可选）
+
+候选窗右键菜单：`background`、`border`、`text`、`hover`。
 
 ## `[toolbar]`
 

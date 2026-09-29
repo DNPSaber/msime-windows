@@ -54,6 +54,8 @@ examples/skin-examples/
 [candidate_window]
 min_width_dip = 176
 corner_radius_dip = 12      # 0–32，不写则沿用 base
+item_corner_radius_dip = 6  # 高亮圆角，0–16
+shadow = "soft"             # none | soft | strong
 
 [candidate_window.decoration]
 image = "assets/character.png"
@@ -70,6 +72,12 @@ opacity = 0.3               # 0–1
 accent = "#e08aa8"          # 光标与选中胶囊条
 selected = "rgba(224, 138, 168, 0.28)"
 hover = "rgba(224, 138, 168, 0.16)"
+preedit_text = "#f0b8cb"     # 细分配色都可省略，见 schema/README.md
+preedit_divider = "rgba(224, 138, 168, 0.30)"
+
+[candidate.dark.menu]         # 右键菜单
+background = "#221a1e"
+hover = "rgba(224, 138, 168, 0.20)"
 
 [toolbar]
 corner_radius_dip = 8
@@ -85,6 +93,8 @@ icon = "#f6e4eb"
 - 装饰图放在一个 `width_dip × top_inset_dip` 的框里等比缩放，框贴在卡片正上方，不会与卡片重叠。框的比例和原图一致时就不会留白，比如样例原图是 408×353，所以用了 102×88。
 - 卡片实际最小宽度取 `min_width_dip` 和装饰图 `width_dip` 中较大的那个。
 - 背景图画在底色之上、文字之下，并按圆角裁剪。
+- 细分配色（普通候选文字、预编辑文字与光标、选中行的文字 / 序号 / 翻译 / 竖条、预编辑底色与分隔线）不写时都回落到 `text` 或 `accent`，完整的回落规则见 [schema/README.md](schema/README.md)。设置页里的「候选文字颜色」仍优先于皮肤的文字色。
+- `font_family` 排在用户设置的字体前面，缺字时回落到用户字体；字号始终由用户设置决定。
 - `[toolbar]` 下的所有键都可以省略，没写的沿用 `base` 皮肤；配置对 D2D 和 WebView2 两种工具栏渲染器都生效。
 - `[supports].themes` 里声明的每套主题都要有对应的 `[candidate.<theme>]`；写了 `[toolbar]` 的话，也要有对应的 `[toolbar.<theme>]`。
 

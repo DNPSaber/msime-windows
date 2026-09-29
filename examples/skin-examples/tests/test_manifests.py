@@ -45,6 +45,18 @@ class ManifestTests(unittest.TestCase):
                         self.assertTrue(0 <= data[scope]["corner_radius_dip"] <= 32, scope)
                 if "background" in window:
                     self.assertTrue(0 <= window["background"].get("opacity", 1) <= 1)
+                for key, limit in (("border_width_dip", 4), ("item_corner_radius_dip", 16)):
+                    if key in window:
+                        self.assertTrue(0 <= window[key] <= limit, key)
+                if "shadow" in window:
+                    self.assertIn(window["shadow"], ("none", "soft", "strong"))
+                if "font_family" in window:
+                    # Mirrors the Server catalog: the name is pasted into a quoted CSS font-family value.
+                    self.assertRegex(window["font_family"], r"^[^\x00-\x1f\x7f\"'\\,;{}<>`]+$")
+                    self.assertLessEqual(len(window["font_family"].encode("utf-8")), 64)
+                for theme, colors in data.get("candidate", {}).items():
+                    if "menu" in colors:
+                        self.assertIsInstance(colors["menu"], dict, f"candidate.{theme}.menu")
                 for theme in data["supports"]["themes"]:
                     self.assertIn(theme, data["candidate"])
                     if "toolbar" in data:

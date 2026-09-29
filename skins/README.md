@@ -43,10 +43,11 @@ my-skin/
 | `id` / `name` / `version` / `author` / `description` | 基本信息，`id` 建议与目录名一致 |
 | `base` | 继承的内置皮肤，如 `fluent`；未写的键沿用 base |
 | `[supports]` | `layouts`（`horizontal` / `vertical`）、`themes`（`dark` / `light`） |
-| `[candidate_window]` | `min_width_dip`、`corner_radius_dip`（0–32） |
+| `[candidate_window]` | `min_width_dip`、`corner_radius_dip`（0–32）、`border_width_dip`（0–4）、`item_corner_radius_dip`（高亮圆角，0–16）、`shadow`（`none` / `soft` / `strong`）、`font_family`（排在用户字体前面） |
 | `[candidate_window.decoration]` | 卡片上方的装饰图：`image`、`top_inset_dip`、`width_dip`、`align`（`left` / `center` / `right`） |
 | `[candidate_window.background]` | 卡片背景图：`image`、`fit`（`cover` / `contain` / `stretch`）、`opacity`（0–1） |
-| `[candidate.dark]` / `[candidate.light]` | 候选配色：`accent`、`selected`、`hover`、`surface`、`border`、`text`、`number`、`translation`、`show_selected_bar` |
+| `[candidate.dark]` / `[candidate.light]` | 候选配色：`accent`、`selected`、`hover`、`surface`、`border`、`text`、`number`、`translation`、`show_selected_bar`；细分配色 `candidate_text`、`preedit_text`、`preedit_caret`、`selected_text`、`selected_number`、`selected_translation`、`selected_bar`、`preedit_background`、`preedit_divider` |
+| `[candidate.dark.menu]` / `[candidate.light.menu]` | 候选窗右键菜单：`background`、`border`、`text`、`hover` |
 | `[toolbar]` / `[toolbar.dark]` / `[toolbar.light]` | 悬浮工具栏：`corner_radius_dip`，以及 `background`、`border`、`handle`、`divider`、`icon`、`hover` |
 | `[license]` | `code`、`assets`、`source`：代码与素材的授权信息 |
 
