@@ -1,13 +1,8 @@
 # Metasequoia IME skin example
 
-<!-- badges:start -->
-[![CI](https://img.shields.io/github/actions/workflow/status/metasequoiaime/msime-skin-example/ci.yml?branch=main&label=CI)](https://github.com/metasequoiaime/msime-skin-example/actions/workflows/ci.yml)
-[![CodeQL](https://img.shields.io/github/actions/workflow/status/metasequoiaime/msime-skin-example/codeql.yml?branch=main&label=CodeQL)](https://github.com/metasequoiaime/msime-skin-example/actions/workflows/codeql.yml)
-[![License](https://img.shields.io/github/license/metasequoiaime/msime-skin-example)](LICENSE)
-[![Stars](https://img.shields.io/github/stars/metasequoiaime/msime-skin-example?style=flat)](https://github.com/metasequoiaime/msime-skin-example/stargazers)
-<!-- badges:end -->
-
 水杉输入法（Metasequoia IME）外部皮肤的官方样例。一个皮肤就是一个文件夹，外观全部写在一份 `skin.toml` 里：候选框的装饰图、背景图、圆角和配色，以及悬浮工具栏的配色。不需要写 CSS，也不会加载任何脚本。
+
+更多现成皮肤见仓库根目录的 [skins/](../../skins/)。
 
 - 字段说明：[schema/README.md](schema/README.md)
 - 本地预览：[preview.html](preview.html)
@@ -36,7 +31,7 @@
 ## 目录结构
 
 ```text
-msime-skin-example/
+examples/skin-examples/
 ├─ skins/
 │  └─ niya-demo/              # 一个皮肤一个文件夹，文件夹名 = id
 │     ├─ skin.toml            # 元信息、候选框、工具栏、授权
@@ -111,14 +106,6 @@ python -m unittest discover -s tests -v   # 检查 manifest 与引用的图片
 
 ## 授权提示
 
-**本仓库采用 MIT 授权**（见 [LICENSE](LICENSE)）。这个仓库就是拿来复制的：直接 fork，或者把 `skins/niya-demo/` 整个拷走改成自己的皮肤，都不需要额外授权。之所以用 MIT 而不是产品仓库的 GPL-3.0，就是为了让你做出来的皮肤可以按自己的意愿授权。
+**本目录采用 MIT 授权**（见 [LICENSE](LICENSE)），不随仓库其余部分的 GPL-3.0。这个目录就是拿来复制的：把它整个拷走，或者把 `skins/niya-demo/` 整个拷走改成自己的皮肤，都不需要额外授权。之所以用 MIT 而不是产品代码的 GPL-3.0，就是为了让你做出来的皮肤可以按自己的意愿授权。
 
 皮肤代码和图片资源可以用不同的许可，发布前请在 `skin.toml` 的 `[license]` 里分别写明 `code` 和 `assets`。样例中的 `assets` 标为 `UNVERIFIED-DEMO-ONLY`，意思是这些图片只用于演示、来源未经核实，**请不要直接拿去发布**，换成你有权使用的图片。
-
-<!-- star-history:start -->
-## Star History
-
-<a href="https://star-history.com/#metasequoiaime/msime-skin-example&Date">
-  <img src="https://api.star-history.com/svg?repos=metasequoiaime/msime-skin-example&type=Date" alt="Star History Chart" width="600">
-</a>
-<!-- star-history:end -->

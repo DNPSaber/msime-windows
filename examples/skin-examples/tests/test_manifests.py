@@ -1,15 +1,18 @@
 """Validate the documented skin package contract and all shipped asset references."""
 from pathlib import Path
+import os
 import re
 import tomllib
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+# MSIME_SKINS_DIR points the same checks at another skin collection, e.g. the repository's skins/.
+SKINS_DIR = Path(os.environ.get("MSIME_SKINS_DIR", ROOT / "skins")).resolve()
 
 
 class ManifestTests(unittest.TestCase):
     def test_shipped_skins(self):
-        manifests = list((ROOT / "skins").glob("*/skin.toml"))
+        manifests = list(SKINS_DIR.glob("*/skin.toml"))
         self.assertTrue(manifests, "No skin packages found")
         for path in manifests:
             with self.subTest(skin=path.parent.name):
@@ -17,8 +20,10 @@ class ManifestTests(unittest.TestCase):
                 self.assertEqual(data["schema_version"], 1)
                 self.assertEqual(data["id"], path.parent.name)
                 self.assertRegex(data["id"], r"^[a-z0-9._-]{1,64}$")
-                for key in ("name", "version", "author"):
+                # Mirrors the Server catalog: name, version and base are required, author is not.
+                for key in ("name", "version", "base"):
                     self.assertTrue(data[key].strip(), key)
+                self.assertIn(data["base"], ("fluent", "wechat", "graphite", "willow_green", "autumn_osmanthus"))
                 window = data.get("candidate_window", {})
                 assets = {key: data.get(key) for key in ("toolbar_stylesheet", "preview")}
                 for table in ("decoration", "background"):
