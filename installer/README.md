@@ -124,6 +124,25 @@ pwsh -File .\package-simplysign-symbols.ps1 1.2.3
 它是 `package-simplysign.ps1` 的薄包装，其他参数（例如 `-Reconfigure`、
 `-CertificateThumbprint` 和 `-IsccPath`）保持一致，输出文件名固定带 `_with_pdb` 后缀。
 
+### Hotfix 轻量包
+
+只修 TSF / Server / HTML 的 hotfix 可以发轻量包，签名流程与完整包相同（包内 EXE/DLL 和最终安装包都签）：
+
+```powershell
+pwsh -File .\package-simplysign-light.ps1 1.2.4
+```
+
+它等价于 `package-simplysign.ps1 1.2.4 -Light`，产物是 `Output\MetasequoiaIME_Setup_v1.2.4_light.exe`
+（加 `-IncludeSymbols` 时是 `_light_with_pdb`）。轻量包和 `test-light.ps1` 用的是同一个
+`/DLightPackage=1` 编译开关，因此有同样的限制：
+
+- **只能覆盖安装在已有的完整安装之上。** 包里没有词库、辅助码、拼音表、神经模型和出厂配置模板，
+  安装程序也不检查本机是否装过完整包；新用户装它会得到一个没有词库的输入法。对外发布时要写清楚，
+  下载页和自动更新清单仍应指向完整包。
+- **hotfix 不能新增配置项。** 升级时 Server 以用户数据目录里的 `config.default.toml` 为骨架合并配置，
+  轻量包不替换这份模板，新键会被丢弃。需要新配置项、新词库或新模型时发完整包。
+- 轻量包不显示联网功能页，也不回放用户词库。
+
 ### 三个入口的区别
 
 三个入口都是 `Invoke-LocalTest.ps1` 的薄包装，只是开关不同：

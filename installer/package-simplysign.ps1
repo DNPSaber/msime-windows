@@ -4,6 +4,7 @@
 # Typical usage (Version is positional):
 #   pwsh -File .\package-simplysign.ps1 1.2.3
 #   pwsh -File .\package-simplysign.ps1 1.2.3 -IncludeSymbols
+#   pwsh -File .\package-simplysign.ps1 1.2.4 -Light
 #
 # Start SimplySign Desktop and connect the virtual card before running this script. Signtool may
 # display a SimplySign PIN prompt for each signing operation. The private key never leaves
@@ -19,6 +20,11 @@ param(
     # Published CI installers contain matching PDBs. They make local packaging substantially slower,
     # so this local entry keeps them opt-in, like test-symbols.ps1.
     [switch]$IncludeSymbols,
+
+    # Hotfix package: only TSF, Server and HTML, like test-light.ps1. It carries no dictionaries,
+    # neural models or factory config template, so it is only valid on top of a full install whose
+    # data files still match this build.
+    [switch]$Light,
 
     # Force CMake configure before the incremental build.
     [switch]$Reconfigure,
@@ -225,8 +231,9 @@ $issPath = Join-Path $PSScriptRoot 'msime_setup.iss'
 $tsfResourcePath = Join-Path $repoRoot 'windows\src\IME\MetasequoiaIME.rc'
 $originalIss = [IO.File]::ReadAllBytes($issPath)
 $originalTsfResource = [IO.File]::ReadAllBytes($tsfResourcePath)
-$compiledInstallerPath = Join-Path $PSScriptRoot "Output\MetasequoiaIME_Setup_v$Version.exe"
-$installerSuffix = if ($IncludeSymbols) { '_with_pdb' } else { '' }
+$lightSuffix = if ($Light) { '_light' } else { '' }
+$compiledInstallerPath = Join-Path $PSScriptRoot "Output\MetasequoiaIME_Setup_v$Version$lightSuffix.exe"
+$installerSuffix = $lightSuffix + $(if ($IncludeSymbols) { '_with_pdb' } else { '' })
 $installerPath = Join-Path $PSScriptRoot "Output\MetasequoiaIME_Setup_v$Version$installerSuffix.exe"
 
 Push-Location $PSScriptRoot
@@ -252,6 +259,7 @@ try {
     & (Join-Path $PSScriptRoot 'Prepare-PackageFiles.ps1') `
         -TargetVersion $Version `
         -IncludeSymbols:$IncludeSymbols `
+        -Light:$Light `
         -RepoRoot $repoRoot `
         -TsfDirectory windows `
         -ServerDirectory server `
@@ -264,11 +272,11 @@ try {
     # 用户看到的就是输入法装完之后某个面板打不开。外层安装包在编译之后单独签。
     Invoke-SimplySign -LiteralPath (Get-PayloadBinaryPaths) -Certificate $certificate
 
-    & (Join-Path $PSScriptRoot 'Compile-Installer.ps1') -IsccPath $IsccPath
+    & (Join-Path $PSScriptRoot 'Compile-Installer.ps1') -IsccPath $IsccPath -Light:$Light
     if (-not (Test-Path -LiteralPath $compiledInstallerPath -PathType Leaf)) {
         throw "Inno Setup 没有生成预期的安装包：$compiledInstallerPath"
     }
-    if ($IncludeSymbols) {
+    if ($compiledInstallerPath -ne $installerPath) {
         Move-Item -LiteralPath $compiledInstallerPath -Destination $installerPath -Force
     }
 
@@ -276,7 +284,12 @@ try {
     $hash = (Get-FileHash -LiteralPath $installerPath -Algorithm SHA256).Hash
 
     Write-Host ''
-    Write-Host 'SimplySign 正式签名安装包已生成：'
+    if ($Light) {
+        Write-Host 'SimplySign 正式签名轻量安装包已生成（只能覆盖安装在已有完整安装之上）：'
+    }
+    else {
+        Write-Host 'SimplySign 正式签名安装包已生成：'
+    }
     Write-Host "  $installerPath"
     Write-Host "  SHA256: $hash"
 }
