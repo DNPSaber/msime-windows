@@ -4,12 +4,83 @@
 #include "utils/common_utils.h"
 #include "engine/quanpin/quanpin_utils.h"
 
+#include <utf8.h>
 #include <algorithm>
 #include <cctype>
 #include <vector>
 
 namespace SettingsDictionary::Validation
 {
+namespace
+{
+// 五笔码表里一个字可能有多个 4 级全码（实测 468 个字）。取字典序第一个即可：
+// 全部 62662 条多字词条里，含「前 2 位互相冲突」的字的有 0 条，消歧是为不存在的问题写代码。
+const std::string &PreferredWubiCode(const WubiCharCodes &char_codes, const std::string &ch)
+{
+    static const std::string kEmpty;
+    const auto found = char_codes.find(ch);
+    return found == char_codes.end() ? kEmpty : found->second;
+}
+} // namespace
+
+std::string ComposeWubiPhraseCode(const std::string &word, const WubiCharCodes &char_codes)
+{
+    if (word.empty())
+        return {};
+
+    // 按码位切分，不能按字节：扩展区汉字一个码位 3~4 字节，按字节切会切出半个字。
+    // utf8::next 按引用推进 it 并返回码位，所以要先记下起点再取 [start, it) 这一段。
+    std::vector<std::string> chars;
+    try
+    {
+        auto it = word.begin();
+        while (it != word.end())
+        {
+            const auto start = it;
+            utf8::next(it, word.end());
+            chars.emplace_back(start, it);
+        }
+    }
+    catch (...)
+    {
+        return {};
+    }
+
+    std::string code;
+    const auto take = [&](size_t index, size_t width) {
+        const std::string &full = PreferredWubiCode(char_codes, chars[index]);
+        if (full.empty())
+            return false;
+        code.append(full, 0, width);
+        return true;
+    };
+
+    const size_t n = chars.size();
+    if (n == 1)
+    {
+        if (!take(0, std::string::npos))
+            return {};
+        return code;
+    }
+
+    bool ok = false;
+    if (n == 2)
+    {
+        ok = take(0, 2) && take(1, 2);
+    }
+    else if (n == 3)
+    {
+        ok = take(0, 1) && take(1, 1) && take(2, 2);
+    }
+    else
+    {
+        // 4 字以上取首、次、三、末——末字是最后一个字，不是第 4 个字。
+        // 5~8 字词实测 100% 命中这条规则。
+        ok = take(0, 1) && take(1, 1) && take(2, 1) && take(n - 1, 1);
+    }
+    return ok ? code : std::string{};
+}
+
 bool NormalizeFullPinyin(const std::string &input, quanpin::Segments &segments, std::string &normalized,
                          std::size_t expected_syllables)
 {
@@ -87,7 +158,7 @@ bool ShouldSkipImportLine(const std::string &line, bool &in_yaml_header)
 }
 
 bool ParseCodedImportLine(const std::string &line, std::string &word, std::string &code, int &weight,
-                          std::string &message)
+                          std::string &message, int default_weight)
 {
     const auto trim = [](std::string value) {
         const auto begin = value.find_first_not_of(' ');
@@ -122,14 +193,14 @@ bool ParseCodedImportLine(const std::string &line, std::string &word, std::strin
     }
     if (fields.size() == 2)
     {
-        weight = kDefaultCodedImportWeight;
+        weight = default_weight;
         return true;
     }
 
     const std::string &weight_text = fields[2];
     if (weight_text.empty() || weight_text.find('=') != std::string::npos)
     {
-        weight = kDefaultCodedImportWeight;
+        weight = default_weight;
         return true;
     }
     if (!std::all_of(weight_text.begin(), weight_text.end(), [](unsigned char ch) { return std::isdigit(ch); }))

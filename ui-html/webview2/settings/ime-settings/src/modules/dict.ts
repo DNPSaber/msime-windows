@@ -109,6 +109,16 @@ function updateMode(): void {
       : '管理 86 五笔编码、词条及权重；批量导入格式为：词语<Tab>五笔编码[<Tab>权重]（兼容 Rime dict.yaml）';
   const importButton = document.getElementById('dictImportButton') as HTMLButtonElement | null;
   if (importButton) importButton.style.display = '';
+  // 纯汉字导入按当前标签页出码：拼音走注音，五笔走 wubi86 单字码组合。
+  // 英文词库收不了纯汉字，隐藏以免用户点出必然失败的请求。
+  const hansSection = document.querySelector<HTMLElement>('.dict-hans-import-section');
+  if (hansSection) hansSection.style.display = english ? 'none' : '';
+  const hansTitle = document.getElementById('dictHansImportTitle');
+  if (hansTitle) {
+    hansTitle.textContent = quanpin
+      ? '批量导入纯汉字词组(e.g.人名)到拼音词库'
+      : '批量导入纯汉字词组(e.g.人名)到五笔词库';
+  }
   document.getElementById('dictTableHeader')!.innerHTML = english
     ? '<th class="dict-index-column">No.</th><th>单词</th><th>显示内容</th><th>权重</th><th>操作</th>'
     : '<th class="dict-index-column">No.</th><th>编码</th><th>词条</th><th>权重</th><th>操作</th>';
