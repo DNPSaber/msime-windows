@@ -3,6 +3,7 @@
 #include "msimeui/Fonts.h"
 
 #include <algorithm>
+#include <iterator>
 #include <windows.h>
 
 namespace msimeui
@@ -438,15 +439,20 @@ ID2D1Bitmap *DeviceResources::GetBitmapFromFile(const std::wstring &filePath, D2
         return nullptr;
     }
 
-    for (auto &entry : bitmapCache_)
+    for (auto it = bitmapCache_.begin(); it != bitmapCache_.end(); ++it)
     {
-        if (entry.filePath == filePath && entry.bitmap)
+        if (it->filePath == filePath && it->bitmap)
         {
+            // 命中的挪到末尾，末尾即最近使用；淘汰从头部开始。
+            if (std::next(it) != bitmapCache_.end())
+            {
+                std::rotate(it, std::next(it), bitmapCache_.end());
+            }
             if (size)
             {
-                *size = entry.size;
+                *size = bitmapCache_.back().size;
             }
-            return entry.bitmap.Get();
+            return bitmapCache_.back().bitmap.Get();
         }
     }
 
@@ -478,6 +484,12 @@ ID2D1Bitmap *DeviceResources::GetBitmapFromFile(const std::wstring &filePath, D2
         return nullptr;
     }
     entry.size = entry.bitmap->GetSize();
+    // 位图按原始分辨率解码成 32bpp，调用方每帧按路径重新取、不持有指针，所以超出上限时
+    // 丢掉最久没用的只是下次重新解码。不设上限的话，换过的皮肤图会一直留到设备重建。
+    if (bitmapCache_.size() >= kMaxCachedBitmaps)
+    {
+        bitmapCache_.erase(bitmapCache_.begin());
+    }
     bitmapCache_.push_back(std::move(entry));
     if (size)
     {

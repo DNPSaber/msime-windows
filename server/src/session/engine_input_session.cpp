@@ -89,6 +89,11 @@ void EngineInputSession::reset_cache()
     return session_.reset_cache();
 }
 
+void EngineInputSession::reset_sentence_cache()
+{
+    return session_.reset_sentence_cache();
+}
+
 const std::vector<IInputSession::WordItem> &EngineInputSession::get_candidates() const
 {
     return session_.get_candidates();

@@ -14,6 +14,7 @@ class PinyinCandidateProvider : public ICandidateProvider
                                            const std::string &value) override;
     bool expand_initial_candidates(const QueryRequest &request, std::vector<WordItem> &candidates);
     void reset_cache() override;
+    void reset_sentence_cache();
     int create_word(SchemeType scheme, std::string pinyin, std::string word) override;
     int update_weight_by_pinyin_and_word(SchemeType scheme, std::string pinyin, std::string word) override;
     int delete_by_pinyin_and_word(SchemeType scheme, std::string pinyin, std::string word) override;

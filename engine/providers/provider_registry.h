@@ -15,6 +15,11 @@ class ProviderRegistry
     std::optional<WordItem> find_candidate(SchemeType scheme_type, const std::string &key, const std::string &value);
     bool expand_initial_candidates(const QueryRequest &request, std::vector<WordItem> &candidates);
     void reset_cache(SchemeType scheme_type);
+    // 整句（词格 + 神经重排）只出在拼音 provider 上，五笔混输查的也是它。
+    void reset_sentence_cache()
+    {
+        pinyin_provider_.reset_sentence_cache();
+    }
     int create_word(SchemeType scheme_type, std::string pinyin, std::string word);
     int update_weight_by_pinyin_and_word(SchemeType scheme_type, std::string pinyin, std::string word);
     int delete_by_pinyin_and_word(SchemeType scheme_type, std::string pinyin, std::string word);

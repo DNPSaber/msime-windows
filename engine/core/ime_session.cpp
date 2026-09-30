@@ -167,6 +167,11 @@ void ImeSession::reset_cache()
     refresh_candidates();
 }
 
+void ImeSession::reset_sentence_cache()
+{
+    provider_registry_.reset_sentence_cache();
+}
+
 int ImeSession::create_word(std::string pinyin, std::string word)
 {
     return provider_registry_.create_word(current_scheme_type(), std::move(pinyin), std::move(word));

@@ -23,6 +23,7 @@ class ShuangpinEngine
                                              const std::string &double_helpcodes = {});
     std::string search_sentence_from_ime_engine(const std::string &user_pinyin);
     void reset_cache();
+    void reset_sentence_cache();
 
     void set_helpcode_keymap(HelpcodeUtils::SharedKeymap table)
     {

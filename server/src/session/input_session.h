@@ -25,6 +25,8 @@ class IInputSession
 
     virtual void reset_state() = 0;
     virtual void reset_cache() = 0;
+    // 只失效整句排序（神经重排结果到达时用），不重算候选。
+    virtual void reset_sentence_cache() = 0;
 
     virtual const std::vector<WordItem> &get_candidates() const = 0;
     virtual bool expand_initial_candidates() = 0;

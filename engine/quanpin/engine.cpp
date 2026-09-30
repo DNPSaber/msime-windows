@@ -150,3 +150,8 @@ void QuanpinEngine::reset_cache()
 {
     dictionary_.reset_cache();
 }
+
+void QuanpinEngine::reset_sentence_cache()
+{
+    dictionary_.reset_sentence_cache();
+}

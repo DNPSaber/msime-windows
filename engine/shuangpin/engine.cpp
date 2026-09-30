@@ -217,6 +217,13 @@ void ShuangpinEngine::reset_cache()
         fuzzy_dictionary_->reset_cache();
 }
 
+void ShuangpinEngine::reset_sentence_cache()
+{
+    dictionary_.reset_sentence_cache();
+    if (fuzzy_dictionary_)
+        fuzzy_dictionary_->reset_sentence_cache();
+}
+
 std::vector<WordItem> ShuangpinEngine::append_fuzzy(std::vector<WordItem> exact, const std::string &raw_segmentation,
                                                     metasequoia::FuzzyPinyinOptions options,
                                                     const std::string &helpcodes)

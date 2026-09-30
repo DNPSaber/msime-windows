@@ -730,6 +730,28 @@ void test_runtime_isolation()
         auto second = std::async(std::launch::async, run, std::cref(decoder_b), "zhongguo", expected_b);
         first.get();
         second.get();
+
+        // 解码器沿用上一次的公共前缀增量搜索。逐字母打、退格、改中间字母、换一串输入，
+        // 每一步的结果都必须与从头搜一样。从头搜的办法是先搜一个首字母不同的串：upstream
+        // 发现公共前缀为零时会整段重置，与 im_reset_search 走的是同一个 reset_search0。
+        std::vector<std::string> typed;
+        const std::string long_input = "womenxianzaizaixiedaimaceshi";
+        for (std::size_t length = 1; length <= long_input.size(); ++length)
+            typed.push_back(long_input.substr(0, length));
+        for (std::size_t length = long_input.size(); length-- > 12;)
+            typed.push_back(long_input.substr(0, length));
+        for (const char *input : {"womenxianzaizai", "womenxianzhaizai", "womenxianzaizai", "nihao", "nihaoma",
+                                  "nihaom", "nihaoya", "zhongguoren", "zhangguoren", "zhongguoren", "zhongguo"})
+            typed.emplace_back(input);
+        std::vector<std::string> incremental;
+        for (const auto &input : typed)
+            incremental.push_back(decoder_a.sentence(input));
+        for (std::size_t index = 0; index < typed.size(); ++index)
+        {
+            (void)decoder_a.sentence(typed[index].front() == 'a' ? "e" : "a");
+            require(decoder_a.sentence(typed[index]) == incremental[index],
+                    "Incremental decoder search diverged from a fresh search");
+        }
     }
 
     // 词格打分用的三元模型：按路径共享一份实例，缺模型时退化成可用的空模型。
@@ -754,6 +776,21 @@ void test_runtime_isolation()
         auto second = std::async(std::launch::async, probe);
         first.get();
         second.get();
+    }
+
+    // 数据目录里有出货的 sc.lm 时，确认它按只读映射（LAZY）载得进来并能正常打分。
+    // 映射失败会静默退化成上面的空模型，整句只是变差、不报错，所以要在这里拦住。
+    {
+        const auto model_path = RuntimePaths::legacy().resource(assets::language_model);
+        if (std::filesystem::exists(model_path))
+        {
+            const auto &model = ngram::shared_language_model(model_path);
+            require(model.valid(), "Shipped sc.lm failed to load");
+            require(!model.is_unknown(model.index("中国")), "Shipped sc.lm lost a common word");
+            ngram::State out;
+            const float score = model.score(model.null_state(), "中国", out);
+            require(score < 0.0F && score > model.unknown_penalty(), "Shipped sc.lm scored a common word as unknown");
+        }
     }
 }
 

@@ -115,7 +115,9 @@ void ApplyRescoredOrder()
     std::copy_if(before.begin(), before.end(), std::back_inserter(online_items), [](const WordItem &item) {
         return item.source == CandidateSource::CloudSuggestion || item.source == CandidateSource::AiSuggestion;
     });
-    g_inputSession->reset_cache();
+    // 只失效整句那层：逐前缀的词库查询和切分与重排无关，保持热缓存，下一键也不会变冷。
+    // 不用 reset_cache——它自己会先冷算一遍候选，这里紧接着又算一遍。
+    g_inputSession->reset_sentence_cache();
     g_inputSession->recompute_candidates();
     if (!online_items.empty())
     {
