@@ -230,11 +230,10 @@ int main()
         bool fired = false;
         neural::RescoreWorker &worker = neural::RescoreWorker::instance();
         worker.clear();
+        // notify 放在锁内：等待方一拿到锁就会离开作用域、析构 ready，锁外 notify 可能碰到已析构的对象。
         worker.set_ready_callback([&] {
-            {
-                std::lock_guard<std::mutex> lock(mutex);
-                fired = true;
-            }
+            std::lock_guard<std::mutex> lock(mutex);
+            fired = true;
             ready.notify_all();
         });
 
@@ -278,8 +277,8 @@ int main()
             {
                 std::lock_guard<std::mutex> lock(mutex);
                 throw_now = (++fired == 1);
+                done.notify_all();
             }
-            done.notify_all();
             if (throw_now)
             {
                 throw std::runtime_error("the host callback failed on purpose");
@@ -323,10 +322,8 @@ int main()
         neural::RescoreWorker &worker = neural::RescoreWorker::instance();
         worker.clear();
         worker.set_ready_callback([&] {
-            {
-                std::lock_guard<std::mutex> lock(mutex);
-                ++fired;
-            }
+            std::lock_guard<std::mutex> lock(mutex);
+            ++fired;
             ready.notify_all();
         });
 
