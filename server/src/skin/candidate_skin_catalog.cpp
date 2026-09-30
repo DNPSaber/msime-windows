@@ -223,6 +223,37 @@ bool ReadOptionalBounded(const toml::table &table, const char *key, double maxim
     return true;
 }
 
+bool ReadOptionalBool(const toml::table &table, const char *key, std::optional<bool> &out)
+{
+    const toml::node *node = table.get(key);
+    if (!node)
+    {
+        return true;
+    }
+    const auto *flag = node->as_boolean();
+    if (!flag)
+    {
+        return false;
+    }
+    out = flag->get();
+    return true;
+}
+
+// Read via the wide path and parse the text. toml::parse_file(manifest.string()) would run the
+// path through the ANSI code page: skins live under the user profile, so a non-ASCII (e.g.
+// Chinese) user name corrupts it, and on a code page that cannot represent the characters
+// path::string() throws right past the callers' toml handlers.
+std::optional<toml::table> ParseManifest(const std::filesystem::path &manifest)
+{
+    std::ifstream input(manifest, std::ios::binary);
+    if (!input)
+    {
+        return std::nullopt;
+    }
+    const std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
+    return toml::parse(text);
+}
+
 bool ReadToolbarColors(const toml::node *node, ToolbarColors &out)
 {
     if (!node)
@@ -236,9 +267,16 @@ bool ReadToolbarColors(const toml::node *node, ToolbarColors &out)
 }
 } // namespace
 
+const std::vector<std::string> &BuiltInIds()
+{
+    static const std::vector<std::string> ids = {"fluent", "wechat", "graphite", "willow_green", "autumn_osmanthus"};
+    return ids;
+}
+
 bool IsBuiltIn(const std::string &id)
 {
-    return id == "fluent" || id == "wechat" || id == "graphite" || id == "willow_green" || id == "autumn_osmanthus";
+    const auto &ids = BuiltInIds();
+    return std::find(ids.begin(), ids.end(), id) != ids.end();
 }
 
 bool IsSafeId(const std::string &id)
@@ -260,7 +298,7 @@ bool Supports(const Package &package, const std::string &layout, const std::stri
 
 std::optional<Package> Load(const std::filesystem::path &skinsRoot, const std::string &id, std::string *error)
 {
-    if (!IsSafeId(id) || IsBuiltIn(id))
+    if (!IsSafeId(id) || IsBuiltIn(id) || id == kDefaultSkinsFolder)
     {
         SetError(error, "目录名不是有效的外部皮肤 ID");
         return std::nullopt;
@@ -269,18 +307,13 @@ std::optional<Package> Load(const std::filesystem::path &skinsRoot, const std::s
     const std::filesystem::path manifest = directory / L"skin.toml";
     try
     {
-        // Read via the wide path and parse the text. toml::parse_file(manifest.string()) would run the
-        // path through the ANSI code page: skins live under the user profile, so a non-ASCII (e.g.
-        // Chinese) user name corrupts it, and on a code page that cannot represent the characters
-        // path::string() throws right past this try block's toml handlers.
-        std::ifstream input(manifest, std::ios::binary);
-        if (!input)
+        const std::optional<toml::table> parsed = ParseManifest(manifest);
+        if (!parsed)
         {
             SetError(error, "缺少或无法解析 skin.toml");
             return std::nullopt;
         }
-        const std::string text((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
-        const toml::table root = toml::parse(text);
+        const toml::table &root = *parsed;
         if (root["schema_version"].value_or(0) != 1)
         {
             SetError(error, "仅支持 schema_version 1");
@@ -363,6 +396,11 @@ std::optional<Package> Load(const std::filesystem::path &skinsRoot, const std::s
         if (!ReadFontFamily(*window, "font_family", package.fontFamily))
         {
             SetError(error, "candidate_window.font_family 无效");
+            return std::nullopt;
+        }
+        if (!ReadOptionalBool(*window, "page_arrows", package.pageArrows))
+        {
+            SetError(error, "candidate_window.page_arrows 必须是 true 或 false");
             return std::nullopt;
         }
         if (const toml::node *backgroundNode = window->get("background"))
@@ -454,6 +492,10 @@ ScanResult Scan(const std::filesystem::path &skinsRoot)
             continue;
         }
         const std::string folder = it->path().filename().u8string();
+        if (folder == kDefaultSkinsFolder)
+        {
+            continue;
+        }
         std::string error;
         auto package = Load(skinsRoot, folder, &error);
         if (package)
@@ -474,5 +516,61 @@ ScanResult Scan(const std::filesystem::path &skinsRoot)
     std::sort(result.issues.begin(), result.issues.end(),
               [](const Issue &a, const Issue &b) { return a.folder < b.folder; });
     return result;
+}
+
+std::optional<DefaultSkin> LoadDefault(const std::filesystem::path &skinsRoot, const std::string &id,
+                                       std::string *error)
+{
+    if (!IsBuiltIn(id))
+    {
+        SetError(error, "不是内置皮肤 ID");
+        return std::nullopt;
+    }
+    const std::filesystem::path manifest =
+        skinsRoot / std::filesystem::u8path(kDefaultSkinsFolder) / std::filesystem::u8path(id) / L"skin.toml";
+    try
+    {
+        const std::optional<toml::table> parsed = ParseManifest(manifest);
+        if (!parsed)
+        {
+            SetError(error, "缺少或无法解析 skin.toml");
+            return std::nullopt;
+        }
+        const toml::table &root = *parsed;
+        DefaultSkin skin;
+        if (root["schema_version"].value_or(0) != 1 || !ReadString(root, "id", skin.id, 64, true) || skin.id != id ||
+            !ReadString(root, "name", skin.name, 80, false))
+        {
+            SetError(error, "manifest 的基本信息无效");
+            return std::nullopt;
+        }
+        if (const toml::node *windowNode = root.get("candidate_window"))
+        {
+            const auto *window = windowNode->as_table();
+            if (!window || !ReadOptionalBool(*window, "page_arrows", skin.pageArrows))
+            {
+                SetError(error, "candidate_window.page_arrows 必须是 true 或 false");
+                return std::nullopt;
+            }
+        }
+        return skin;
+    }
+    catch (const std::exception &)
+    {
+        SetError(error, "skin.toml 不是有效的 TOML manifest");
+        return std::nullopt;
+    }
+}
+
+bool ResolvePageArrows(const std::filesystem::path &skinsRoot, const std::string &skinId, const Package *package)
+{
+    if (package && package->pageArrows)
+    {
+        return *package->pageArrows;
+    }
+    const std::string base = package ? package->base : skinId;
+    // 配置里的皮肤既不是内置、也没能作为外部皮肤加载时，渲染端回退到 fluent，这里跟着回退。
+    const auto defaults = LoadDefault(skinsRoot, IsBuiltIn(base) ? base : "fluent");
+    return defaults && defaults->pageArrows ? *defaults->pageArrows : kDefaultPageArrows;
 }
 } // namespace CandidateSkinCatalog

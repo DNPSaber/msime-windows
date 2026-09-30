@@ -78,6 +78,8 @@ struct Package
     // 卡片上方的装饰图；为空表示皮肤没有装饰。
     std::string decorationImage;
     std::string decorationAlign = "right"; // left / center / right，相对卡片
+    // 候选框里的翻页箭头；未设置时沿用 base 默认皮肤的设置（见 ResolvePageArrows）。
+    std::optional<bool> pageArrows;
     CandidateColors dark;
     CandidateColors light;
     // 覆盖基础皮肤的悬浮工具栏外框圆角；未设置时沿用基础皮肤。
@@ -98,10 +100,31 @@ struct ScanResult
     std::vector<Issue> issues;
 };
 
+// 内置皮肤的设置清单：<skinsRoot>/default/<id>/skin.toml。外观仍由内置 CSS 与 D2D 配色决定，
+// 清单只承载皮肤级的开关；外部皮肤没写的开关沿用它 base 的这份清单。
+struct DefaultSkin
+{
+    std::string id;
+    std::string name;
+    std::optional<bool> pageArrows;
+};
+
+// 默认皮肤清单所在的子目录名，Scan 跳过它，外部皮肤也不能占用这个 ID。
+inline constexpr const char *kDefaultSkinsFolder = "default";
+// 默认皮肤清单缺失或没写 page_arrows 时的取值，与出厂清单一致：翻页箭头默认关闭。
+inline constexpr bool kDefaultPageArrows = false;
+
+// 五个内置皮肤的 ID，按设置页的展示顺序。
+const std::vector<std::string> &BuiltInIds();
 bool IsBuiltIn(const std::string &id);
 bool IsSafeId(const std::string &id);
 bool Supports(const Package &package, const std::string &layout, const std::string &theme);
 std::optional<Package> Load(const std::filesystem::path &skinsRoot, const std::string &id,
                             std::string *error = nullptr);
 ScanResult Scan(const std::filesystem::path &skinsRoot);
+std::optional<DefaultSkin> LoadDefault(const std::filesystem::path &skinsRoot, const std::string &id,
+                                       std::string *error = nullptr);
+// skinId 是配置里的候选皮肤：内置皮肤读自己的默认清单；外部皮肤先看自己的 page_arrows，
+// 没写再看 base 的默认清单。package 为外部皮肤已加载的清单，内置皮肤传 nullptr。
+bool ResolvePageArrows(const std::filesystem::path &skinsRoot, const std::string &skinId, const Package *package);
 } // namespace CandidateSkinCatalog

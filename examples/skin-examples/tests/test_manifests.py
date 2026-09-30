@@ -8,6 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 # MSIME_SKINS_DIR points the same checks at another skin collection, e.g. the repository's skins/.
 SKINS_DIR = Path(os.environ.get("MSIME_SKINS_DIR", ROOT / "skins")).resolve()
+BUILTIN_SKINS = ("fluent", "wechat", "graphite", "willow_green", "autumn_osmanthus")
 
 
 class ManifestTests(unittest.TestCase):
@@ -23,7 +24,7 @@ class ManifestTests(unittest.TestCase):
                 # Mirrors the Server catalog: name, version and base are required, author is not.
                 for key in ("name", "version", "base"):
                     self.assertTrue(data[key].strip(), key)
-                self.assertIn(data["base"], ("fluent", "wechat", "graphite", "willow_green", "autumn_osmanthus"))
+                self.assertIn(data["base"], BUILTIN_SKINS)
                 window = data.get("candidate_window", {})
                 assets = {key: data.get(key) for key in ("toolbar_stylesheet", "preview")}
                 for table in ("decoration", "background"):
@@ -50,6 +51,8 @@ class ManifestTests(unittest.TestCase):
                         self.assertTrue(0 <= window[key] <= limit, key)
                 if "shadow" in window:
                     self.assertIn(window["shadow"], ("none", "soft", "strong"))
+                if "page_arrows" in window:
+                    self.assertIsInstance(window["page_arrows"], bool, "page_arrows")
                 if "font_family" in window:
                     # Mirrors the Server catalog: the name is pasted into a quoted CSS font-family value.
                     self.assertRegex(window["font_family"], r"^[^\x00-\x1f\x7f\"'\\,;{}<>`]+$")
@@ -61,6 +64,20 @@ class ManifestTests(unittest.TestCase):
                     self.assertIn(theme, data["candidate"])
                     if "toolbar" in data:
                         self.assertIn(theme, data["toolbar"])
+
+    def test_default_skin_settings(self):
+        # skins/default/<id>/skin.toml carries the built-in skins' switches; only collections that ship it are checked.
+        default_dir = SKINS_DIR / "default"
+        if not default_dir.is_dir():
+            self.skipTest("No default skin settings in this collection")
+        manifests = {path.parent.name: path for path in default_dir.glob("*/skin.toml")}
+        self.assertEqual(sorted(manifests), sorted(BUILTIN_SKINS))
+        for skin_id, path in manifests.items():
+            with self.subTest(skin=skin_id):
+                data = tomllib.loads(path.read_text(encoding="utf-8"))
+                self.assertEqual(data["schema_version"], 1)
+                self.assertEqual(data["id"], skin_id)
+                self.assertIsInstance(data.get("candidate_window", {}).get("page_arrows", True), bool)
 
 
 if __name__ == "__main__":
