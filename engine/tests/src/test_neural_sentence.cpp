@@ -368,4 +368,9 @@ int main()
         std::fprintf(stderr, "%s\n", error.what());
         return 1;
     }
+    catch (...)
+    {
+        std::fprintf(stderr, "An exception escaped the test body.\n");
+        return 1;
+    }
 }

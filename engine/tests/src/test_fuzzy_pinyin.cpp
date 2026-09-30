@@ -227,4 +227,9 @@ int main()
         std::cerr << error.what() << '\n';
         return 1;
     }
+    catch (...)
+    {
+        std::cerr << "An exception escaped the test body.\n";
+        return 1;
+    }
 }

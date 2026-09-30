@@ -1697,4 +1697,9 @@ int main(int argc, char *argv[])
         fmt::println(stderr, "Test failure: {}", ex.what());
         return 1;
     }
+    catch (...)
+    {
+        fmt::println(stderr, "An exception escaped the test body.");
+        return 1;
+    }
 }
