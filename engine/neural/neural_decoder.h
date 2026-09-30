@@ -26,6 +26,7 @@
 
 #include <cstddef>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace neural
@@ -57,6 +58,34 @@ std::string last_characters(const std::string &text, std::size_t count);
 // invalid. The returned pointer is owned by the cache and lives for the process; a failed load is
 // remembered so it is not retried on every keystroke.
 const SentenceModel *shared_sentence_model(const std::string &path);
+
+// A handle that defers shared_sentence_model() until the model is first asked for. The two models
+// together are ~28 MB of heap once loaded; resolving them in the dictionary constructors paid for
+// both even when the settings leave them off (the desktop model is off by default). Not thread-safe:
+// resolve it on the thread that owns the dictionary and hand the raw pointer to worker threads.
+class LazySentenceModel
+{
+  public:
+    LazySentenceModel() = default;
+    explicit LazySentenceModel(std::string path) : path_(std::move(path))
+    {
+    }
+
+    const SentenceModel *get() const
+    {
+        if (!resolved_)
+        {
+            model_ = shared_sentence_model(path_);
+            resolved_ = true;
+        }
+        return model_;
+    }
+
+  private:
+    std::string path_;
+    mutable const SentenceModel *model_ = nullptr;
+    mutable bool resolved_ = false;
+};
 
 // The order `sentences` should be shown in, as indices into it.
 //

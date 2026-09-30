@@ -239,10 +239,8 @@ QuanpinDictionary::QuanpinDictionary(std::string db_path, metasequoia::RuntimePa
       decoder_(paths_.resource(metasequoia::assets::pinyin_model),
                paths_.user(metasequoia::assets::pinyin_user_dictionary)),
       language_model_(&ngram::shared_language_model(paths_.resource(metasequoia::assets::language_model))),
-      neural_desktop_model_(neural::shared_sentence_model(
-          metasequoia::path_to_utf8(paths_.resource(metasequoia::assets::neural_model_desktop)))),
-      neural_keyboard_model_(neural::shared_sentence_model(
-          metasequoia::path_to_utf8(paths_.resource(metasequoia::assets::neural_model_keyboard)))),
+      neural_desktop_model_(metasequoia::path_to_utf8(paths_.resource(metasequoia::assets::neural_model_desktop))),
+      neural_keyboard_model_(metasequoia::path_to_utf8(paths_.resource(metasequoia::assets::neural_model_keyboard))),
       db_path_(db_path.empty() ? metasequoia::path_to_utf8(paths_.dictionary(metasequoia::assets::main_dictionary))
                                : std::move(db_path))
 {
@@ -302,9 +300,9 @@ std::vector<WordItem> QuanpinDictionary::query_exact(const std::string &raw_inpu
     // backspaced prefix should reuse it instead of re-running the k=9 beam.
     const std::string resolution_key = std::to_string(autocorrect_types) + '\x1f' + raw_input + '\x1f' + segmentation;
     SeriesQueryResolution resolution;
-    if (const auto cached_resolution = resolution_cache_.get(resolution_key))
+    if (const auto *cached_resolution = resolution_cache_.find(resolution_key))
     {
-        resolution = cached_resolution.value();
+        resolution = *cached_resolution;
     }
     else
     {
@@ -328,12 +326,12 @@ std::vector<WordItem> QuanpinDictionary::query_exact(const std::string &raw_inpu
 
     // Autocorrected results get their own cache slot so they never leak the
     // fallback tail into plain (correct) spellings sharing the same key.
-    if (series_cache_.get(resolution.cache_key))
+    if (series_cache_.find(resolution.cache_key))
     {
         reset_cache_if_database_changed();
-        if (const auto cached = series_cache_.get(resolution.cache_key))
+        if (const auto *cached = series_cache_.find(resolution.cache_key))
         {
-            current_candidate_list_ = cached.value();
+            current_candidate_list_ = *cached;
             return current_candidate_list_;
         }
     }
@@ -574,14 +572,14 @@ std::vector<WordItem> QuanpinDictionary::query_series(const std::string &raw_inp
         // 词格给 Trigram 候选和神经模型共用：只开神经时仍在内部解出 n-best 供它重排，
         // 但不把词格自己的首选显示出来。神经模型不自己造句，只在这批路径中选一句。
         std::vector<quanpin::SourcedLatticeReranker> neural_rerankers;
-        if (sentence_association_.neural_keyboard && neural_keyboard_model_ != nullptr)
+        if (sentence_association_.neural_keyboard && neural_keyboard_model_.get() != nullptr)
         {
-            neural_rerankers.push_back({quanpin::make_neural_reranker(neural_keyboard_model_, rescoring_context_),
+            neural_rerankers.push_back({quanpin::make_neural_reranker(neural_keyboard_model_.get(), rescoring_context_),
                                         CandidateSource::NeuralKeyboard});
         }
-        if (sentence_association_.neural_desktop && neural_desktop_model_ != nullptr)
+        if (sentence_association_.neural_desktop && neural_desktop_model_.get() != nullptr)
         {
-            neural_rerankers.push_back({quanpin::make_neural_reranker(neural_desktop_model_, rescoring_context_),
+            neural_rerankers.push_back({quanpin::make_neural_reranker(neural_desktop_model_.get(), rescoring_context_),
                                         CandidateSource::NeuralDesktop});
         }
         quanpin::WordLatticeOptions lattice_options;
@@ -613,9 +611,9 @@ std::vector<WordItem> QuanpinDictionary::query_single_path(const std::string &ra
                                                            const quanpin::Segments &segments)
 {
     const std::string cache_key = segmentation.empty() ? raw_input : segmentation;
-    if (auto cached = cache_.get(cache_key))
+    if (const auto *cached = cache_.find(cache_key))
     {
-        return cached.value();
+        return *cached;
     }
 
     std::vector<WordItem> result = query_database(segments, segmentation);
@@ -636,9 +634,9 @@ quanpin::Segments QuanpinDictionary::resolve_segments(const std::string &raw_inp
 
 quanpin::Segments QuanpinDictionary::get_or_compute_segments(const std::string &raw_input)
 {
-    if (auto cached = segmentation_cache_.get(raw_input))
+    if (const auto *cached = segmentation_cache_.find(raw_input))
     {
-        return cached.value();
+        return *cached;
     }
 
     const auto cuts = quanpin::cut_pinyin_by_mode(raw_input, "correction");
@@ -1123,6 +1121,13 @@ void QuanpinDictionary::reset_cache()
     segmentation_cache_.clear();
 }
 
+void QuanpinDictionary::reset_sentence_cache()
+{
+    // 词格整句只在 query_series 里合入，结果只经 series_cache_ 缓存；cache_ 是逐前缀的
+    // 词库行加 Google 整句，segmentation_cache_ 是纯切分，都不受重排影响。
+    series_cache_.clear();
+}
+
 void QuanpinDictionary::set_sentence_association(const SentenceAssociationOptions &options)
 {
     if (sentence_association_ == options)
@@ -1146,11 +1151,11 @@ void QuanpinDictionary::set_rescoring_context(const std::string &context)
     // 上文只经神经重排进入候选；没有生效的神经模型时缓存与上文无关，不清。
     // 每次上屏都会换上文，无条件清会让下一个词的前几键都变成冷查询。之后
     // 打开神经重排会经 set_sentence_association 清缓存，不会沿用旧结果。
-    const bool rescoring_active = (sentence_association_.neural_keyboard && neural_keyboard_model_ != nullptr) ||
-                                  (sentence_association_.neural_desktop && neural_desktop_model_ != nullptr);
+    const bool rescoring_active = (sentence_association_.neural_keyboard && neural_keyboard_model_.get() != nullptr) ||
+                                  (sentence_association_.neural_desktop && neural_desktop_model_.get() != nullptr);
     if (rescoring_active)
     {
-        reset_cache();
+        reset_sentence_cache();
     }
 }
 
@@ -1432,7 +1437,7 @@ std::vector<WordItem> QuanpinDictionary::fuzzy_candidates(const std::string &seg
         return result;
     reset_cache_if_database_changed();
     const auto cache_key = "fuzzy:" + std::to_string(options.rules) + ":" + segmentation;
-    if (const auto cached = series_cache_.get(cache_key))
+    if (const auto *cached = series_cache_.find(cache_key))
         return *cached;
     const auto segments = quanpin::split_segments(segmentation);
     std::size_t budget = 128;

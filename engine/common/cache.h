@@ -32,6 +32,20 @@ template <typename Key, typename Value> class CircularBuffer
         _map[key] = {value, std::prev(_list.end())};
     }
 
+    // 命中时把条目挪到最近使用端（真正的 LRU 淘汰），返回指向缓存值的指针而不复制。
+    // 候选列表一份就是几百个 WordItem，每键的热路径上应当用它而不是 get()。
+    // 指针在下一次 insert / remove / clear 之前有效。
+    const Value *find(const Key &key)
+    {
+        auto it = _map.find(key);
+        if (it == _map.end())
+        {
+            return nullptr;
+        }
+        _list.splice(_list.end(), _list, it->second.second);
+        return &it->second.first;
+    }
+
     std::optional<Value> get(const Key &key) const
     {
         auto it = _map.find(key);

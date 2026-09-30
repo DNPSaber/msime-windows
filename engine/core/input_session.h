@@ -154,6 +154,9 @@ class InputSession
 
     void reset_state();
     void reset_cache();
+    // 神经重排结果回来后用：只失效整句排序，词库和切分缓存保持热，且不在这里重算，
+    // 由调用方接着 recompute_candidates()。
+    void reset_sentence_cache();
 
     const std::vector<WordItem> &get_candidates() const;
     bool expand_initial_candidates();

@@ -67,6 +67,12 @@ void PinyinCandidateProvider::reset_cache()
     shuangpin_engine_.reset_cache();
 }
 
+void PinyinCandidateProvider::reset_sentence_cache()
+{
+    quanpin_engine_.reset_sentence_cache();
+    shuangpin_engine_.reset_sentence_cache();
+}
+
 int PinyinCandidateProvider::create_word(SchemeType scheme, std::string pinyin, std::string word)
 {
     if (scheme == SchemeType::Shuangpin)

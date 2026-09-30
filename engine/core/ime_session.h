@@ -56,6 +56,9 @@ class ImeSession
     std::vector<WordItem> query_raw_candidates(const std::string &raw_input, const std::string &raw_input_with_cases);
     void reset();
     void reset_cache();
+    // 只清整句排序所在的缓存层，不重算候选：调用方随后自己 refresh，免得像 reset_cache
+    // 那样先冷算一遍、调用方再算一遍。
+    void reset_sentence_cache();
     int create_word(std::string pinyin, std::string word);
     // 混输组合里的候选分属五笔码表和拼音词典，写入权重必须显式指明目标方案。
     int update_weight_by_pinyin_and_word(SchemeType scheme, std::string pinyin, std::string word);

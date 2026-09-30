@@ -77,6 +77,11 @@ LanguageModel::LanguageModel(const std::filesystem::path &model_file) : impl_(st
         // 出货的模型不带 <s> / </s>，与 libime 一致地静默接受，否则 kenlm 会
         // 在载入时抛异常。
         config.sentence_marker_missing = lm::SILENT;
+        // 默认的 POPULATE_OR_READ 只在有 MAP_POPULATE 的 Linux 上映射，Windows 上会退成
+        // READ：整份 34 MB 拷进私有堆，常驻且换不出去。LAZY 在 Windows 上走
+        // MapViewOfFile 只读映射，页面按需调入、属于文件缓存，系统内存紧张时可直接丢弃，
+        // 词格没开时基本不占工作集。
+        config.load_method = util::LAZY;
         impl_->model = std::make_unique<Model>(to_utf8(model_file).c_str(), config);
         as_lm(impl_->begin_state) = impl_->model->BeginSentenceState();
         as_lm(impl_->null_state) = impl_->model->NullContextState();
@@ -172,7 +177,7 @@ float LanguageModel::unknown_penalty() const
 const LanguageModel &shared_language_model(const std::filesystem::path &model_file)
 {
     // 故意泄漏：模型可能在静态析构期还被其他单例引用，销毁顺序无法保证，而进程
-    // 退出时操作系统会回收这块 mmap。
+    // 退出时操作系统会回收这块只读映射（见构造函数里的 load_method）。
     static std::mutex mutex;
     static auto *cache = new std::map<std::string, std::unique_ptr<LanguageModel>>();
     const std::lock_guard<std::mutex> guard(mutex);

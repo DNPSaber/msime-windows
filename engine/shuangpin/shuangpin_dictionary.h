@@ -94,9 +94,9 @@ class ShuangpinDictionary
     // 与全拼共用的词格打分模型，见 QuanpinDictionary::language_model_。
     const ngram::LanguageModel *language_model_ = nullptr;
     // 神经整句模型，见 QuanpinDictionary::neural_desktop_model_。与全拼共用同一份
-    // 进程内缓存（按资源路径），双拼这侧只是各自持一份指针。
-    const neural::SentenceModel *neural_desktop_model_ = nullptr;
-    const neural::SentenceModel *neural_keyboard_model_ = nullptr;
+    // 进程内缓存（按资源路径），双拼这侧只是各自持一份句柄，开关生效时才载入。
+    neural::LazySentenceModel neural_desktop_model_;
+    neural::LazySentenceModel neural_keyboard_model_;
     // 整句候选来源与去重补位选项，默认全关；由 set_sentence_association 随请求更新。
     SentenceAssociationOptions sentence_association_;
     // 神经重排的上下文（光标前已上屏的文本）。宿主没给就是空串。
@@ -241,6 +241,8 @@ class ShuangpinDictionary
 
     void reset_state();
     void reset_cache();
+    // 只清含词格整句排序的缓存，见 QuanpinDictionary::reset_sentence_cache。
+    void reset_sentence_cache();
     void set_helpcode_keymap(HelpcodeUtils::SharedKeymap table)
     {
         helpcodes_ = std::move(table);

@@ -7,7 +7,9 @@
 #include <fstream>
 #include <string_view>
 #include <unordered_set>
-#ifndef _WIN32
+#ifdef _WIN32
+#include <windows.h>
+#else
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -86,18 +88,32 @@ bool JapaneseSentenceDecoder::Load(const std::string &path)
     std::shared_ptr<const char> storage;
     std::uint64_t size = 0;
 #ifdef _WIN32
-    std::ifstream stream(metasequoia::path_from_utf8(path.c_str()), std::ios::binary | std::ios::ate);
-    const auto end = stream.tellg();
-    if (end < static_cast<std::streamoff>(sizeof(ModelHeader)))
+    // 与下面的 POSIX 分支一样只读映射，而不是整份读进堆：词典 60 多 MB，查询只碰到
+    // 其中一部分，映射页属于文件缓存，内存紧张时系统可以直接丢弃再按需调回。
+    const HANDLE file = CreateFileW(metasequoia::path_from_utf8(path.c_str()).c_str(), GENERIC_READ,
+                                    FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, nullptr, OPEN_EXISTING,
+                                    FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE)
         return false;
-    size = static_cast<std::uint64_t>(end);
-    if (size > static_cast<std::uint64_t>(SIZE_MAX))
+    LARGE_INTEGER file_size{};
+    if (!GetFileSizeEx(file, &file_size) || file_size.QuadPart < static_cast<LONGLONG>(sizeof(ModelHeader)) ||
+        static_cast<std::uint64_t>(file_size.QuadPart) > static_cast<std::uint64_t>(SIZE_MAX))
+    {
+        CloseHandle(file);
         return false;
-    auto buffer = std::make_unique<char[]>(static_cast<size_t>(size));
-    stream.seekg(0);
-    if (!stream.read(buffer.get(), static_cast<std::streamsize>(size)))
+    }
+    size = static_cast<std::uint64_t>(file_size.QuadPart);
+    // 视图建好后映射对象和文件句柄都可以关，视图自己持有对文件的引用。
+    const HANDLE mapping = CreateFileMappingW(file, nullptr, PAGE_READONLY, 0, 0, nullptr);
+    CloseHandle(file);
+    if (mapping == nullptr)
         return false;
-    storage = std::shared_ptr<const char>(buffer.release(), [](const char *data) { delete[] data; });
+    const void *view = MapViewOfFile(mapping, FILE_MAP_READ, 0, 0, 0);
+    CloseHandle(mapping);
+    if (view == nullptr)
+        return false;
+    storage =
+        std::shared_ptr<const char>(static_cast<const char *>(view), [](const char *data) { UnmapViewOfFile(data); });
 #else
     const int descriptor = open(path.c_str(), O_RDONLY);
     if (descriptor < 0)

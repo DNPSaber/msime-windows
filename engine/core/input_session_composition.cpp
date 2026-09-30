@@ -347,6 +347,15 @@ void InputSession::reset_cache()
     prefix_query_input_.clear();
 }
 
+void InputSession::reset_sentence_cache()
+{
+    engine_.reset_sentence_cache();
+    if (canonical_phrase_engine_)
+        canonical_phrase_engine_->reset_sentence_cache();
+    // 前缀候选同样可能带整句，理由同 reset_cache。
+    prefix_query_input_.clear();
+}
+
 const std::vector<WordItem> &InputSession::get_candidates() const
 {
     return candidates();

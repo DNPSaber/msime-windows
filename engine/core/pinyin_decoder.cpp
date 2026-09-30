@@ -74,7 +74,8 @@ std::string PinyinDecoder::sentence(const std::string &pinyin) const
     }
     if (!decoder.ready)
         return {};
-    ime_pinyin::im_reset_search();
+    // 不先 im_reset_search：upstream 的 search 自己会与上一次的输入比公共前缀，从分歧处
+    // 回退再往后解，连续打字时每键只多解一个字母。前缀为零时它走的就是整段重置。
     const auto count = ime_pinyin::im_search(pinyin.data(), pinyin.size());
     for (std::size_t i = 0; i < count; ++i)
     {

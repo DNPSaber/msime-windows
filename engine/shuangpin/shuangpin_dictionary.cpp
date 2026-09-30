@@ -53,10 +53,8 @@ ShuangpinDictionary::ShuangpinDictionary(const ShuangpinProfile &profile, metase
     : profile_(profile), paths_(std::move(paths)), decoder_(paths_.resource(metasequoia::assets::pinyin_model),
                                                             paths_.user(metasequoia::assets::pinyin_user_dictionary)),
       language_model_(&ngram::shared_language_model(paths_.resource(metasequoia::assets::language_model))),
-      neural_desktop_model_(neural::shared_sentence_model(
-          metasequoia::path_to_utf8(paths_.resource(metasequoia::assets::neural_model_desktop)))),
-      neural_keyboard_model_(neural::shared_sentence_model(
-          metasequoia::path_to_utf8(paths_.resource(metasequoia::assets::neural_model_keyboard)))),
+      neural_desktop_model_(metasequoia::path_to_utf8(paths_.resource(metasequoia::assets::neural_model_desktop))),
+      neural_keyboard_model_(metasequoia::path_to_utf8(paths_.resource(metasequoia::assets::neural_model_keyboard))),
       helpcodes_(HelpcodeUtils::load_helpcode_keymap(paths_.resources, HelpcodeUtils::selected_helpcode_schema())),
       _kb_input_sequence(100), _cached_buffer(128), _cached_buffer_sgl(128), _cached_buffer_sgl_reversed(128),
       _cached_buffer_dbl(128), _cached_buffer_series(128)
@@ -106,12 +104,12 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generate( //
     {
         const std::string effective_cache_key = cache_key.empty() ? pinyin_sequence : cache_key;
         // Check cache first
-        if (_cached_buffer.get(effective_cache_key))
+        if (_cached_buffer.find(effective_cache_key))
         {
             reset_cache_if_database_changed();
-            if (const auto cached = _cached_buffer.get(effective_cache_key))
+            if (const auto *cached = _cached_buffer.find(effective_cache_key))
             {
-                return cached.value();
+                return *cached;
             }
         }
 
@@ -148,12 +146,12 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generateSeries( //
     {
         const std::string effective_cache_key = cache_key.empty() ? pinyin_sequence : cache_key;
         // 先看一下缓存里有没有
-        if (_cached_buffer_series.get(effective_cache_key))
+        if (_cached_buffer_series.find(effective_cache_key))
         {
             reset_cache_if_database_changed();
-            if (const auto cached = _cached_buffer_series.get(effective_cache_key))
+            if (const auto *cached = _cached_buffer_series.find(effective_cache_key))
             {
-                return cached.value();
+                return *cached;
             }
         }
 
@@ -232,14 +230,14 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generateSeries( //
         // 词格给 Trigram 候选和神经模型共用；只开神经时仍在内部解出 n-best，但不显示词格首选。
         // 与全拼同构，见 QuanpinDictionary::query_series。
         std::vector<quanpin::SourcedLatticeReranker> neural_rerankers;
-        if (sentence_association_.neural_keyboard && neural_keyboard_model_ != nullptr)
+        if (sentence_association_.neural_keyboard && neural_keyboard_model_.get() != nullptr)
         {
-            neural_rerankers.push_back({quanpin::make_neural_reranker(neural_keyboard_model_, rescoring_context_),
+            neural_rerankers.push_back({quanpin::make_neural_reranker(neural_keyboard_model_.get(), rescoring_context_),
                                         CandidateSource::NeuralKeyboard});
         }
-        if (sentence_association_.neural_desktop && neural_desktop_model_ != nullptr)
+        if (sentence_association_.neural_desktop && neural_desktop_model_.get() != nullptr)
         {
-            neural_rerankers.push_back({quanpin::make_neural_reranker(neural_desktop_model_, rescoring_context_),
+            neural_rerankers.push_back({quanpin::make_neural_reranker(neural_desktop_model_.get(), rescoring_context_),
                                         CandidateSource::NeuralDesktop});
         }
         quanpin::WordLatticeOptions lattice_options;
@@ -390,24 +388,24 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generate_with_helpcod
     if (help_codes.size() == 1)
     {
         auto &single_helpcode_cache = reversed_single_helpcode ? _cached_buffer_sgl_reversed : _cached_buffer_sgl;
-        if (const auto cached = single_helpcode_cache.get(pinyin_sequence))
+        if (single_helpcode_cache.find(pinyin_sequence))
         {
             reset_cache_if_database_changed();
-            if (const auto refreshed = single_helpcode_cache.get(pinyin_sequence))
+            if (const auto *refreshed = single_helpcode_cache.find(pinyin_sequence))
             {
-                return refreshed.value();
+                return *refreshed;
             }
         }
     }
     else if (help_codes.size() == 2)
     {
         const auto cache_key = double_helpcode_cache_key(pinyin_sequence, help_codes);
-        if (_cached_buffer_dbl.get(cache_key))
+        if (_cached_buffer_dbl.find(cache_key))
         {
             reset_cache_if_database_changed();
-            if (const auto cached = _cached_buffer_dbl.get(cache_key))
+            if (const auto *cached = _cached_buffer_dbl.find(cache_key))
             {
-                return cached.value();
+                return *cached;
             }
         }
     }
@@ -1145,6 +1143,16 @@ void ShuangpinDictionary::reset_cache()
     _cached_buffer_series.clear();
 }
 
+void ShuangpinDictionary::reset_sentence_cache()
+{
+    // 词格整句在 generateSeries 里合入，辅助码的三个缓存是从它的结果筛出来的，一起清；
+    // _cached_buffer 只是当前拼音的词库行，不含整句，留着。
+    _cached_buffer_sgl.clear();
+    _cached_buffer_sgl_reversed.clear();
+    _cached_buffer_dbl.clear();
+    _cached_buffer_series.clear();
+}
+
 void ShuangpinDictionary::set_sentence_association(const SentenceAssociationOptions &options)
 {
     if (sentence_association_ == options)
@@ -1164,11 +1172,11 @@ void ShuangpinDictionary::set_rescoring_context(const std::string &context)
     }
     rescoring_context_ = context;
     // 只有神经重排生效时上文才影响候选，理由见 QuanpinDictionary::set_rescoring_context。
-    const bool rescoring_active = (sentence_association_.neural_keyboard && neural_keyboard_model_ != nullptr) ||
-                                  (sentence_association_.neural_desktop && neural_desktop_model_ != nullptr);
+    const bool rescoring_active = (sentence_association_.neural_keyboard && neural_keyboard_model_.get() != nullptr) ||
+                                  (sentence_association_.neural_desktop && neural_desktop_model_.get() != nullptr);
     if (rescoring_active)
     {
-        reset_cache();
+        reset_sentence_cache();
     }
 }
 
