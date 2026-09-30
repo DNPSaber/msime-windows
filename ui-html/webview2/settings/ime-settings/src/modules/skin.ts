@@ -28,6 +28,8 @@ type ExternalSkin = {
   candidate?: { dark?: CandidateColors; light?: CandidateColors };
   toolbar?: { dark?: ToolbarColors; light?: ToolbarColors }; toolbarCornerRadiusDip?: number | null;
   borderWidthDip?: number | null; itemCornerRadiusDip?: number | null; shadow?: string; fontFamily?: string;
+  // Already resolved host-side, including the fallback to the base skin's skins/default manifest.
+  pageArrows?: boolean;
 };
 type SkinScanIssue = { folder: string; reason: string };
 
@@ -48,6 +50,8 @@ let catalogRevision = 0;
 let previewHorizontalHtml = '';
 let previewVerticalHtml = '';
 const SKIN_PREVIEW_PAGE_SIZE = 6;
+// page_arrows of the built-in skins, read host-side from skins/default/<id>/skin.toml. Off unless a manifest says so.
+let builtinPageArrows: Record<string, boolean> = {};
 
 function normalizeCandidateSkin(value: unknown): CandidateSkin {
   return typeof value === 'string' && /^[a-z0-9][a-z0-9._-]{0,63}$/.test(value) ? value : 'fluent';
@@ -68,6 +72,23 @@ function builtinPreviewClass(skinId: string): string {
   if (skinId === 'autumn_osmanthus') return 'skin-autumn-osmanthus';
   const external = findExternalSkin(skinId);
   return external ? builtinPreviewClass(external.base) : '';
+}
+
+export function skinShowsPageArrows(skinId: string): boolean {
+  const external = findExternalSkin(skinId);
+  if (external) return external.pageArrows === true;
+  return builtinPageArrows[skinId] === true;
+}
+
+function setPreviewPageArrows(host: Element, skinId: string): void {
+  host.classList.toggle('page-arrows-on', skinShowsPageArrows(skinId));
+}
+
+function syncBuiltinCardPageArrows(): void {
+  BUILTIN_SKINS.forEach((skin) => {
+    document.querySelectorAll(`[data-candidate-skin="${skin}"] :is([data-skin-horizontal], [data-skin-vertical])`)
+      .forEach((host) => setPreviewPageArrows(host, skin));
+  });
 }
 
 function limitCandidatePreview(host: HTMLElement): void {
@@ -454,7 +475,10 @@ export function syncAppearancePreviews(): void {
   document.querySelectorAll<HTMLElement>('.cand-preview .candidate').forEach((element) => {
     const caretPreview = element.classList.contains('caret-state-preview-host');
     BUILTIN_PREVIEW_CLASSES.forEach((name) => element.classList.toggle(name, previewClass === name));
-    if (!caretPreview) ensureContainerParent(element);
+    if (!caretPreview) {
+      ensureContainerParent(element);
+      setPreviewPageArrows(element, activeSkin);
+    }
     if (external) {
       if (caretPreview) {
         element.dataset.externalCaretSkinPreview = external.id;
@@ -572,6 +596,7 @@ function renderExternalSkins(): void {
     const horizontalHost = document.createElement('div');
     horizontalHost.className = `candidate wnd-h${previewClass ? ` ${previewClass}` : ''}`;
     horizontalHost.dataset.skinHorizontal = '';
+    setPreviewPageArrows(horizontalHost, skin.id);
     if (previewHorizontalHtml) fillPreviewHost(horizontalHost, previewHorizontalHtml);
     horizontalStage.append(horizontalHost);
     horizontal.append(horizontalStage);
@@ -582,6 +607,7 @@ function renderExternalSkins(): void {
     const verticalHost = document.createElement('div');
     verticalHost.className = `candidate wnd-v${previewClass ? ` ${previewClass}` : ''}`;
     verticalHost.dataset.skinVertical = '';
+    setPreviewPageArrows(verticalHost, skin.id);
     if (previewVerticalHtml) fillPreviewHost(verticalHost, previewVerticalHtml);
     verticalStage.append(verticalHost);
     vertical.append(verticalStage);
@@ -648,6 +674,18 @@ export function applyCandidateSkinCatalog(
 
 export function applyCandidateSkin(value: unknown): void { selectSkin(value, false); }
 
+// Called with every config snapshot before applyCandidateSkin, which then refreshes the appearance previews.
+export function applyBuiltinSkinPageArrows(value: unknown): void {
+  const next: Record<string, boolean> = {};
+  if (value && typeof value === 'object') {
+    BUILTIN_SKINS.forEach((skin) => {
+      next[skin] = (value as Record<string, unknown>)[skin] === true;
+    });
+  }
+  builtinPageArrows = next;
+  syncBuiltinCardPageArrows();
+}
+
 export function syncSkinPreviewTheme(theme: SkinPreviewTheme): void {
   activeTheme = theme;
   BUILTIN_SKINS.forEach((skin) => {
@@ -672,6 +710,7 @@ export async function setupSkin(): Promise<void> {
   document.querySelectorAll<HTMLElement>('[data-skin-toolbar]').forEach(fillToolbar);
   skinInitialized = true;
   BUILTIN_SKINS.forEach((skin) => applyBuiltinCardTheme(skin, resolvedPreviewTheme(skin)));
+  syncBuiltinCardPageArrows();
   syncSkinSwitches();
   syncAppearancePreviews();
   renderExternalSkins();

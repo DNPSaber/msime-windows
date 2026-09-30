@@ -126,6 +126,12 @@ Source: "{#MySourceRoot}\server_exe\*"; \
     DestDir: "{commonpf64}\metasequoiaime\server"; \
     Flags: ignoreversion recursesubdirs createallsubdirs
 
+; 内置皮肤的设置清单归用户改，和 config.toml 一样只补缺失的文件、升级不覆盖。
+; 单独暂存在 default_skins，不经 app_data：skins 整个目录是用户数据，卸载时不删。
+Source: "{#MySourceRoot}\default_skins\*"; \
+    DestDir: "{code:GetDataDir}\skins\default"; \
+    Flags: onlyifdoesntexist recursesubdirs createallsubdirs uninsneveruninstall
+
 #ifdef LightPackage
 ; 轻量包只覆盖前端 HTML，不带词库/辅助码/出厂配置。
 Source: "{#MySourceRoot}\app_data\html\*"; \

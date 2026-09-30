@@ -16,6 +16,19 @@
 
 除 `sogou-classic` 基于 `graphite` 外，其余皮肤均基于 `fluent`；全部支持横排 / 竖排布局以及深色 / 浅色主题。
 
+## 默认皮肤设置（`default/`）
+
+[`default/`](default/) 不是外部皮肤，而是五个内置皮肤（`fluent`、`wechat`、`graphite`、`willow_green`、`autumn_osmanthus`）各自的设置清单。安装包会把它们放到数据目录的 `skins\default\<id>\skin.toml`，升级时只补缺失的文件、不覆盖已有的，所以可以直接在那里改。
+
+内置皮肤的外观仍由输入法内置样式决定，这份清单只承载皮肤级的开关，目前支持：
+
+| 表 / 键 | 说明 |
+| --- | --- |
+| `schema_version` / `id` / `name` | `id` 必须与目录名一致 |
+| `[candidate_window]` `page_arrows` | 候选框里是否显示翻页箭头（`true` / `false`，出厂与缺省都是 `false`） |
+
+外部皮肤没写的开关沿用它 `base` 对应的这份清单。改完后在设置页刷新皮肤列表，或重新选择一次皮肤即可生效；设置页「外观」和「皮肤」里的候选框预览会一并显示或隐藏箭头。
+
 ## 安装
 
 把想用的皮肤目录整个复制到：
@@ -46,7 +59,7 @@ my-skin/
 | `id` / `name` / `version` / `author` / `description` | 基本信息，`id` 建议与目录名一致 |
 | `base` | 继承的内置皮肤，如 `fluent`；未写的键沿用 base |
 | `[supports]` | `layouts`（`horizontal` / `vertical`）、`themes`（`dark` / `light`） |
-| `[candidate_window]` | `min_width_dip`、`corner_radius_dip`（0–32）、`border_width_dip`（0–4）、`item_corner_radius_dip`（高亮圆角，0–16）、`shadow`（`none` / `soft` / `strong`）、`font_family`（排在用户字体前面） |
+| `[candidate_window]` | `min_width_dip`、`corner_radius_dip`（0–32）、`border_width_dip`（0–4）、`item_corner_radius_dip`（高亮圆角，0–16）、`shadow`（`none` / `soft` / `strong`）、`font_family`（排在用户字体前面）、`page_arrows`（翻页箭头：横排在候选右侧，竖排在最后一行下方、与序号左对齐；不写时沿用 base 的[默认皮肤设置](#默认皮肤设置default)，出厂关闭） |
 | `[candidate_window.decoration]` | 卡片上方的装饰图：`image`、`top_inset_dip`、`width_dip`、`align`（`left` / `center` / `right`） |
 | `[candidate_window.background]` | 卡片背景图：`image`、`fit`（`cover` / `contain` / `stretch`）、`opacity`（0–1） |
 | `[candidate.dark]` / `[candidate.light]` | 候选配色：`accent`、`selected`、`hover`、`surface`、`border`、`text`、`number`、`translation`、`show_selected_bar`；细分配色 `candidate_text`、`preedit_text`、`preedit_caret`、`selected_text`、`selected_number`、`selected_translation`、`selected_bar`、`preedit_background`、`preedit_divider` |

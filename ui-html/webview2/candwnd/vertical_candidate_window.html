@@ -11,6 +11,77 @@
   <script src="https://msime-contracts/schema.js"></script>
   <script src="https://msime-contracts/runtime.js"></script>
   <script>const serializeHostMessage = message => MsimeProtocol.serializeClientMessage(message, "candidate");</script>
+  <!-- 翻页箭头：与 horizontal_candidate_window.html 同一份，改动两边一起改。 -->
+  <style>
+    /* 皮肤开了 page_arrows 时宿主在 <html> 上写 data-page-arrows="on"。
+       横排是候选后面的一小列（贴着最后一行），竖排是最后一行下面的一矮行，“‹”的左端与序号对齐
+       （左外边距由 SetCandidatePager 按序号位置算出）。 */
+    .page-arrows { display: none; }
+    html[data-page-arrows="on"] .page-arrows {
+      display: flex; justify-content: flex-start; align-items: center; gap: 1px;
+      margin: -1px 0 1px 0; user-select: none;
+    }
+    html[data-page-arrows="on"][data-candidate-layout="horizontal"] .page-arrows {
+      display: inline-flex; vertical-align: bottom; margin: 0 1px 0.25em 2px;
+    }
+    .page-arrow {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 0.72em; height: 0.9em; border-radius: 3px;
+      color: var(--cand-num, var(--cand-text)); cursor: default;
+    }
+    .page-arrow::before {
+      content: ""; width: 0.28em; height: 0.28em; box-sizing: border-box;
+      border: solid currentColor; border-width: 0 0 max(1.2px, 0.075em) max(1.2px, 0.075em);
+      transform: translateX(0.07em) rotate(45deg);
+    }
+    .page-arrow-next::before { transform: translateX(-0.07em) rotate(-135deg); }
+    .page-arrow.disabled { opacity: 0.3; }
+    .hover-active .page-arrow:not(.disabled):hover { background: rgba(128, 128, 128, 0.22); }
+  </style>
+  <script>
+    // 箭头随候选模板一起被 innerHTML 换掉，宿主每帧调用这里补回；测量容器也放一份，
+    // 量出来的卡片尺寸才算上它。只给真实容器传可用状态，测量容器调用时不带参数。
+    window.SetCandidatePager = function (hasPrevious, hasNext) {
+      if (document.documentElement.dataset.pageArrows !== 'on') return;
+      ['realContainer', 'measureContainer'].forEach(function (id) {
+        const container = document.getElementById(id);
+        const wrappers = container ? Array.from(container.querySelectorAll(':scope > .row-wrapper')) : [];
+        if (!wrappers.length) return;
+        let pager = container.querySelector(':scope > .page-arrows');
+        if (!pager) {
+          // 箭头成了最后一个子元素，皮肤里定位尾项的 :last-child 找不到候选了，改用 .last-visible 标出来。
+          const shown = wrappers.filter(function (wrapper) { return wrapper.style.display !== 'none'; });
+          wrappers.forEach(function (wrapper) {
+            wrapper.classList.toggle('last-visible', wrapper === shown[shown.length - 1]);
+          });
+          pager = document.createElement('div');
+          pager.className = 'page-arrows';
+          pager.innerHTML = '<span class="page-arrow page-arrow-prev" data-page="previous"></span>' +
+            '<span class="page-arrow page-arrow-next" data-page="next"></span>';
+          container.appendChild(pager);
+          if (document.documentElement.dataset.candidateLayout !== 'horizontal') {
+            // 竖排：让“‹”的左端对齐最后一个候选的序号。箭头在 0.72em 宽的按钮里居中，左侧留白约 0.22em。
+            const num = shown.length ? shown[shown.length - 1].querySelector('.num, .cand-no') : null;
+            if (num) {
+              const left = num.getBoundingClientRect().left - container.getBoundingClientRect().left - container.clientLeft -
+                (Number.parseFloat(getComputedStyle(container).paddingLeft) || 0);
+              pager.style.marginLeft = 'calc(' + left.toFixed(2) + 'px - 0.22em)';
+            }
+          }
+        }
+        if (id === 'realContainer' && typeof hasPrevious === 'boolean') {
+          pager.querySelector('.page-arrow-prev').classList.toggle('disabled', !hasPrevious);
+          pager.querySelector('.page-arrow-next').classList.toggle('disabled', !hasNext);
+        }
+      });
+    };
+    document.addEventListener('click', function (event) {
+      if (event.button !== 0 || !(event.target instanceof Element)) return;
+      const arrow = event.target.closest('#realContainer .page-arrow');
+      if (!arrow || arrow.classList.contains('disabled')) return;
+      window.chrome.webview.postMessage(serializeHostMessage({ type: 'candidatePage', data: arrow.dataset.page }));
+    });
+  </script>
   <script>
     let lastPointerScreenPosition = null;
     let pointerProbeCount = 0;

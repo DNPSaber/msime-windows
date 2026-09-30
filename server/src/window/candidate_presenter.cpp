@@ -219,6 +219,55 @@ float StickyCardExtent(float kept, float natural)
     return natural >= kept || natural < kept * kStickyCardShrinkRatio ? natural : kept;
 }
 
+// 横排且皮肤开了翻页箭头时的候选行：列表占去箭头以外的全部宽度，箭头贴在最右侧，
+// 相当于在候选右边多出一列窄列；箭头的竖直位置由它自己的外边距对齐到最后一行。
+class CandidateRowWithPager : public msimeui::Panel
+{
+  public:
+    CandidateRowWithPager(std::shared_ptr<msimeui::Visual> list, std::shared_ptr<msimeui::Visual> pager)
+        : list_(list.get()), pager_(pager.get())
+    {
+        AddChild(std::move(list));
+        AddChild(std::move(pager));
+    }
+
+    msimeui::SizeF Measure(const msimeui::SizeF &availableSize) override
+    {
+        const msimeui::SizeF pager = pager_->MeasureInLayout(availableSize);
+        const msimeui::SizeF list =
+            list_->MeasureInLayout({(std::max)(availableSize.width - pager.width, 1.0f), availableSize.height});
+        pagerWidth_ = pager.width;
+        return {list.width + pager.width, (std::max)(list.height, pager.height)};
+    }
+
+    void Arrange(const msimeui::RectF &finalRect) override
+    {
+        bounds_ = finalRect;
+        const float listWidth = (std::max)(finalRect.width - pagerWidth_, 0.0f);
+        list_->ArrangeInLayout({finalRect.x, finalRect.y, listWidth, finalRect.height});
+        pager_->ArrangeInLayout({finalRect.x + listWidth, finalRect.y, pagerWidth_, finalRect.height});
+    }
+
+    void Render(msimeui::DeviceResources &deviceResources) override
+    {
+        for (const auto &child : children_)
+        {
+            child->Render(deviceResources);
+        }
+    }
+
+  private:
+    msimeui::Visual *list_ = nullptr;
+    msimeui::Visual *pager_ = nullptr;
+    float pagerWidth_ = 0.0f;
+};
+
+D2D1_COLOR_F WithAlpha(D2D1_COLOR_F color, float alpha)
+{
+    color.a *= alpha;
+    return color;
+}
+
 } // namespace
 
 struct CandidatePresenter::Impl
@@ -235,6 +284,10 @@ struct CandidatePresenter::Impl
     std::shared_ptr<msimeui::StackPanel> body;
     std::shared_ptr<msimeui::TextBlock> preedit;
     std::shared_ptr<msimeui::CandidateList> list;
+    // 皮肤关掉翻页箭头时为空。场景按 sceneHorizontal / scenePageArrows 搭建，两者变了就重建。
+    std::shared_ptr<msimeui::PagerArrows> pager;
+    bool sceneHorizontal = false;
+    bool scenePageArrows = false;
     std::shared_ptr<msimeui::Popup> contextMenu;
     std::shared_ptr<msimeui::Popup> contextSubmenu;
     std::shared_ptr<msimeui::MenuFlyoutItem> fixPositionItem;
@@ -302,7 +355,32 @@ void CandidatePresenter::RebuildScene()
     impl_->body = std::make_shared<msimeui::StackPanel>(2.0f);
     impl_->body->SetPadding({0.0f, 0.0f, 0.0f, 0.0f});
     impl_->body->AddChild(impl_->preedit);
-    impl_->body->AddChild(impl_->list);
+    impl_->pager.reset();
+    if (impl_->scenePageArrows)
+    {
+        impl_->pager = std::make_shared<msimeui::PagerArrows>();
+        // 箭头在自己的槽位里贴右下角，槽位铺满即可（竖排是整行宽，横排是列表的整个高度）。
+        impl_->pager->SetVerticalAlignment(msimeui::VerticalAlignment::Stretch);
+        impl_->pager->SetOnClick([this](msimeui::PagerArrows::Part part) {
+            if (hwnd_)
+            {
+                PostMessageW(hwnd_, WM_PAGE_CANDIDATE_ARROW,
+                             part == msimeui::PagerArrows::Part::Next ? CANDIDATE_PAGE_NEXT : CANDIDATE_PAGE_PREVIOUS,
+                             1);
+            }
+        });
+    }
+    if (impl_->pager && impl_->sceneHorizontal)
+    {
+        impl_->body->AddChild(std::make_shared<CandidateRowWithPager>(impl_->list, impl_->pager));
+    }
+    else
+    {
+        // 竖排时箭头是列表下方单独的一矮行，靠右。
+        impl_->body->AddChild(impl_->list);
+        if (impl_->pager)
+            impl_->body->AddChild(impl_->pager);
+    }
     msimeui::Brush brush;
     brush.fill = D2D1::ColorF(0x202020);
     brush.stroke = ParseCssColor("#9b9b9b2e", D2D1::ColorF(0x3A3A3A, 0.18f));
@@ -379,6 +457,17 @@ void CandidatePresenter::ApplySkin()
     // 横排时高亮内缩于外框，首项、尾项落在卡片四角上的那几个角与卡片同 R，其余角保持
     // itemRadius，对应 CSS 横排的 .pinyin + .row-wrapper / .last-visible 规则。
     const bool horizontalLayout = GetConfiguredCandidateWindowLayout() == "horizontal";
+    // 翻页箭头改变的是场景结构（竖排多一行、横排多一列），开关或排列方式变了就整棵重建，
+    // 再往下套用配色与尺寸。重建会清掉指纹，这里补回去。
+    const bool pageArrows = CandidateSkinCatalog::ResolvePageArrows(std::filesystem::path(skinsRoot), skinId,
+                                                                    package ? &*package : nullptr);
+    if (pageArrows != impl_->scenePageArrows || horizontalLayout != impl_->sceneHorizontal)
+    {
+        impl_->scenePageArrows = pageArrows;
+        impl_->sceneHorizontal = horizontalLayout;
+        RebuildScene();
+        lastSkinFingerprint_ = skinKey;
+    }
     if (baseSkin == "fluent")
     {
         if (horizontalLayout)
@@ -662,6 +751,37 @@ void CandidatePresenter::ApplySkin()
     impl_->list->SetOrientation(GetConfiguredCandidateWindowLayout() == "horizontal"
                                     ? msimeui::CandidateList::Orientation::Horizontal
                                     : msimeui::CandidateList::Orientation::Vertical);
+    if (impl_->pager)
+    {
+        // 箭头跟着候选字号缩放，与序号差不多大；颜色用序号色，悬停底色沿用候选项的悬停色。
+        msimeui::PagerArrows::Appearance pagerAppearance;
+        pagerAppearance.buttonWidth = std::round(fontSize * 0.72f);
+        pagerAppearance.buttonHeight = std::round(fontSize * 0.9f);
+        pagerAppearance.gap = 1.0f;
+        pagerAppearance.glyphSize = fontSize * 0.5f;
+        pagerAppearance.strokeWidth = (std::max)(1.2f, fontSize / 13.0f);
+        pagerAppearance.cornerRadius = (std::min)(3.0f, tokens.itemRadius);
+        pagerAppearance.glyphColor = tokens.number;
+        pagerAppearance.disabledGlyphColor = WithAlpha(tokens.number, 0.3f);
+        pagerAppearance.hoverFill = tokens.hover;
+        pagerAppearance.pressedFill = tokens.selected.a > 0.001f ? tokens.selected : tokens.hover;
+        impl_->pager->SetAppearance(pagerAppearance);
+        if (horizontalLayout)
+        {
+            // 横排：窄列与候选之间留一点空，箭头竖直居中在最后一行上。
+            const float lift = (std::max)(0.0f, (appearance.itemHeight - pagerAppearance.buttonHeight) * 0.5f);
+            impl_->pager->SetMargin({2.0f, 0.0f, 1.0f, lift});
+        }
+        else
+        {
+            // 竖排：矮行抵掉 body 的 2px 行距，贴着最后一个候选、靠左，“‹”的左端与序号左端对齐。
+            // 序号从候选行的 contentPadLeft + textPadLeft 处开始；箭头在按钮里居中，要减去它左侧的留白。
+            impl_->pager->SetHorizontalAlignment(msimeui::HorizontalAlignment::Leading);
+            const float labelLeft = appearance.contentPadLeft + appearance.textPadLeft;
+            const float glyphInset = (pagerAppearance.buttonWidth - pagerAppearance.GlyphWidth()) * 0.5f;
+            impl_->pager->SetMargin({labelLeft - glyphInset, -1.0f, 0.0f, 1.0f});
+        }
+    }
     impl_->preedit->SetFontFamily(appearance.fontFamily);
     impl_->preedit->SetFallbackFontFamilies(appearance.fallbackFontFamilies);
     impl_->preedit->SetFontSize(preeditSize);
@@ -752,6 +872,10 @@ std::uint64_t CandidatePresenter::FillItemsFromUi()
     impl_->list->SetItems(std::move(items));
     impl_->list->SetSelectedIndex(static_cast<size_t>((std::max)(0, page->selected_index_in_page)));
     ignoreSelectionCallback_ = false;
+    if (impl_->pager)
+    {
+        impl_->pager->SetEnabled(page->has_previous_page, page->has_next_page);
+    }
     return page->generation;
 }
 
@@ -1215,6 +1339,10 @@ void CandidatePresenter::ShowFromGlobalState(POINT caret)
     }
     const std::uint64_t renderedGeneration = FillItemsFromUi();
     impl_->list->SetHoverEnabled(hoverArmed_);
+    if (impl_->pager)
+    {
+        impl_->pager->SetHoverEnabled(hoverArmed_);
+    }
     // Resolve the scale once per show and thread it through measure, clamping,
     // window sizing and rendering DPI — a foreground window changing mid-show
     // must not split measure (clamped at one scale) from placement (another).
@@ -1304,6 +1432,10 @@ void CandidatePresenter::Hide()
     if (impl_ && impl_->list)
     {
         impl_->list->SetHoverEnabled(false);
+    }
+    if (impl_ && impl_->pager)
+    {
+        impl_->pager->SetHoverEnabled(false);
     }
     // Cloaking keeps the swap chain's last frame. The next show presents and
     // then uncloaks, but DWM may compose the uncloaked host before it latches
@@ -1407,6 +1539,10 @@ void CandidatePresenter::ArmHoverIfPointerMoved()
     if (impl_ && impl_->list)
     {
         impl_->list->SetHoverEnabled(true);
+    }
+    if (impl_ && impl_->pager)
+    {
+        impl_->pager->SetHoverEnabled(true);
     }
 }
 

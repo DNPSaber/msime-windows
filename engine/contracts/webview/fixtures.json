@@ -167,6 +167,26 @@
     "direction": "client"
   },
   {
+    "name": "candidate page arrow next",
+    "message": {
+      "type": "candidatePage",
+      "data": "next"
+    },
+    "valid": true,
+    "surface": "candidate",
+    "direction": "client"
+  },
+  {
+    "name": "invalid candidate page arrow direction",
+    "message": {
+      "type": "candidatePage",
+      "data": "up"
+    },
+    "valid": false,
+    "surface": "candidate",
+    "direction": "client"
+  },
+  {
     "name": "invalid candidate wheel from settings",
     "message": {
       "type": "candidateWheel",

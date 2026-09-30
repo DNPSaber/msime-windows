@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { applyCandidateSkin, applyCandidateSkinCatalog } from './skin';
+import { applyBuiltinSkinPageArrows, applyCandidateSkin, applyCandidateSkinCatalog, skinShowsPageArrows } from './skin';
 
 const readStyle = (path: string) => readFileSync(fileURLToPath(new URL(path, import.meta.url)), 'utf8');
 
@@ -19,7 +19,7 @@ it('keeps horizontal skin previews inside their card', () => {
 class PreviewElement {
   dataset: Record<string, string> = {};
   style = { setProperty: vi.fn(), removeProperty: vi.fn() };
-  classList = { toggle: vi.fn(), contains: (name: string) => name === 'caret-state-preview-host' };
+  classList = { toggle: vi.fn(), contains: (name: string): boolean => name === 'caret-state-preview-host' };
   querySelector() { return null; }
 }
 
@@ -312,4 +312,29 @@ it('emits no toolbar rules for a skin without a toolbar table', () => {
   applyCandidateSkin('custom-no-toolbar');
 
   expect(generatedCss).not.toContain('ftb-preview-host');
+});
+
+it('shows page arrows in the appearance preview only for skins that turn them on', () => {
+  // A candidate preview, not the caret-state one, is the host that carries the arrows.
+  preview.classList.contains = () => false;
+  applyBuiltinSkinPageArrows({ fluent: false, graphite: true, wechat: 'yes' });
+  expect(skinShowsPageArrows('graphite')).toBe(true);
+  expect(skinShowsPageArrows('wechat')).toBe(false);
+
+  applyCandidateSkin('graphite');
+  expect(preview.classList.toggle).toHaveBeenLastCalledWith('page-arrows-on', true);
+  applyCandidateSkin('fluent');
+  expect(preview.classList.toggle).toHaveBeenLastCalledWith('page-arrows-on', false);
+
+  // An external skin carries the value the host already resolved against its base.
+  applyCandidateSkinCatalog([
+    { id: 'custom-arrows', name: 'Arrows', version: '1', base: 'fluent', layouts: ['vertical'], themes: ['dark'],
+      compatible: true, pageArrows: true }
+  ], [], '', true, 8);
+  applyCandidateSkin('custom-arrows');
+  expect(preview.classList.toggle).toHaveBeenLastCalledWith('page-arrows-on', true);
+
+  // Without the host's map every built-in skin keeps the arrows off.
+  applyBuiltinSkinPageArrows(undefined);
+  expect(skinShowsPageArrows('graphite')).toBe(false);
 });

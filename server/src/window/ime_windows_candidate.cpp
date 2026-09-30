@@ -773,6 +773,14 @@ LRESULT CALLBACK WndProcCandWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
                                                 static_cast<int>(lParam));
         break;
 
+    case WM_PAGE_CANDIDATE_ARROW:
+        // 翻页箭头是皮肤显式放出来的按钮，点了就翻，与滚轮开关无关。
+        FanyNamedPipe::EnqueueCandidateUiPaging(wParam == CANDIDATE_PAGE_NEXT
+                                                    ? FanyNamedPipe::CandidateUiAction::PageDown
+                                                    : FanyNamedPipe::CandidateUiAction::PageUp,
+                                                static_cast<int>(lParam));
+        break;
+
     case WM_CLEAR_IME_ENGINE_CACHE: {
 #ifdef FANY_DEBUG
         (void)0;

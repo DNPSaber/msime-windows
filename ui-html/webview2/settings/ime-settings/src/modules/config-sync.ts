@@ -75,6 +75,7 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (!target || target === 'skin') {
     void import('./skin').then((module) => {
       if (data !== lastSnapshot) return;
+      module.applyBuiltinSkinPageArrows(data?.appearance?.builtin_skin_page_arrows);
       module.applyCandidateSkinCatalog(
         data?.appearance?.external_candidate_skins,
         data?.appearance?.candidate_skin_scan_issues,

@@ -388,6 +388,8 @@ void PublishBuiltCandidatePage(const std::wstring &candidate_string)
     snapshot->selected_index_in_page = ui.selected_index_in_page;
     snapshot->page_count = ui.current_page_count();
     snapshot->page_item_count = ui.cur_page_item_cnt;
+    snapshot->has_previous_page = ui.has_prev_page();
+    snapshot->has_next_page = ui.has_next_page() || ui.is_current_page_full();
     // Stamp before publishing so the UI thread can echo back exactly which page it painted.
     snapshot->generation = ++Global::candidate_page_generation;
     Global::PublishCandidatePageSnapshot(std::move(snapshot));

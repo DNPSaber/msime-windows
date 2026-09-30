@@ -192,14 +192,16 @@ void AppendExternalCandidateColorCss(std::wstring &css, const CandidateSkinCatal
     add(colors.accent, L".cursor, .first::before", L"background");
     // 悬停在选中项上保持选中色；base 皮肤的 .cand.first:hover（如微信绿的 #07c160）会盖过低特异度的 .cand.first。
     add(colors.selected, L".first, .cand.first, .hover-active .cand.first:hover", L"background-color");
-    add(colors.hover, L".hover-active .cand:not(.first):hover", L"background-color");
+    add(colors.hover, L".hover-active .cand:not(.first):hover, .hover-active .page-arrow:not(.disabled):hover",
+        L"background-color");
     add(colors.surface, L".container", L"background");
     add(colors.border, L".container", L"border-color");
     // .text 画的是 var(--cand-text)，只改 .container 的 color 够不着它。设置页的候选文字色写在 :root 的内联样式里，
     // 仍然压过这一条，与 D2D 的优先级一致。
     add(colors.text, L":root", L"--cand-text");
     add(colors.text, L".container", L"color");
-    add(colors.number, L".num, .cand-no", L"color");
+    // 翻页箭头与 D2D 一样用序号色。
+    add(colors.number, L".num, .cand-no, .page-arrow", L"color");
     // 翻译默认继承 .text 的颜色再叠 opacity .62；单独配色时取原值，不再叠透明度。
     add(colors.translation, L".cand-translation", L"color");
     if (!colors.translation.empty())
@@ -459,17 +461,20 @@ bool InjectExternalToolbarSkin(std::wstring &html, const CandidateSkinCatalog::P
 }
 
 void InjectCandidateDocumentSkin(std::wstring &html, const std::wstring &builtInCss, const std::string &skin,
-                                 const std::string &base, const std::string &layout, const std::string &theme)
+                                 const std::string &base, const std::string &layout, const std::string &theme,
+                                 bool pageArrows)
 {
     if (html.empty())
         return;
     const size_t htmlTagEnd = html.find(L'>', html.find(L"<html"));
     if (htmlTagEnd != std::wstring::npos)
     {
+        // data-page-arrows 由候选页的共享样式读取，决定翻页箭头显示与否。
         html.insert(htmlTagEnd, fmt::format(L" data-candidate-skin=\"{}\" data-candidate-base=\"{}\" "
-                                            L"data-candidate-layout=\"{}\" data-candidate-theme=\"{}\"",
+                                            L"data-candidate-layout=\"{}\" data-candidate-theme=\"{}\" "
+                                            L"data-page-arrows=\"{}\"",
                                             string_to_wstring(skin), string_to_wstring(base), string_to_wstring(layout),
-                                            string_to_wstring(theme)));
+                                            string_to_wstring(theme), pageArrows ? L"on" : L"off"));
     }
     const size_t headEnd = html.find(L"</head>");
     if (headEnd != std::wstring::npos && !builtInCss.empty())
@@ -534,8 +539,11 @@ int PrepareHtmlForWnds()
         builtInCandidateCss = ReadHtmlFile(assetPath + L"/html/webview2/candwnd/skins/fluent/" +
                                            string_to_wstring(candidateLayout) + L"_dark.css");
     }
+    const bool pageArrows =
+        CandidateSkinCatalog::ResolvePageArrows(std::filesystem::path(assetPath + L"\\skins"), candidateSkin,
+                                                activeExternalCandidateSkin ? &*activeExternalCandidateSkin : nullptr);
     InjectCandidateDocumentSkin(::HTMLStringCandWnd, builtInCandidateCss, candidateSkin, baseCandidateSkin,
-                                candidateLayout, candidateTheme);
+                                candidateLayout, candidateTheme, pageArrows);
     if (activeExternalCandidateSkin)
     {
         const std::wstring skinsRoot = assetPath + L"\\skins";

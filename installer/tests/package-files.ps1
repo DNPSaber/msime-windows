@@ -44,7 +44,8 @@ try {
         'ui-html/webview2/candwnd/index.html',
         'ui-html/webview2/menu/index.html',
         'ui-html/webview2/ftb/index.html',
-        'ui-html/webview2/settings/ime-settings/dist/index.html'
+        'ui-html/webview2/settings/ime-settings/dist/index.html',
+        'skins/default/fluent/skin.toml'
     )) { Write-Fixture $file }
     Write-Fixture 'server/assets/tables/pinyin.txt' 'xing'
     Write-Fixture 'MetasequoiaImeDict/out/dictionary-manifest.json' '{"manifest_version":1}'
@@ -60,8 +61,16 @@ try {
                          'tsf_dll/64/MetasequoiaImeTsf.dll', 'tsf_dll/64/MetasequoiaImeTsf.pdb',
                          'server_exe/MetasequoiaImeServer.pdb',
                          'server_exe/MetasequoiaImeDictionaryReplay.pdb',
-                         'app_data/helpcodes/helpcode.txt', 'THIRD_PARTY_NOTICES.txt', 'LICENSE.txt')) {
+                         'app_data/helpcodes/helpcode.txt', 'default_skins/fluent/skin.toml',
+                         'THIRD_PARTY_NOTICES.txt', 'LICENSE.txt')) {
         if (-not (Test-Path (Join-Path $installer $file))) { throw "Missing packaged file: $file" }
+    }
+    # 内置皮肤清单落在数据目录的 skins 下，那是用户目录（外部皮肤也在里面），卸载时不能删；
+    # 它若经 app_data 暂存，就得进 IsShippedAppDataItem 名单，卸载会把整个 skins 带走。
+    if (Test-Path (Join-Path $installer 'app_data/skins')) { throw 'Default skin settings were staged under app_data' }
+    $issText = [IO.File]::ReadAllText((Join-Path $installer 'msime_setup.iss'))
+    if ($issText -notmatch '(?s)Source: "\{#MySourceRoot\}\\default_skins\\\*";[^\r\n]*\\\s*DestDir: "\{code:GetDataDir\}\\skins\\default";[^\r\n]*\\\s*Flags: onlyifdoesntexist') {
+        throw 'Default skin settings must be installed to skins\default with onlyifdoesntexist'
     }
     # 数据目录不整个归输入法时（旧版安装器把标记写进了用户原有的文件夹，#537），卸载只按
     # IsShippedAppDataItem 等名单删。包里新增了顶层条目而名单没跟上，卸载就会把它漏在用户目录里。

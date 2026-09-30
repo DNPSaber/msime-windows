@@ -17,6 +17,7 @@ min_width_dip = 0
 corner_radius_dip = 2
 border_width_dip = 1
 shadow = "soft"
+page_arrows = true
 
 [candidate.dark]
 accent = "#6FAEF2"

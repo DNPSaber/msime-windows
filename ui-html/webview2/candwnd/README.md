@@ -20,6 +20,8 @@ skins/
 
 `ApplyCandidateFrame` 只隐藏用不到的候选行、不删除它们，所以 `:last-child` 不一定是最后一个可见行；需要定位尾项的皮肤用它维护的 `.row-wrapper.last-visible`。
 
+翻页箭头 `.page-arrows` 不在 body 模板里：Server 每次用模板换掉容器内容后调用页面的 `SetCandidatePager(hasPrevious, hasNext)`，由它追加到 `#realContainer` 与 `#measureContainer` 末尾（测量容器调用时不带参数，只补元素不改状态），同时给最后一个候选行标上 `.last-visible`；竖排时按最后一个序号的位置算出左外边距，让“‹”与序号左对齐。设置页的预览用的是 `ui-html/webview2/settings/ime-settings/src/styles/modules/candidate/page-arrows.css` 里的同一套尺寸。是否显示由 Server 写在 `<html>` 上的 `data-page-arrows="on|off"` 决定，取值来自皮肤的 `page_arrows`（内置皮肤读数据目录 `skins/default/<id>/skin.toml`）。点击发出 `candidatePage` 消息，数据为 `previous` / `next`。样式在两份 HTML 里各有一份，改动要两边一起改。
+
 外部皮肤使用 `skin.toml` 声明几何与候选配色，可选 `[toolbar]`、`[toolbar.dark]`、`[toolbar.light]` 覆盖悬浮工具栏的圆角与配色（D2D 与 WebView2 两个渲染器都生效）。不提供候选框 HTML、`cand.css` 或工具栏 CSS。
 
 候选配色写在 `[candidate.dark]` / `[candidate.light]` 下，键都可省略：`accent`、`selected`、`hover`、`surface`、`border`、`text`、`number`、`translation` 和布尔值 `show_selected_bar`。`translation` 是候选后面的翻译文本：不写时沿用候选文字色并降到 62% 不透明度；写了就按原值绘制（选中行另写 `selected_translation` 时用后者），D2D 与 WebView2 两个后端一致。

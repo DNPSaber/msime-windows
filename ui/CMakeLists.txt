@@ -33,6 +33,7 @@ add_library(msimeui STATIC
     src/Image.cpp
     src/ListView.cpp
     src/Menu.cpp
+    src/PagerArrows.cpp
     src/Popup.cpp
     src/RangeControls.cpp
     src/Separator.cpp

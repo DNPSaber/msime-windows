@@ -662,6 +662,75 @@ class CandidateList : public Visual
     ContextMenuHandler onContextMenu_;
 };
 
+// A pair of small "previous" / "next" chevron buttons side by side, e.g. to page a
+// list. Chevrons are drawn as strokes, so they do not depend on any font. A
+// disabled button keeps its slot (the layout does not jump) and ignores clicks.
+class PagerArrows : public Visual
+{
+  public:
+    enum class Part
+    {
+        None,
+        Previous,
+        Next,
+    };
+
+    struct Appearance
+    {
+        // Size of one button; the control is two buttons plus gap wide.
+        float buttonWidth = 12.0f;
+        float buttonHeight = 14.0f;
+        float gap = 0.0f;
+        // Chevron height and stroke, centred in its button.
+        float glyphSize = 7.0f;
+        float strokeWidth = 1.3f;
+        float cornerRadius = 3.0f;
+        D2D1_COLOR_F glyphColor = D2D1::ColorF(0xE9E8E8, 0.8f);
+        D2D1_COLOR_F disabledGlyphColor = D2D1::ColorF(0xE9E8E8, 0.25f);
+        D2D1_COLOR_F hoverFill = D2D1::ColorF(0x414141);
+        D2D1_COLOR_F pressedFill = D2D1::ColorF(0x353535);
+
+        // Horizontal extent of one chevron, so callers can line its tip up with neighbouring content.
+        float GlyphWidth() const
+        {
+            return glyphSize * 0.5f * 0.55f;
+        }
+    };
+
+    using ClickHandler = std::function<void(Part part)>;
+
+    PagerArrows() = default;
+
+    void SetAppearance(Appearance appearance);
+    void SetEnabled(bool previous, bool next);
+    bool IsPartEnabled(Part part) const;
+    void SetOnClick(ClickHandler handler);
+    // Hover feedback can be switched off, e.g. until the pointer really moves.
+    void SetHoverEnabled(bool enabled);
+    // Which button a point (DIPs, window space) falls on.
+    Part HitTestPart(const PointF &point) const;
+    RectF GetPartBounds(Part part) const;
+
+    SizeF Measure(const SizeF &availableSize) override;
+    void Arrange(const RectF &finalRect) override;
+    void Render(DeviceResources &deviceResources) override;
+    bool HitTest(const PointF &point) const override;
+    bool OnMouseDown(const POINT &point, WPARAM keyState) override;
+    bool OnMouseUp(const POINT &point, WPARAM keyState) override;
+    bool OnMouseMove(const POINT &point, WPARAM keyState) override;
+    void OnMouseLeave() override;
+    HCURSOR GetCursor() const override;
+
+  private:
+    Appearance appearance_{};
+    bool previousEnabled_ = true;
+    bool nextEnabled_ = true;
+    bool hoverEnabled_ = true;
+    Part hovered_ = Part::None;
+    Part pressed_ = Part::None;
+    ClickHandler onClick_;
+};
+
 class TreeView : public Visual
 {
   public:
