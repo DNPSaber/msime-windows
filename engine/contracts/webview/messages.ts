@@ -27,6 +27,7 @@ export type ClientMessage =
   | { "type": "pin"; "protocolVersion"?: 1; "data": number }
   | { "type": "clearPosition"; "protocolVersion"?: 1; "data": number }
   | { "type": "candidateWheel"; "protocolVersion"?: 1; "data": number }
+  | { "type": "candidatePage"; "protocolVersion"?: 1; "data": "previous" | "next" }
   | { "type": "fixPosition"; "protocolVersion"?: 1; "data": { "index": number; "position": number } }
   | { "type": "contextMenuResize"; "protocolVersion"?: 1; "data": { "width": number; "height": number; "topExpansion"?: number; "leftExpansion"?: number } }
   | { "type": "contextMenuClosed"; "protocolVersion"?: 1 }

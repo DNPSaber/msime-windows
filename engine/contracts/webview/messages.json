@@ -374,6 +374,18 @@
         "maximum": 32767
       }
     },
+    "candidatePage": {
+      "surfaces": [
+        "candidate"
+      ],
+      "data": {
+        "type": "string",
+        "enum": [
+          "previous",
+          "next"
+        ]
+      }
+    },
     "fixPosition": {
       "surfaces": [
         "candidate"
