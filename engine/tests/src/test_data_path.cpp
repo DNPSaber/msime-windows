@@ -3,6 +3,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <stdexcept>
+#include <cstdio>
 
 namespace
 {
@@ -19,7 +20,7 @@ void set_data_directory(const std::filesystem::path &path)
 }
 } // namespace
 
-int main()
+int run_test()
 {
     const std::filesystem::path expected =
         std::filesystem::temp_directory_path() / std::filesystem::u8path("metasequoia-ime-词库");
@@ -38,4 +39,22 @@ int main()
         throw std::runtime_error("The data file path was not preserved as UTF-8.");
     }
     return 0;
+}
+
+int main()
+{
+    try
+    {
+        return run_test();
+    }
+    catch (const std::exception &error)
+    {
+        std::fprintf(stderr, "%s\n", error.what());
+        return 1;
+    }
+    catch (...)
+    {
+        std::fprintf(stderr, "An exception escaped the test body.\n");
+        return 1;
+    }
 }

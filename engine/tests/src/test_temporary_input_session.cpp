@@ -10,6 +10,7 @@
 #include <filesystem>
 #include <stdexcept>
 #include <string>
+#include <cstdio>
 
 namespace
 {
@@ -67,7 +68,7 @@ void type(metasequoia::InputSession &session, const std::string &text)
 }
 } // namespace
 
-int main()
+int run_test()
 {
     const auto suffix = std::to_string(std::chrono::high_resolution_clock::now().time_since_epoch().count());
     const auto data_directory = std::filesystem::temp_directory_path() / ("metasequoia-temporary-mode-" + suffix);
@@ -241,4 +242,22 @@ int main()
             "Disabled temporary Japanese swallowed Shift+R.");
 
     return 0;
+}
+
+int main()
+{
+    try
+    {
+        return run_test();
+    }
+    catch (const std::exception &error)
+    {
+        std::fprintf(stderr, "%s\n", error.what());
+        return 1;
+    }
+    catch (...)
+    {
+        std::fprintf(stderr, "An exception escaped the test body.\n");
+        return 1;
+    }
 }

@@ -221,4 +221,9 @@ int main(int argc, char **argv)
         std::cerr << e.what() << '\n';
         return 1;
     }
+    catch (...)
+    {
+        std::cerr << "An exception escaped the test body.\n";
+        return 1;
+    }
 }

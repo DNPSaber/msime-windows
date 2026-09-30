@@ -116,7 +116,7 @@ double reference_score(const neural::SentenceModel &model, const std::string &co
 }
 } // namespace
 
-int main()
+int run_test()
 {
     const metasequoia::RuntimePaths paths = metasequoia::RuntimePaths::legacy();
     const neural::SentenceModel *model = neural::shared_sentence_model(
@@ -355,4 +355,22 @@ int main()
     }
     std::printf("Neural sentence reranking test passed.\n");
     return 0;
+}
+
+int main()
+{
+    try
+    {
+        return run_test();
+    }
+    catch (const std::exception &error)
+    {
+        std::fprintf(stderr, "%s\n", error.what());
+        return 1;
+    }
+    catch (...)
+    {
+        std::fprintf(stderr, "An exception escaped the test body.\n");
+        return 1;
+    }
 }

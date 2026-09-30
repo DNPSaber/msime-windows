@@ -13,6 +13,7 @@
 #include <fstream>
 #include <future>
 #include <stdexcept>
+#include <cstdio>
 
 namespace
 {
@@ -794,8 +795,26 @@ void test_runtime_isolation()
     }
 }
 
-int main()
+int run_test()
 {
     test_runtime_isolation();
     return 0;
+}
+
+int main()
+{
+    try
+    {
+        return run_test();
+    }
+    catch (const std::exception &error)
+    {
+        std::fprintf(stderr, "%s\n", error.what());
+        return 1;
+    }
+    catch (...)
+    {
+        std::fprintf(stderr, "An exception escaped the test body.\n");
+        return 1;
+    }
 }

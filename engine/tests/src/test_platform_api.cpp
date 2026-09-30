@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <type_traits>
+#include <cstdio>
 
 #ifdef _WIN32
 static_assert(std::is_same_v<decltype(KeyStroke::vk), UINT>);
@@ -16,8 +17,26 @@ static_assert(std::is_same_v<decltype(KeyStroke::wch), char16_t>);
 
 void test_public_session_interface();
 
-int main()
+int run_test()
 {
     test_public_session_interface();
     return 0;
+}
+
+int main()
+{
+    try
+    {
+        return run_test();
+    }
+    catch (const std::exception &error)
+    {
+        std::fprintf(stderr, "%s\n", error.what());
+        return 1;
+    }
+    catch (...)
+    {
+        std::fprintf(stderr, "An exception escaped the test body.\n");
+        return 1;
+    }
 }

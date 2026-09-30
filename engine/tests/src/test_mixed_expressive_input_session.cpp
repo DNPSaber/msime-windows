@@ -12,6 +12,7 @@
 #include <stdexcept>
 #include <string>
 #include <vector>
+#include <cstdio>
 
 namespace
 {
@@ -138,7 +139,7 @@ bool has_source(const metasequoia::InputSession &session, CandidateSource source
 }
 } // namespace
 
-int main()
+int run_test()
 {
     const auto suffix = std::to_string(std::chrono::high_resolution_clock::now().time_since_epoch().count());
     const std::filesystem::path root =
@@ -278,4 +279,22 @@ int main()
     user_dictionary::close_default_user_database();
 
     return 0;
+}
+
+int main()
+{
+    try
+    {
+        return run_test();
+    }
+    catch (const std::exception &error)
+    {
+        std::fprintf(stderr, "%s\n", error.what());
+        return 1;
+    }
+    catch (...)
+    {
+        std::fprintf(stderr, "An exception escaped the test body.\n");
+        return 1;
+    }
 }

@@ -12,6 +12,7 @@
 #include <fstream>
 #include <stdexcept>
 #include <string>
+#include <cstdio>
 
 namespace
 {
@@ -75,7 +76,7 @@ void require_words(const std::vector<WordItem> &actual, const std::array<const c
 }
 } // namespace
 
-int main()
+int run_test()
 {
     const LocalDateTime now = sample_time();
     const std::array<const char *, 17> expected_dates = {
@@ -283,4 +284,22 @@ int main()
             "A corrupt kaomoji database lacked a privacy-safe diagnostic.");
     std::filesystem::remove_all(quick_phrase_directory);
     return 0;
+}
+
+int main()
+{
+    try
+    {
+        return run_test();
+    }
+    catch (const std::exception &error)
+    {
+        std::fprintf(stderr, "%s\n", error.what());
+        return 1;
+    }
+    catch (...)
+    {
+        std::fprintf(stderr, "An exception escaped the test body.\n");
+        return 1;
+    }
 }
