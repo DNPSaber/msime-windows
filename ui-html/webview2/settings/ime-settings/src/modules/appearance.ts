@@ -273,8 +273,12 @@ function applyCandidatePreviewStyle(): void {
       container.style.fontSize = `${previewFontSize}px`;
     });
 
-    el.querySelectorAll<HTMLElement>('.row-wrapper').forEach((wrapper, index) => {
+    const wrappers = el.querySelectorAll<HTMLElement>('.row-wrapper');
+    const lastVisible = Math.min(wrappers.length, previewPageSize) - 1;
+    wrappers.forEach((wrapper, index) => {
       wrapper.style.display = index < previewPageSize ? '' : 'none';
+      // The page-arrow element after the rows takes :last-child, so the skins find the last row through this class.
+      wrapper.classList.toggle('last-visible', index === lastVisible);
     });
   });
   syncCaretStateIndicatorPreview();
