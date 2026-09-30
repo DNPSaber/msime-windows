@@ -130,3 +130,24 @@ TEST_CASE(candidate_skin_scan_skips_default_settings_folder)
     REQUIRE(!CandidateSkinCatalog::Load(root, "default").has_value());
     Cleanup(root);
 }
+
+// The installer renames a bundled skin the user already had to <id>.bak (or <id>.2.bak) before overwriting it.
+// Those backups keep the original manifest id, so without skipping them the settings page would list each one as
+// a broken skin.
+TEST_CASE(candidate_skin_scan_skips_installer_backups)
+{
+    const auto root = MakeSkinsRoot(L"backup");
+    WriteExternalSkin(root, "ext", "fluent", "");
+    fs::copy(root / L"ext", root / L"ext.bak", fs::copy_options::recursive);
+    fs::copy(root / L"ext", root / L"ext.2.bak", fs::copy_options::recursive);
+    fs::copy(root / L"ext", root / L"ext.3.BAK", fs::copy_options::recursive);
+
+    const auto scan = CandidateSkinCatalog::Scan(root);
+    REQUIRE(scan.issues.empty());
+    REQUIRE(scan.packages.size() == 1);
+    REQUIRE(scan.packages[0].id == "ext");
+    REQUIRE(CandidateSkinCatalog::IsBackupFolder("ext.bak"));
+    REQUIRE(!CandidateSkinCatalog::IsBackupFolder("bak"));
+    REQUIRE(!CandidateSkinCatalog::IsBackupFolder("ext.backup"));
+    Cleanup(root);
+}
