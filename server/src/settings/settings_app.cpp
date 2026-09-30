@@ -407,9 +407,15 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
                   {{"dark", ToolbarColorsToJson(skin.toolbarDark)}, {"light", ToolbarColorsToJson(skin.toolbarLight)}}},
                  {"toolbarCornerRadiusDip",
                   skin.toolbarCornerRadiusDip ? nlohmann::json(*skin.toolbarCornerRadiusDip) : nlohmann::json()},
+                 // 已按 base 的默认皮肤清单解析好，页面预览直接用。
+                 {"pageArrows", CandidateSkinCatalog::ResolvePageArrows(skins_root, skin.id, &skin)},
                  {"compatible", CandidateSkinCatalog::Supports(skin, skin_layout, skin_theme)}});
         }
     }
+    // 内置皮肤的翻页箭头开关每次都现读 skins/default，用户改完清单刷新设置页即可在预览里看到。
+    nlohmann::json builtin_page_arrows = nlohmann::json::object();
+    for (const auto &id : CandidateSkinCatalog::BuiltInIds())
+        builtin_page_arrows[id] = CandidateSkinCatalog::ResolvePageArrows(skins_root, id, nullptr);
     nlohmann::json skin_issues = nlohmann::json::array();
     if (g_candidate_skin_catalog)
     {
@@ -553,6 +559,7 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"candidate_window_preedit_font_size", GetConfiguredCandidateWindowPreeditFontSize()},
             {"cand_text_color", GetConfiguredCandidateTextColor()},
             {"system_fonts", GetSystemFontFamilies()},
+            {"builtin_skin_page_arrows", std::move(builtin_page_arrows)},
             {"external_candidate_skins", std::move(external_skins)},
             {"candidate_skin_scan_issues", std::move(skin_issues)},
             {"candidate_skin_catalog_scanned", g_candidate_skin_catalog.has_value()},

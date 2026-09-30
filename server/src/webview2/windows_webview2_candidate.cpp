@@ -497,6 +497,14 @@ void UpdateHtmlContentWithJavaScript(ComPtr<ICoreWebView2> webview, const std::w
     script.append(GetConfiguredCandidateWindowPreeditStyle() == "empty" ? L"false" : L"true");
     script.append(L"); }\n");
     script.append(L"if (window.SetPreeditCaret) { window.SetPreeditCaret(); }\n");
+    {
+        // 翻页箭头随模板一起被 innerHTML 换掉了，每帧重新标一次可用状态；皮肤关掉箭头时页面只是不显示它。
+        const Global::CandidatePageSnapshotPtr page = Global::LoadCandidatePageSnapshot();
+        script.append(L"if (window.SetCandidatePager) { window.SetCandidatePager(");
+        script.append(page->has_previous_page ? L"true, " : L"false, ");
+        script.append(page->has_next_page ? L"true" : L"false");
+        script.append(L"); }\n");
+    }
     script.append(kStickyCandidateCardScript);
     if (newContent.empty())
     {
@@ -641,6 +649,8 @@ void UpdateMeasureContentWithJavaScript(ComPtr<ICoreWebView2> webview, const std
     script.append(L"if (window.SetCandidatePreeditVisible) { window.SetCandidatePreeditVisible(");
     script.append(GetConfiguredCandidateWindowPreeditStyle() == "empty" ? L"false" : L"true");
     script.append(L"); }\n");
+    // 测量容器也要带上翻页箭头，量出的卡片尺寸才包含它；不带参数表示不改真实容器里的可用状态。
+    script.append(L"if (window.SetCandidatePager) { window.SetCandidatePager(); }\n");
 
     if (!onComplete)
     {
@@ -1001,6 +1011,17 @@ HRESULT OnControllerCreatedCandWnd(     //
                                 {
                                     PostMessage(::global_hwnd, WM_PAGE_CANDIDATE, CANDIDATE_PAGE_NEXT, steps.page_down);
                                 }
+                            }
+                        }
+                        else if (type == "candidatePage")
+                        {
+                            // 翻页箭头，与 D2D 窗口走同一条 WM_PAGE_CANDIDATE_ARROW。
+                            // 方向已由契约限定为 previous / next。
+                            if (::is_global_wnd_cand_shown)
+                            {
+                                const bool next = json::value_to<std::string>(val.at("data")) == "next";
+                                PostMessage(::global_hwnd, WM_PAGE_CANDIDATE_ARROW,
+                                            next ? CANDIDATE_PAGE_NEXT : CANDIDATE_PAGE_PREVIOUS, 1);
                             }
                         }
                         else if (type == "contextMenuResize")

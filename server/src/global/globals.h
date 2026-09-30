@@ -412,6 +412,10 @@ struct CandidatePageSnapshot
     // the height estimate prefers the derived count and only falls back to the rendered one.
     int page_count = 0;
     int page_item_count = 0;
+    // 翻页箭头的可用状态。候选是分批展开的，满页的最后一页后面可能还能展开出下一页，
+    // 所以满页时下一页箭头保持可点；真的展开不出来时翻页任务什么也不做。
+    bool has_previous_page = false;
+    bool has_next_page = false;
     // Generation stamped by the worker at publish time. The UI thread echoes this exact value back
     // after painting, which is what lets a selection distinguish "what the user sees" from "what
     // the worker has just rebuilt".

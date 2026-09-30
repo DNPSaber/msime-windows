@@ -63,6 +63,7 @@ $tsf64Release = Join-Path $RepoRoot (Join-Path $TsfDirectory 'build64-release\Re
 $tsf32Pdb = Join-Path $RepoRoot (Join-Path $TsfDirectory 'build32-release\Release\MetasequoiaImeTsf.pdb')
 $tsf64Pdb = Join-Path $RepoRoot (Join-Path $TsfDirectory 'build64-release\Release\MetasequoiaImeTsf.pdb')
 $webviewRoot = Join-Path $RepoRoot (Join-Path $UiHtmlDirectory 'webview2')
+$defaultSkinsSource = Join-Path $RepoRoot 'skins\default'
 $serverConfig = Join-Path $RepoRoot (Join-Path $ServerDirectory 'assets\config\config.toml')
 $factoryConfig = Join-Path $PSScriptRoot 'default_config\config.default.toml'
 $pinyinTable = Join-Path $RepoRoot (Join-Path $ServerDirectory 'assets\tables\pinyin.txt')
@@ -113,6 +114,7 @@ Assert-PathExists -LiteralPath (Join-Path $webviewRoot 'candwnd') -Description '
 Assert-PathExists -LiteralPath (Join-Path $webviewRoot 'ftb') -Description '悬浮工具栏 HTML 目录'
 Assert-PathExists -LiteralPath (Join-Path $webviewRoot 'menu') -Description '菜单 HTML 目录'
 Assert-PathExists -LiteralPath (Join-Path $webviewRoot 'settings\ime-settings\dist') -Description '设置页面 dist 目录'
+Assert-PathExists -LiteralPath $defaultSkinsSource -Description '内置皮肤设置清单 skins\default'
 
 if (-not $Light) {
     Assert-PathExists -LiteralPath $factoryConfig -Description '出厂配置 default_config\config.default.toml'
@@ -232,6 +234,12 @@ Copy-DirectoryContents -Source (Join-Path $webviewRoot 'ftb') -Destination (Join
 Copy-DirectoryContents -Source (Join-Path $webviewRoot 'menu') -Destination (Join-Path $targetWebview 'menu')
 Copy-DirectoryContents -Source (Join-Path $webviewRoot 'settings\ime-settings\dist') `
     -Destination (Join-Path $targetWebview 'settings\ime-settings\dist')
+
+# 内置皮肤的设置清单（翻页箭头等开关）。用户会就地改这些 skin.toml，安装脚本用
+# onlyifdoesntexist 落盘，升级只补缺失的文件、不覆盖已有的。
+$targetDefaultSkins = Join-Path $targetAppData 'skins\default'
+Reset-Directory -LiteralPath $targetDefaultSkins
+Copy-DirectoryContents -Source $defaultSkinsSource -Destination $targetDefaultSkins
 
 # Server Release 输出整体复制，但测试程序及其 PDB 绝不能进入安装包。
 # 带 -IncludeSymbols 时其他 PDB 保留在对应 EXE 旁边，方便安装后直接进行崩溃分析。

@@ -32,7 +32,9 @@ inline const UINT WM_PAGE_CANDIDATE = WM_USER + 120;
 inline const UINT WM_SHOW_CARET_STATE = WM_USER + 121;
 inline const UINT WM_HIDE_CARET_STATE = WM_USER + 122;
 inline const UINT WM_MOVE_CARET_STATE = WM_USER + 123;
+// 候选框翻页箭头被点击。与 WM_PAGE_CANDIDATE 同参，但不受「鼠标滚轮翻页」开关约束。
+inline const UINT WM_PAGE_CANDIDATE_ARROW = WM_USER + 124;
 
-// wParam of WM_PAGE_CANDIDATE; lParam carries how many pages to move.
+// wParam of WM_PAGE_CANDIDATE / WM_PAGE_CANDIDATE_ARROW; lParam carries how many pages to move.
 inline constexpr WPARAM CANDIDATE_PAGE_PREVIOUS = 0;
 inline constexpr WPARAM CANDIDATE_PAGE_NEXT = 1;

@@ -9,6 +9,7 @@
 #include "global/globals.h"
 #include "ipc/ipc.h"
 #include "ipc/event_listener.h"
+#include "skin/candidate_skin_catalog.h"
 #include "utils/common_utils.h"
 #include <dwmapi.h>
 #include <nlohmann/json.hpp>
@@ -1336,6 +1337,16 @@ static nlohmann::json CustomShuangpinSchemasJson()
     return schemas;
 }
 
+// 与 settings_app.cpp 同一字段：内置皮肤的翻页箭头开关，供外观与皮肤页的预览使用。
+static nlohmann::json BuiltinSkinPageArrowsJson()
+{
+    const std::filesystem::path skinsRoot = std::filesystem::path(CommonUtils::get_ime_data_path_w()) / L"skins";
+    nlohmann::json result = nlohmann::json::object();
+    for (const auto &id : CandidateSkinCatalog::BuiltInIds())
+        result[id] = CandidateSkinCatalog::ResolvePageArrows(skinsRoot, id, nullptr);
+    return result;
+}
+
 void PostSettingsConfig()
 {
     if (!::webviewSettingsWnd)
@@ -1464,7 +1475,8 @@ void PostSettingsConfig()
             {"font_size", GetConfiguredCandidateFontSize()},
             {"candidate_window_preedit_font_size", GetConfiguredCandidateWindowPreeditFontSize()},
             {"cand_text_color", GetConfiguredCandidateTextColor()},
-            {"system_fonts", GetSystemFontFamilies()}}},
+            {"system_fonts", GetSystemFontFamilies()},
+            {"builtin_skin_page_arrows", BuiltinSkinPageArrowsJson()}}},
           {"helpcode",
            {{"shuangpin_helpcode", GetConfiguredShuangpinHelpcodeEnabled()},
             {"shuangpin_helpcode_schema", GetConfiguredShuangpinHelpcodeSchema()},
