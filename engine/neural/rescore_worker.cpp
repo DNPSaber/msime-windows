@@ -109,53 +109,75 @@ void RescoreWorker::run()
 {
     for (;;)
     {
-        Job job;
+        // 线程是 detach 出来的，异常逃出线程函数没人接，直接 std::terminate，一个只在后台改
+        // 候选顺序的功能会把整个输入法带走。所以整轮工作都包起来：坏的那一轮丢掉，线程接着
+        // 干下一轮。
+        //
+        // 收尾必须留在 try 外面，busy_model 是「这个执行槽被我占着」的凭据。放进 try 的话，一
+        // 次异常就再也降不下 busy_workers_，shutdown() 会卡在 idle_ 上等一个已经死掉的线程——
+        // 崩溃换成了退出时挂起，更难查。
+        const SentenceModel *busy_model = nullptr;
+        try
         {
-            std::unique_lock<std::mutex> lock(mutex_);
-            wake_.wait(lock, [this] {
-                return stopping_ || std::any_of(pending_.begin(), pending_.end(), [this](const auto &item) {
-                           return active_models_.find(item.first) == active_models_.end();
-                       });
-            });
-            if (stopping_)
+            Job job;
             {
-                return;
+                std::unique_lock<std::mutex> lock(mutex_);
+                wake_.wait(lock, [this] {
+                    return stopping_ || std::any_of(pending_.begin(), pending_.end(), [this](const auto &item) {
+                               return active_models_.find(item.first) == active_models_.end();
+                           });
+                });
+                if (stopping_)
+                {
+                    return;
+                }
+                auto next = std::find_if(pending_.begin(), pending_.end(), [this](const auto &item) {
+                    return active_models_.find(item.first) == active_models_.end();
+                });
+                job = std::move(next->second);
+                pending_.erase(next);
+                // insert 是这三行里唯一可抛的（set 节点要分配，会抛 bad_alloc），必须走在凭据前
+                // 面：它一抛，busy_model 还是空，整轮跳过收尾，busy_workers_ 压根没加过。反过来
+                // 先置凭据，一次分配失败就会让收尾去减一个没加过的计数，shutdown() 等不到归零。
+                active_models_.insert(job.model);
+                busy_model = job.model;
+                ++busy_workers_;
             }
-            auto next = std::find_if(pending_.begin(), pending_.end(), [this](const auto &item) {
-                return active_models_.find(item.first) == active_models_.end();
-            });
-            job = std::move(next->second);
-            pending_.erase(next);
-            active_models_.insert(job.model);
-            ++busy_workers_;
+
+            // 打分在锁外做：它是这里最慢的一步，占着锁会让按键路径上的 order_for 跟着等。
+            std::vector<std::size_t> order =
+                rerank_order(*job.model, job.context, job.sentences, job.static_scores, job.options);
+
+            Ready ready;
+            {
+                std::lock_guard<std::mutex> lock(mutex_);
+                // 期间可能又来了新请求，说明用户还在打字，这一份存下来留给「他退回来」的情况。
+                if (done_.size() >= kMaxResults)
+                {
+                    done_.clear();
+                }
+                done_.emplace(std::move(job.key), std::move(order));
+                ready = ready_; // shutdown 已经清过就是空的，那就不叫了
+            }
+
+            // 回调在锁外发：它会一路走到重查，重查又会调 order_for，在锁内发就是自锁。busy_ 要压
+            // 到回调之后才放，否则 shutdown 会在回调正往已析构的目标里走的时候就返回。
+            if (ready)
+            {
+                ready();
+            }
+        }
+        catch (...)
+        {
+            // 打分抛了就是没有顺序；回调抛了则顺序已经进表，只是没人被叫醒。两种情况下这一按键都
+            // 照词格的静态顺序出，调用方下一次按键会重新排。也刻意不叫回调：回调一路走到重查，重
+            // 查发现表里没有就再排一次，坏得稳定的模型会在这一对里空转。
         }
 
-        // 打分在锁外做：它是这里最慢的一步，占着锁会让按键路径上的 order_for 跟着等。
-        std::vector<std::size_t> order =
-            rerank_order(*job.model, job.context, job.sentences, job.static_scores, job.options);
-
-        Ready ready;
+        if (busy_model != nullptr)
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            // 期间可能又来了新请求，说明用户还在打字，这一份存下来留给「他退回来」的情况。
-            if (done_.size() >= kMaxResults)
-            {
-                done_.clear();
-            }
-            done_.emplace(std::move(job.key), std::move(order));
-            ready = ready_; // shutdown 已经清过就是空的，那就不叫了
-        }
-
-        // 回调在锁外发：它会一路走到重查，重查又会调 order_for，在锁内发就是自锁。busy_ 要压到回
-        // 调之后才放，否则 shutdown 会在回调正往已析构的目标里走的时候就返回。
-        if (ready)
-        {
-            ready();
-        }
-
-        {
-            std::lock_guard<std::mutex> lock(mutex_);
-            active_models_.erase(job.model);
+            active_models_.erase(busy_model);
             --busy_workers_;
         }
         wake_.notify_all();
