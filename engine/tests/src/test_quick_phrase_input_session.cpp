@@ -105,6 +105,7 @@ void prepare_main_database(const std::filesystem::path &directory)
     database.execute("INSERT INTO quick_parases VALUES('ni','快捷一',20)");
     database.execute("INSERT INTO quick_parases VALUES('ni','快捷二',10)");
     database.execute("INSERT INTO quick_parases VALUES('ni','泥',5)");
+    database.execute("INSERT INTO quick_parases VALUES('dia','的的',10)");
 }
 
 std::size_t first_quick_phrase(const std::vector<WordItem> &candidates)
@@ -188,6 +189,16 @@ void test_placement()
     type(*without_k, "ni");
     require(first_quick_phrase(without_k->candidates()) == 0,
             "Disabling Shift+K also removed quick phrases from the candidate list.");
+
+    // 双拼辅助码把 dia 读成 di + 辅助码 a，整串仍是用户编码，短语照样出现。
+    metasequoia::InputSession shuangpin(SchemeType::Shuangpin);
+    shuangpin.enable_fixed_positions();
+    shuangpin.set_shuangpin_helpcode_enabled(true);
+    type(shuangpin, "dia");
+    require(shuangpin.has_active_helpcode(), "The shuangpin fixture did not read dia as di plus a helpcode.");
+    require(!shuangpin.candidates().empty() && shuangpin.candidates().front().word == "的的" &&
+                shuangpin.candidates().front().source == CandidateSource::QuickPhrase,
+            "An odd-length shuangpin code read as a helpcode hid its quick phrase.");
 }
 
 void test_learning(const std::filesystem::path &directory)

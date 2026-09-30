@@ -875,11 +875,13 @@ bool InputSession::mixed_candidates_active() const
             (scheme() == SchemeType::Quanpin || scheme() == SchemeType::Shuangpin));
 }
 
+// 不看辅助码：双拼辅助码会把「完整音节 + 一个字母」的编码（dia）都认成带辅助码，
+// 整串精确等于用户编码时按短语处理。
 std::optional<std::string> InputSession::quick_phrase_code() const
 {
     if (!local_mode_options_.quick_phrase_candidates || local_input_mode_ != LocalInputMode::None ||
         dedicated_english_mode_ || (scheme() != SchemeType::Quanpin && scheme() != SchemeType::Shuangpin) ||
-        prefix_candidates_active_ || !immediate_phrase_progress_.word.empty() || has_active_helpcode())
+        prefix_candidates_active_ || !immediate_phrase_progress_.word.empty())
     {
         return std::nullopt;
     }
