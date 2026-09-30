@@ -67,6 +67,8 @@ class DeviceResources
         Microsoft::WRL::ComPtr<ID2D1Bitmap> bitmap;
     };
 
+    static constexpr size_t kMaxCachedBitmaps = 4;
+
     static bool IsSameColor(const D2D1_COLOR_F &lhs, const D2D1_COLOR_F &rhs);
     bool BindCompositionSurface();
     FLOAT DpiForHwnd() const;
