@@ -31,13 +31,6 @@
   margin-bottom: 16px;
 }
 
-.ai-description {
-  margin-top: 6px;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .ai-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

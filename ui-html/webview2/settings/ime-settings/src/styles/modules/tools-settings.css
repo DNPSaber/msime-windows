@@ -4,10 +4,6 @@
 }
 
 .quick-phrase-description {
-  margin-top: 6px;
-  color: var(--text-muted);
-  font-size: 13px;
-  line-height: 1.45;
   max-width: 52em;
 }
 

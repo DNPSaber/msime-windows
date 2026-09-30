@@ -67,6 +67,19 @@ html[data-theme="dark"] {
   --titlebar-height: 32px;
 }
 
+/* 字号层级（与主题无关）：页面标题 > 分组标题 > 子项 / 控件正文 > 说明文字。
+   各模块只引用这几档，不再自己写 12.5px、13px 之类的中间值。 */
+:root {
+  --font-size-page-title: 18px;
+  --font-size-section-title: 15px;
+  --font-size-body: 14px;
+  --font-size-caption: 12px;
+  --font-weight-title: 600;
+  --font-weight-body: 400;
+  --line-height-caption: 1.6;
+  --sub-item-title-stroke: 0.25px;
+}
+
 html[data-theme="light"] {
   color-scheme: light;
   --accent-color: #6f6bc7;

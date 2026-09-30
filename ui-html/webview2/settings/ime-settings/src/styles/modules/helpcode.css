@@ -48,14 +48,8 @@
 }
 
 /* 辅助码 -> 自定义辅助码 */
-.helpcode-description {
-  margin-top: 6px;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.5;
-}
-
 .helpcode-custom-directory {
+  margin-top: 8px;
   user-select: text;
   word-break: break-all;
 }
@@ -80,7 +74,7 @@
   border: 1px solid var(--border-color);
   border-radius: 6px;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   line-height: 1;
   cursor: pointer;
 }

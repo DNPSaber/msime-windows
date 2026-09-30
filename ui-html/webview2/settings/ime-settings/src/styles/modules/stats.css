@@ -5,13 +5,6 @@
   display: none !important;
 }
 
-.stats-description {
-  color: var(--text-muted);
-  font-size: 12px;
-  margin-top: 5px;
-  line-height: 1.5;
-}
-
 .stats-note {
   color: var(--text-subtle);
   font-size: 12px;
@@ -29,7 +22,7 @@
   background: var(--toast-bg);
   color: var(--toast-text);
   box-shadow: var(--card-shadow);
-  font-size: 12.5px;
+  font-size: var(--font-size-caption);
 }
 
 .stats-status.is-error {
@@ -46,15 +39,15 @@
 }
 
 .stats-empty-title {
-  font-size: 15px;
-  font-weight: 550;
+  font-size: var(--font-size-section-title);
+  font-weight: var(--font-weight-title);
   color: var(--text-color);
   margin-bottom: 8px;
 }
 
 .stats-empty-text {
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: var(--font-size-caption);
   line-height: 1.6;
   max-width: 520px;
   margin: 0 auto 16px;
@@ -119,7 +112,7 @@
 
 .stats-card-title {
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: var(--font-size-caption);
 }
 
 .stats-card-value {
@@ -170,7 +163,7 @@
 
 .stats-speed-label {
   color: var(--text-muted);
-  font-size: 12.5px;
+  font-size: var(--font-size-caption);
 }
 
 .stats-speed-value {
@@ -187,7 +180,7 @@
 .stats-best-day {
   margin-top: 12px;
   color: var(--text-secondary);
-  font-size: 12.5px;
+  font-size: var(--font-size-caption);
 }
 
 /* ---------------------------------------------------------------- calendar */
@@ -267,7 +260,7 @@
   gap: 4px;
   margin-top: 10px;
   color: var(--text-subtle);
-  font-size: 11.5px;
+  font-size: 11px;
 }
 
 /* ------------------------------------------------------------ split panels */
@@ -345,7 +338,7 @@
 
 .stats-cat-name {
   color: var(--text-secondary);
-  font-size: 12.5px;
+  font-size: var(--font-size-caption);
 }
 
 .stats-cat-track {
@@ -399,7 +392,7 @@
 .stats-detail-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 12.5px;
+  font-size: var(--font-size-caption);
 }
 
 .stats-detail-table th {
@@ -449,7 +442,7 @@
 .stats-clear-status {
   margin-top: 10px;
   min-height: 18px;
-  font-size: 12.5px;
+  font-size: var(--font-size-caption);
   color: var(--text-muted);
 }
 
