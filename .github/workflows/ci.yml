@@ -347,6 +347,8 @@ jobs:
         run: ./installer/tests/package-files.ps1
       - name: Test that the installer preserves user data on upgrade
         run: ./installer/tests/preserve-user-data.ps1
+      - name: Test that bundled skins back up changed user copies before overwriting
+        run: ./installer/tests/bundled-skins.ps1
       - name: Stop local packaging after failed component builds
         run: ./installer/tests/build-failures.ps1
       - name: Test local Server test entrypoints in a moved checkout

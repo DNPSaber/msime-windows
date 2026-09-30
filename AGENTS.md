@@ -17,7 +17,7 @@ Windows 端的全部一方源码在本仓。**合仓改变的是仓库数量，�
 | `ui-html/` | 候选窗、工具栏、菜单、设置页的 HTML / CSS / JS | [ui-html/README.md](ui-html/README.md) |
 | `installer/` | 收集产物、自签名、Inno Setup 打包 | [installer/README.md](installer/README.md) |
 | `log/` | 日志采集库 | — |
-| `skins/` | 外部皮肤合集，每个子目录一个 `skin.toml` 皮肤包；不打进安装包 | [skins/README.md](skins/README.md) |
+| `skins/` | 外部皮肤合集，每个子目录一个 `skin.toml` 皮肤包；除素材授权未核实的外随安装包装到数据目录，同名且改过的旧版改名 `.bak` 保留 | [skins/README.md](skins/README.md) |
 | `examples/skin-examples/` | 外部皮肤制作样例、字段说明、预览页与安装脚本；本目录单独采用 MIT 授权 | [examples/skin-examples/README.md](examples/skin-examples/README.md) |
 | `experiments/tsf-edit-control/` | TSF 编辑控件实验工程，不参与产品构建 | — |
 | `vendor/` | submodule：`opencc`、`cpp-pinyin` | 上游仓库 |

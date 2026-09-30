@@ -291,6 +291,17 @@ bool IsSafeId(const std::string &id)
     });
 }
 
+bool IsBackupFolder(const std::string &folder)
+{
+    constexpr std::string_view kSuffix = ".bak";
+    if (folder.size() < kSuffix.size())
+    {
+        return false;
+    }
+    return std::equal(kSuffix.begin(), kSuffix.end(), folder.end() - kSuffix.size(),
+                      [](char a, char b) { return a == std::tolower(static_cast<unsigned char>(b)); });
+}
+
 bool Supports(const Package &package, const std::string &layout, const std::string &theme)
 {
     return std::find(package.layouts.begin(), package.layouts.end(), layout) != package.layouts.end() &&
@@ -493,7 +504,9 @@ ScanResult Scan(const std::filesystem::path &skinsRoot)
             continue;
         }
         const std::string folder = it->path().filename().u8string();
-        if (folder == kDefaultSkinsFolder)
+        // <id>.bak 是安装包覆盖随包皮肤前留下的旧版本：manifest 的 id 与目录名对不上，
+        // 不跳过就会在设置页被列成一条损坏的皮肤。
+        if (folder == kDefaultSkinsFolder || IsBackupFolder(folder))
         {
             continue;
         }

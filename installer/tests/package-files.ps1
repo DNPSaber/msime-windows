@@ -47,6 +47,9 @@ try {
         'ui-html/webview2/settings/ime-settings/dist/index.html',
         'skins/default/fluent/skin.toml'
     )) { Write-Fixture $file }
+    Write-Fixture 'skins/demo-skin/skin.toml' "schema_version = 1`nid = `"demo-skin`"`n"
+    Write-Fixture 'skins/demo-skin/assets/background.png' 'png'
+    Write-Fixture 'skins/unverified/skin.toml' "schema_version = 1`nid = `"unverified`"`n[license]`nassets = `"UNVERIFIED-DEMO-ONLY`"`n"
     Write-Fixture 'server/assets/tables/pinyin.txt' 'xing'
     Write-Fixture 'MetasequoiaImeDict/out/dictionary-manifest.json' '{"manifest_version":1}'
     $english = Join-Path $fixture 'MetasequoiaImeDict/out/english.db'
@@ -71,6 +74,24 @@ try {
     $issText = [IO.File]::ReadAllText((Join-Path $installer 'msime_setup.iss'))
     if ($issText -notmatch '(?s)Source: "\{#MySourceRoot\}\\default_skins\\\*";[^\r\n]*\\\s*DestDir: "\{code:GetDataDir\}\\skins\\default";[^\r\n]*\\\s*Flags: onlyifdoesntexist') {
         throw 'Default skin settings must be installed to skins\default with onlyifdoesntexist'
+    }
+    # 仓库 skins\ 下的外部皮肤随包分发；素材授权未核实的不进包，skins\default 走上面那条。
+    foreach ($file in @('bundled_skins/demo-skin/skin.toml', 'bundled_skins/demo-skin/assets/background.png')) {
+        if (-not (Test-Path (Join-Path $installer $file))) { throw "Missing bundled skin file: $file" }
+    }
+    foreach ($excluded in @('bundled_skins/unverified', 'bundled_skins/default')) {
+        if (Test-Path (Join-Path $installer $excluded)) { throw "Bundled a skin that must not ship: $excluded" }
+    }
+    $expectedManifest = @(
+        "demo-skin|assets\background.png|$((Get-FileHash (Join-Path $fixture 'skins/demo-skin/assets/background.png') -Algorithm SHA256).Hash.ToLowerInvariant())",
+        "demo-skin|skin.toml|$((Get-FileHash (Join-Path $fixture 'skins/demo-skin/skin.toml') -Algorithm SHA256).Hash.ToLowerInvariant())"
+    )
+    $actualManifest = @(Get-Content -LiteralPath (Join-Path $installer 'bundled_skins.manifest'))
+    if (($actualManifest -join "`n") -cne ($expectedManifest -join "`n")) {
+        throw "Unexpected bundled skin manifest:`n$($actualManifest -join "`n")"
+    }
+    if ($issText -notmatch '(?s)Source: "\{#MySourceRoot\}\\bundled_skins\\\*";[^\r\n]*\\\s*DestDir: "\{code:GetDataDir\}\\skins";[^\r\n]*\\\s*Flags: ignoreversion') {
+        throw 'Bundled skins must overwrite skins\<id> in the data directory'
     }
     # 数据目录不整个归输入法时（旧版安装器把标记写进了用户原有的文件夹，#537），卸载只按
     # IsShippedAppDataItem 等名单删。包里新增了顶层条目而名单没跟上，卸载就会把它漏在用户目录里。

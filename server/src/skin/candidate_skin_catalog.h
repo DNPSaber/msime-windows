@@ -118,6 +118,8 @@ inline constexpr bool kDefaultPageArrows = false;
 const std::vector<std::string> &BuiltInIds();
 bool IsBuiltIn(const std::string &id);
 bool IsSafeId(const std::string &id);
+// 安装包覆盖同名随包皮肤前，把旧目录改名成 <id>.bak（重名时 <id>.2.bak …）；Scan 跳过它们。
+bool IsBackupFolder(const std::string &folder);
 bool Supports(const Package &package, const std::string &layout, const std::string &theme);
 std::optional<Package> Load(const std::filesystem::path &skinsRoot, const std::string &id,
                             std::string *error = nullptr);
