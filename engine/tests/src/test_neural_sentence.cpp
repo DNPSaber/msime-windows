@@ -26,6 +26,7 @@
 #include <cstdio>
 #include <mutex>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -254,6 +255,59 @@ int main()
         {
             expect((*order)[0] == 1, "the background result should be the same ordering as the direct call");
         }
+        worker.set_ready_callback(nullptr);
+        worker.clear();
+    }
+
+    // ---- 回调抛异常不能让后台线程死掉 ----
+    //
+    // run() 跑在 detach 出来的线程上，异常逃出线程函数就是 std::terminate，整个输入法跟着没。
+    // 回调是调用方（server 的 EnqueueRescoredCandidates）给的代码，引擎管不住它会不会抛。
+    //
+    // 断言的不是「异常被吞了」，而是线程还活着：抛完这一轮之后还能不能接下一批活。顺带钉住
+    // busy_workers_ 的收尾——异常路径上漏掉它，shutdown() 会永远等一个已经死掉的线程。
+    if (model != nullptr)
+    {
+        neural::RescoreWorker &worker = neural::RescoreWorker::instance();
+        worker.clear();
+        std::mutex mutex;
+        std::condition_variable done;
+        int fired = 0;
+        worker.set_ready_callback([&] {
+            bool throw_now = false;
+            {
+                std::lock_guard<std::mutex> lock(mutex);
+                throw_now = (++fired == 1);
+            }
+            done.notify_all();
+            if (throw_now)
+            {
+                throw std::runtime_error("the host callback failed on purpose");
+            }
+        });
+
+        const std::vector<std::string> first = {"伤害", "上海"};
+        const std::vector<double> flat = {-5.0, -5.0};
+        expect(!worker.order_for(*model, "我今天想去", first, flat, {}).has_value(),
+               "the throwing run should be enqueued like any other");
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            expect(done.wait_for(lock, std::chrono::seconds(30), [&] { return fired >= 1; }),
+                   "the callback should have been reached");
+        }
+
+        // 线程必须还活着。同一模型同一批候选会命中已经存好的结果，所以换一批，强制它再打一次分。
+        const std::vector<std::string> second = {"吃饭", "上海"};
+        expect(!worker.order_for(*model, "我今天想去", second, flat, {}).has_value(),
+               "a fresh batch should be enqueued after the throwing one");
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            expect(done.wait_for(lock, std::chrono::seconds(30), [&] { return fired >= 2; }),
+                   "the worker must survive a throwing callback and keep serving");
+        }
+        expect(worker.order_for(*model, "我今天想去", second, flat, {}).has_value(),
+               "the batch after the throwing one should still be cached");
+
         worker.set_ready_callback(nullptr);
         worker.clear();
     }
