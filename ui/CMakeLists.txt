@@ -143,6 +143,9 @@ target_link_libraries(msimeui-handwriting-demo PRIVATE msimeui windowsapp.lib)
 target_compile_features(msimeui-handwriting-demo PRIVATE cxx_std_20)
 
 if(MSVC)
+    # include/msimeui/Controls.h is UTF-8 without a BOM, so every consumer of msimeui has to read
+    # it as UTF-8 too; otherwise a CJK-locale build (code page 936) swallows lines and fails.
+    target_compile_options(msimeui PUBLIC /utf-8)
     target_compile_options(msimeui PRIVATE /W4 /permissive-)
     target_compile_options(msimeui-demo PRIVATE /W4 /permissive-)
     target_compile_options(msimeui-emoji-panel PRIVATE /W4 /permissive-)
