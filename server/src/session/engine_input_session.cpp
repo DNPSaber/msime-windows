@@ -149,6 +149,11 @@ bool EngineInputSession::is_all_complete_pure_pinyin() const
     return session_.is_all_complete_pure_pinyin();
 }
 
+bool EngineInputSession::reads_as_pinyin() const
+{
+    return session_.reads_as_pinyin();
+}
+
 bool EngineInputSession::wubi_unique_four_code() const
 {
     return session_.wubi_unique_four_code();

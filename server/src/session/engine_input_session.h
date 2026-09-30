@@ -32,6 +32,7 @@ class EngineInputSession : public IInputSession
     std::vector<std::size_t> segment_raw_boundaries() const override;
     std::string get_quanpin() const override;
     bool is_all_complete_pure_pinyin() const override;
+    bool reads_as_pinyin() const override;
     bool wubi_unique_four_code() const override;
     bool wubi_four_code_is_complete() const override;
     bool has_active_helpcode() const override;

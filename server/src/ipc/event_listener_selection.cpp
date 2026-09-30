@@ -68,6 +68,33 @@ void LearnQuickPhraseOrder(const WordItem &selected, size_t absolute_index, uint
     FanyNamedPipe::EnqueueLearnQuickPhraseOrderTask(code, "", false, static_cast<int>(ordinary_rank), client_id,
                                                     activation_epoch);
 }
+
+// 混输英文槽位的调频，和快捷短语组同一套：选中占槽位的英文让它前移，越过它选了后面的候选让它后退。
+// 槽位要在 reset_state() 之前取输入。专用英文模式和 Y 模式整页都是英文，不走槽位。
+void LearnEnglishSlot(const WordItem &selected, size_t absolute_index, uint64_t client_id, uint64_t activation_epoch)
+{
+    const auto &items = Global::candidate_ui.items;
+    if (!g_inputSession || g_english_input_mode || IsYModeInput(g_inputSession->get_pinyin_sequence_with_cases()) ||
+        (g_inputSession->current_scheme_type() != SchemeType::Quanpin &&
+         g_inputSession->current_scheme_type() != SchemeType::Shuangpin) ||
+        absolute_index >= items.size())
+        return;
+    const auto english_index = FanyImeIpc::SlottedEnglishIndex(items);
+    if (!english_index)
+        return;
+    const std::string code = FanyNamedPipe::EnglishInputKey();
+    if (absolute_index == *english_index)
+    {
+        FanyNamedPipe::EnqueueLearnEnglishSlotTask(code, static_cast<int>(*english_index), std::nullopt, client_id,
+                                                   activation_epoch);
+        return;
+    }
+    if (absolute_index > *english_index && selected.source != CandidateSource::EnglishDictionary)
+    {
+        FanyNamedPipe::EnqueueLearnEnglishSlotTask(code, static_cast<int>(*english_index),
+                                                   static_cast<int>(absolute_index), client_id, activation_epoch);
+    }
+}
 } // namespace
 
 namespace FanyNamedPipe
@@ -208,11 +235,11 @@ void ProcessSelectionKey(UINT keycode, uint64_t client_id, uint64_t activation_e
         // should only learn when the user picked something else.
         const bool is_first_page_first = Global::candidate_ui.page_index == 0 && index == 0;
         isNeedUpdateWeight = !is_first_page_first;
-        LearnQuickPhraseOrder(curWordItem,
-                              static_cast<size_t>(Global::candidate_ui.page_index) *
-                                      static_cast<size_t>(Global::candidate_ui.page_size) +
-                                  static_cast<size_t>(index),
-                              client_id, activation_epoch);
+        const size_t absolute_index =
+            static_cast<size_t>(Global::candidate_ui.page_index) * static_cast<size_t>(Global::candidate_ui.page_size) +
+            static_cast<size_t>(index);
+        LearnQuickPhraseOrder(curWordItem, absolute_index, client_id, activation_epoch);
+        LearnEnglishSlot(curWordItem, absolute_index, client_id, activation_epoch);
         Global::candidate_ui.selected_text = Global::candidate_ui.page_words[index];
         std::string curWord = curWordItem.word;
         std::string curWordPinyin = curWordItem.pinyin;

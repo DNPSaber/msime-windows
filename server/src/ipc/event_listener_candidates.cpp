@@ -440,14 +440,44 @@ std::string CurrentRankingContextKey()
     return cuts.empty() ? converted : quanpin::join_segments(cuts.front());
 }
 
-std::string EnglishRankingContextKey()
+std::string EnglishInputKey()
 {
     std::string key = g_inputSession->get_pinyin_sequence_with_cases();
     if (IsYModeInput(key))
         key = key.substr(1);
     std::transform(key.begin(), key.end(), key.begin(),
                    [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-    return "english:" + key;
+    return key;
+}
+
+std::string EnglishRankingContextKey()
+{
+    return "english:" + EnglishInputKey();
+}
+
+int EnglishSlotMaximum()
+{
+    return (std::max)(GetConfiguredCandidatePageSize() - 1, 1);
+}
+
+FanyImeIpc::EnglishPlacement CurrentEnglishPlacement(const std::vector<WordItem> &items)
+{
+    FanyImeIpc::EnglishPlacement placement;
+    // 没有英文候选就用不上，省掉一次用户库查询。
+    if (!g_inputSession || std::none_of(items.begin(), items.end(), [](const WordItem &item) {
+            return item.source == CandidateSource::EnglishDictionary;
+        }))
+        return placement;
+    placement.input = EnglishInputKey();
+    placement.require_exact = g_inputSession->reads_as_pinyin();
+    placement.page_size = static_cast<size_t>(EnglishSlotMaximum()) + 1;
+    // 调频关闭时不用学到的槽位，英文回到默认位置。
+    if (GetConfiguredFrequencyAdjustment().mode != "disabled")
+    {
+        if (const auto slot = user_dictionary::english_slot(user_dictionary::default_user_db_path(), placement.input))
+            placement.slot = static_cast<size_t>(std::clamp(*slot, 0, EnglishSlotMaximum()));
+    }
+    return placement;
 }
 
 // Pulls the next batch of candidates out of the session without disturbing
