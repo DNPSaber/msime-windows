@@ -611,9 +611,15 @@ void WorkerThread()
             if (task.type == TaskType::UiPinCandidate)
             {
                 if (english_candidate)
+                {
                     (void)user_dictionary::adjust_english_candidate_ranking(
                         CommonUtils::get_ime_data_path() + "\\english.db", user_dictionary::default_user_db_path(),
                         context_key, Global::candidate_ui.items, entry_key, item.word, "pin", 1, 1, true);
+                    // 上面只把它排到英文里的第一；混输里还要把这个输入的英文槽位挪到首位。
+                    if (!g_english_input_mode && !IsYModeInput(g_inputSession->get_pinyin_sequence_with_cases()))
+                        (void)user_dictionary::set_english_slot(user_dictionary::default_user_db_path(),
+                                                                EnglishInputKey(), 0);
+                }
                 else
                     (void)user_dictionary::adjust_candidate_ranking(
                         CommonUtils::get_ime_data_path() + "\\msime.db", user_dictionary::default_user_db_path(),
@@ -1002,6 +1008,31 @@ void EnqueueLearnQuickPhraseOrderTask(const std::string &code, const std::string
         (void)user_dictionary::learn_quick_phrase_selection(CommonUtils::get_ime_data_path() + "\\msime.db",
                                                             user_dictionary::default_user_db_path(), code, word,
                                                             first_in_group, mode, linear_step, trigger_count);
+    });
+}
+
+// 英文槽位同样每次现查，写完不用清缓存。selected_index 为空表示选中的就是占槽位的英文。
+void EnqueueLearnEnglishSlotTask(const std::string &code, int english_index, std::optional<int> selected_index,
+                                 uint64_t client_id, uint64_t activation_epoch)
+{
+    static FanyImeIpc::SelectionRankingReplayGuard replay_guard;
+    const std::string replay_key = "s\x1f" + code + '\x1f' + std::to_string(english_index) + '\x1f' +
+                                   (selected_index ? std::to_string(*selected_index) : std::string("english"));
+    if (code.empty() || !replay_guard.should_apply(replay_key, client_id, activation_epoch, GetTickCount64()))
+        return;
+    const auto &frequency = GetConfiguredFrequencyAdjustment();
+    const int max_slot = EnglishSlotMaximum();
+    DictionaryWriter().Post([code, english_index, selected_index, max_slot, mode = frequency.mode,
+                             linear_step = frequency.linear_step, trigger_count = frequency.trigger_count] {
+        if (selected_index)
+        {
+            (void)user_dictionary::learn_english_slot_bypass(user_dictionary::default_user_db_path(), code,
+                                                             english_index, *selected_index, mode, linear_step,
+                                                             trigger_count, max_slot);
+            return;
+        }
+        (void)user_dictionary::learn_english_slot_selection(user_dictionary::default_user_db_path(), code,
+                                                            english_index, mode, linear_step, trigger_count);
     });
 }
 

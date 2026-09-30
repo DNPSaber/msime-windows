@@ -291,21 +291,111 @@ TEST_CASE(MixedAsyncCandidatesKeepReservedSlotsForEveryArrivalOrder)
     REQUIRE_EQ(items[2].source, CandidateSource::EnglishDictionary);
 }
 
-TEST_CASE(PromotedEnglishCandidateCanBecomeTheFirstMixedCandidate)
+TEST_CASE(EnglishWeightNeverOutranksChineseAcrossDictionaries)
+{
+    // 用户反馈：zai 下 zaire 选过一次后永远排第一。英文权重和中文权重不是一个量纲，再大也不能
+    // 让英文越过默认位置。
+    std::vector<WordItem> items = {
+        WordItem("zai", "在", 19195987),
+        WordItem("zai", "再", 2681503),
+        WordItem("zaire", "zaire", 19196987, CandidateSource::EnglishDictionary),
+    };
+    FanyImeIpc::NormalizeMixedCandidateOrder(items);
+    REQUIRE_EQ(items[0].word, std::string("在"));
+    REQUIRE_EQ(items[1].word, std::string("zaire"));
+}
+
+TEST_CASE(LearnedEnglishSlotCanMakeEnglishTheFirstMixedCandidate)
 {
     const auto local = [](std::string word) { return WordItem("github", std::move(word), 100); };
     const auto cloud = [] { return WordItem("github", "云候选", 1, CandidateSource::CloudSuggestion); };
     const auto ai = [] { return WordItem("github", "AI联想", 1, CandidateSource::AiSuggestion); };
 
     std::vector<WordItem> items = {
-        local("个"), cloud(), ai(), WordItem("github", "GitHub", 1100, CandidateSource::EnglishDictionary), local("给"),
+        local("个"), cloud(), ai(), WordItem("github", "GitHub", 1, CandidateSource::EnglishDictionary), local("给"),
     };
-    FanyImeIpc::NormalizeMixedCandidateOrder(items);
+    FanyImeIpc::EnglishPlacement placement;
+    placement.slot = 0;
+    placement.input = "github";
+    FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, placement);
 
     REQUIRE_EQ(items[0].word, std::string("GitHub"));
     REQUIRE_EQ(items[1].word, std::string("个"));
     REQUIRE_EQ(items[2].source, CandidateSource::CloudSuggestion);
     REQUIRE_EQ(items[3].source, CandidateSource::AiSuggestion);
+    REQUIRE_EQ(*FanyImeIpc::SlottedEnglishIndex(items), size_t{0});
+}
+
+TEST_CASE(LearnedEnglishSlotMovesEnglishBehindItsDefaultPosition)
+{
+    const auto local = [](std::string word) { return WordItem("ni", std::move(word), 100); };
+    const auto english = [] { return WordItem("ni", "nice", 1, CandidateSource::EnglishDictionary); };
+    const auto emoji = [] { return WordItem("ni", "\xF0\x9F\x98\x80", 1, CandidateSource::Emoji); };
+
+    std::vector<WordItem> items = {local("你"), local("呢"), local("泥"), local("尼"), english(), emoji()};
+    FanyImeIpc::EnglishPlacement placement;
+    placement.slot = 3;
+    placement.input = "ni";
+    FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, placement);
+    // 槽位是列表下标：英文挪到下标 3；emoji 留在默认的下一位。
+    REQUIRE_EQ(items[0].word, std::string("你"));
+    REQUIRE_EQ(items[1].source, CandidateSource::Emoji);
+    REQUIRE_EQ(items[3].word, std::string("nice"));
+    REQUIRE_EQ(*FanyImeIpc::SlottedEnglishIndex(items), size_t{3});
+}
+
+TEST_CASE(PinyinInputPrefersExactEnglishAndParksCompletionsOnTheFirstPage)
+{
+    const auto local = [](std::string word) { return WordItem("bus", std::move(word), 100); };
+    FanyImeIpc::EnglishPlacement placement;
+    placement.require_exact = true;
+    placement.input = "bus";
+    placement.page_size = 5;
+
+    // 精确匹配占槽位、默认紧跟第一个中文候选，其余补全词（哪怕权重更高）排到末尾。
+    std::vector<WordItem> items = {
+        local("不是"),
+        WordItem("business", "business", 900000, CandidateSource::EnglishDictionary),
+        local("不少"),
+        WordItem("bus", "bus", 0, CandidateSource::EnglishDictionary),
+    };
+    FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, placement);
+    REQUIRE_EQ(items[0].word, std::string("不是"));
+    REQUIRE_EQ(items[1].word, std::string("bus"));
+    REQUIRE_EQ(items[2].word, std::string("不少"));
+    REQUIRE_EQ(items[3].word, std::string("business"));
+    REQUIRE_EQ(*FanyImeIpc::SlottedEnglishIndex(items), size_t{1});
+
+    // 没有精确匹配：最前的补全词默认放在首页末位（每页 5 个 → 下标 4），不沉到列表底部。
+    placement.input = "zai";
+    const auto zai_items = [] {
+        return std::vector<WordItem>{
+            WordItem("zai", "在", 19195987), WordItem("zaire", "zaire", 19196987, CandidateSource::EnglishDictionary),
+            WordItem("zai", "再", 2681503),  WordItem("zai", "载", 127412),
+            WordItem("zai", "灾", 83099),    WordItem("zai", "宰", 58463),
+            WordItem("zai", "崽", 1000),
+        };
+    };
+    items = zai_items();
+    FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, placement);
+    REQUIRE_EQ(items[0].word, std::string("在"));
+    REQUIRE_EQ(items[1].word, std::string("再"));
+    REQUIRE_EQ(items[4].word, std::string("zaire"));
+    REQUIRE_EQ(items[5].word, std::string("宰"));
+    REQUIRE_EQ(*FanyImeIpc::SlottedEnglishIndex(items), size_t{4});
+
+    // 学到的槽位优先于默认位置，补全词可以一直升到首位。
+    placement.slot = 0;
+    items = zai_items();
+    FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, placement);
+    REQUIRE_EQ(items[0].word, std::string("zaire"));
+    REQUIRE_EQ(items[1].word, std::string("在"));
+
+    // 槽位不超过首页末位。
+    placement.slot = 9;
+    items = zai_items();
+    FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, placement);
+    REQUIRE_EQ(*FanyImeIpc::SlottedEnglishIndex(items), size_t{4});
 }
 
 TEST_CASE(FixedEnglishCandidateKeepsItsMixedCandidatePosition)
@@ -413,9 +503,12 @@ TEST_CASE(QuickPhraseGroupStaysWholeAndAheadOfAsyncCandidates)
     REQUIRE_EQ(items[1].word, std::string("快捷一"));
     REQUIRE_EQ(items[2].source, CandidateSource::CloudSuggestion);
 
-    // 快捷短语的权重不参与英文提升；提升的英文也排在首位的组后面。
-    items = {phrase("快捷一"), local("你"), english(1100)};
-    FanyImeIpc::NormalizeMixedCandidateOrder(items);
+    // 槽位学到最前的英文也排在首位的组后面。
+    items = {phrase("快捷一"), local("你"), english(1)};
+    FanyImeIpc::EnglishPlacement placement;
+    placement.slot = 0;
+    placement.input = "ni";
+    FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, placement);
     REQUIRE_EQ(items[0].word, std::string("快捷一"));
     REQUIRE_EQ(items[1].word, std::string("nice"));
     REQUIRE_EQ(items[2].word, std::string("你"));

@@ -46,6 +46,8 @@ class IInputSession
     virtual std::vector<std::size_t> segment_raw_boundaries() const = 0;
     virtual std::string get_quanpin() const = 0;
     virtual bool is_all_complete_pure_pinyin() const = 0;
+    // 整串能否读成拼音（允许简拼声母和打到一半的音节），语义见 engine 同名方法。
+    virtual bool reads_as_pinyin() const = 0;
     // Engine fact for wubi auto-commit: the composition is a complete four-letter wubi code the
     // table answered with exactly one candidate. The Server decides whether the setting makes that
     // commit immediately; the engine only reports it.

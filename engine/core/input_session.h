@@ -180,6 +180,10 @@ class InputSession
     std::vector<std::size_t> segment_raw_boundaries() const;
     std::string get_quanpin() const;
     bool is_all_complete_pure_pinyin() const;
+    // 整串输入能不能读成拼音：全拼按「完整音节或音节前缀」（含简拼声母，bus = bu + s）切完整串，
+    // 双拼按完整音节码、末尾允许单独一个声母键。不要求音节完整，也不看词库有没有词。混输里用它
+    // 决定英文前缀补全词的默认位置：能读成拼音的输入，用户多半在打中文，补全词默认退到首页末位。
+    bool reads_as_pinyin() const;
     // The current composition is a complete four-letter wubi code the wubi table answered with
     // exactly one row. Hosts decide whether to auto-commit on this; the engine only reports the fact.
     // The pinyin candidates mixed input appends are deliberately not counted: a code the table did

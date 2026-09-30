@@ -14,6 +14,7 @@
 #include <vector>
 #include "ipc.h"
 #include "ipc/async_request_origin.h"
+#include "ipc/candidate_selection_policy.h"
 #include "ipc/candidate_ui_owner.h"
 #include "ipc/event_listener.h"
 #include "window/caret_state_indicator_policy.h"
@@ -158,6 +159,10 @@ enum class PageMoveResult
 // event_listener_candidates.cpp
 std::string CurrentRankingContextKey();
 std::string EnglishRankingContextKey();
+// 混输英文槽位：按小写输入记（Y 模式去掉前缀），是英文在候选列表里的下标，上限是首页末位。
+std::string EnglishInputKey();
+int EnglishSlotMaximum();
+FanyImeIpc::EnglishPlacement CurrentEnglishPlacement(const std::vector<WordItem> &items);
 bool ExpandCandidatesKeepingPagePosition();
 PageMoveResult MoveCandidatePage(int offset);
 std::pair<std::string, std::string> RankingKeysForCandidate(const WordItem &item);
@@ -174,6 +179,10 @@ void EnqueueLearnEnteredEnglishWordTask(const std::string &word);
 // word 为空：越过整组选了普通候选，ordinary_rank 是它在普通候选里的名次。
 void EnqueueLearnQuickPhraseOrderTask(const std::string &code, const std::string &word, bool first_in_group,
                                       int ordinary_rank, uint64_t client_id, uint64_t activation_epoch);
+// 混输英文槽位的调频。selected_index 为空：选中了占槽位的英文（english_index），按名次前移；
+// 否则越过了英文选了 selected_index 处的候选，英文后退一位。
+void EnqueueLearnEnglishSlotTask(const std::string &code, int english_index, std::optional<int> selected_index,
+                                 uint64_t client_id, uint64_t activation_epoch);
 
 // event_listener.cpp
 bool SendUiLessCompositionToClient(uint64_t client_id, uint64_t activation_epoch, uint64_t request_id);

@@ -94,6 +94,39 @@ inline size_t IndexAfterLocalCandidates(const std::vector<WordItem> &items, size
     return index;
 }
 
+// 中英混输里首个英文候选该排在哪。英文词库和中文词库的权重不在一个量纲上，不能拿来比大小
+// （曾经英文调频写成「全表最高 + 1000」，选一次 zaire 就永久压过「在」），位置只由这里决定：
+//   slot           按输入学到的槽位（user_dictionary::english_slot）：它在列表里的下标，0 是首位。
+//                  没学过时用默认位置。
+//   require_exact  输入能读成拼音时置位：和输入完全相同的英文词优先占槽位，默认紧跟第一个中文
+//                  候选；没有精确匹配时由最前的补全词（zai → zaire）占槽位，默认退到首页末位。
+//   input          小写的当前输入，用来认精确匹配。
+//   page_size      每页候选数，给补全词的默认位置和槽位上限用；0 表示不限。
+struct EnglishPlacement
+{
+    std::optional<size_t> slot;
+    bool require_exact = false;
+    std::string input;
+    size_t page_size = 0;
+};
+
+inline bool IsExactEnglishMatch(const WordItem &item, const EnglishPlacement &placement)
+{
+    return item.source == CandidateSource::EnglishDictionary && item.pinyin == placement.input;
+}
+
+// 占着英文槽位的那个候选在列表里的下标；没有英文、或它被用户固定了位置时为空。
+// NormalizeMixedCandidateOrder 把占槽位的英文放在其余英文前面，所以列表里第一个英文就是它。
+inline std::optional<size_t> SlottedEnglishIndex(const std::vector<WordItem> &items)
+{
+    const auto english = std::find_if(items.begin(), items.end(), [](const WordItem &item) {
+        return item.source == CandidateSource::EnglishDictionary;
+    });
+    if (english == items.end() || english->fixed_position > 0)
+        return std::nullopt;
+    return static_cast<size_t>(english - items.begin());
+}
+
 // Keep asynchronous mixed-input candidates in stable priority slots regardless
 // of the order in which their workers finish. English keeps its legacy slotting
 // (promoted ahead of AI unless a cloud result forces it behind cloud+AI), and
@@ -102,8 +135,11 @@ inline size_t IndexAfterLocalCandidates(const std::vector<WordItem> &items, size
 //   cloud:            Chinese, cloud, AI, English, emoji, kaomoji
 //   cloud only:       Chinese, cloud, English, emoji, kaomoji
 //   base:             Chinese, English, emoji, kaomoji
-// Explicit English ranking choices are reapplied after this default ordering.
-inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t local_prefix_slots = 1)
+// The learned English slot (EnglishPlacement) moves the English candidate away
+// from that default afterwards, and explicit English ranking choices are
+// reapplied last.
+inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t local_prefix_slots = 1,
+                                         const EnglishPlacement &english_placement = {})
 {
     std::vector<WordItem> local_candidates;
     std::vector<WordItem> english_candidates;
@@ -146,6 +182,19 @@ inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t lo
         items.insert(items.begin() + offset, std::move(candidate));
     };
 
+    // 能读成拼音的输入优先让精确匹配占槽位：把它挪到英文组最前；没有精确匹配时占槽位的是补全词。
+    const bool english_takes_slot = !english_candidates.empty();
+    bool completion_takes_slot = false;
+    if (english_takes_slot && english_placement.require_exact)
+    {
+        const auto exact =
+            std::find_if(english_candidates.begin(), english_candidates.end(),
+                         [&](const WordItem &item) { return IsExactEnglishMatch(item, english_placement); });
+        completion_takes_slot = exact == english_candidates.end();
+        if (!completion_takes_slot)
+            std::rotate(english_candidates.begin(), exact, exact + 1);
+    }
+
     size_t slot = IndexAfterLocalCandidates(items, local_prefix_slots);
     if (cloud_candidate)
     {
@@ -153,8 +202,10 @@ inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t lo
         if (ai_candidate)
             insert_at(slot++, std::move(*ai_candidate));
     }
-    if (!english_candidates.empty())
+    std::optional<size_t> english_index;
+    if (english_takes_slot)
     {
+        english_index = (std::min)(slot, items.size());
         insert_at(slot++, std::move(english_candidates.front()));
         english_candidates.erase(english_candidates.begin());
     }
@@ -178,22 +229,18 @@ inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t lo
     for (auto &candidate : kaomoji_candidates)
         items.push_back(std::move(candidate));
 
-    // 快捷短语的权重是另一套量级，不参与英文提升的比较。
-    const auto ranked = [](const WordItem &item) { return item.source != CandidateSource::QuickPhrase; };
-    auto promoted_english = items.end();
-    for (auto candidate = items.begin(); candidate != items.end(); ++candidate)
+    // 把英文从默认位置挪到学到的槽位；没学过的补全词挪到首页末位。槽位 0 排在最前，但仍在首位
+    // 的快捷短语组后面。后面插入的 AI/emoji/颜文字都在 english_index 之后，下标仍然有效。
+    std::optional<size_t> target = english_placement.slot;
+    if (!target && completion_takes_slot)
+        target = english_placement.page_size > 0 ? english_placement.page_size - 1 : items.size();
+    if (english_index && target && items[*english_index].fixed_position == 0)
     {
-        if (ranked(*candidate) && (promoted_english == items.end() || promoted_english->weight < candidate->weight))
-            promoted_english = candidate;
-    }
-    if (promoted_english != items.end() && promoted_english->source == CandidateSource::EnglishDictionary &&
-        promoted_english->fixed_position == 0 && std::count_if(items.begin(), items.end(), [&](const WordItem &item) {
-                                                     return ranked(item) && item.weight == promoted_english->weight;
-                                                 }) == 1)
-    {
-        WordItem candidate = std::move(*promoted_english);
-        items.erase(promoted_english);
-        insert_at(IndexAfterLocalCandidates(items, 0), std::move(candidate));
+        if (english_placement.page_size > 0)
+            target = (std::min)(*target, english_placement.page_size - 1);
+        WordItem candidate = std::move(items[*english_index]);
+        items.erase(items.begin() + static_cast<std::ptrdiff_t>(*english_index));
+        insert_at(*target == 0 ? IndexAfterLocalCandidates(items, 0) : *target, std::move(candidate));
     }
 
     std::vector<WordItem> fixed_english_candidates;

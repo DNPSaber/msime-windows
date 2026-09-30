@@ -78,7 +78,7 @@ void ApplyCloudCandidate(const std::string &candidate, const std::string &pinyin
     const bool preserve_single_kana_pair =
         g_inputSession->current_scheme_type() == SchemeType::JapaneseRomaji &&
         japanese::IsSingleKanaConversion(japanese::ConvertRomaji(g_inputSession->get_pinyin_sequence()));
-    FanyImeIpc::NormalizeMixedCandidateOrder(items, preserve_single_kana_pair ? 2 : 1);
+    FanyImeIpc::NormalizeMixedCandidateOrder(items, preserve_single_kana_pair ? 2 : 1, CurrentEnglishPlacement(items));
     Global::cloud_candidate = {true, candidate, cloud_query_state.committed_pinyin};
 
     Global::candidate_ui.item_total_count = static_cast<int>(items.size());
@@ -179,7 +179,7 @@ void ApplyAiCandidate(const std::string &candidate, const std::string &identity,
                 items.end());
     const size_t insert_index = std::min<size_t>(2, items.size());
     items.insert(items.begin() + insert_index, *accepted);
-    FanyImeIpc::NormalizeMixedCandidateOrder(items);
+    FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, CurrentEnglishPlacement(items));
     (void)0;
     Global::ai_candidate = {true, candidate, query.committed_pinyin};
     Global::candidate_ui.item_total_count = static_cast<int>(items.size());
@@ -272,7 +272,7 @@ void ApplyEnglishCandidates(std::vector<WordItem> candidates, const std::string 
         {
             items.push_back(std::move(unique_candidates[index]));
         }
-        FanyImeIpc::NormalizeMixedCandidateOrder(items);
+        FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, CurrentEnglishPlacement(items));
     }
 
     Global::candidate_ui.item_total_count = static_cast<int>(items.size());
@@ -367,7 +367,7 @@ void ApplyEmojiCandidates(std::vector<WordItem> candidates, const std::string &i
         {
             items.push_back(std::move(unique_candidates[index]));
         }
-        FanyImeIpc::NormalizeMixedCandidateOrder(items);
+        FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, CurrentEnglishPlacement(items));
     }
 
     Global::candidate_ui.item_total_count = static_cast<int>(items.size());
@@ -412,7 +412,7 @@ void ApplyKaomojiCandidates(std::vector<WordItem> candidates, const std::string 
         {
             items.push_back(std::move(unique_candidates[index]));
         }
-        FanyImeIpc::NormalizeMixedCandidateOrder(items);
+        FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, CurrentEnglishPlacement(items));
     }
 
     Global::candidate_ui.item_total_count = static_cast<int>(items.size());

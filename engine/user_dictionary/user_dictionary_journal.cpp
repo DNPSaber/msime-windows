@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
+#include <iterator>
 #include <memory>
 #include <vector>
 #include <algorithm>
@@ -131,6 +132,8 @@ bool ensure_schema(sqlite3 *db)
         "position INTEGER NOT NULL CHECK(position BETWEEN 1 AND 5),"
         "PRIMARY KEY(context_key,entry_key,value),UNIQUE(context_key,position));"
         "CREATE TABLE IF NOT EXISTS quick_phrase_slots("
+        "code TEXT PRIMARY KEY,slot INTEGER NOT NULL CHECK(slot>=0));"
+        "CREATE TABLE IF NOT EXISTS english_slots("
         "code TEXT PRIMARY KEY,slot INTEGER NOT NULL CHECK(slot>=0));";
     if (sqlite3_exec(db, sql, nullptr, nullptr, nullptr) != SQLITE_OK)
         return false;
@@ -626,15 +629,21 @@ bool adjust_english_candidate_ranking(const std::string &english_db_path, const 
         }
     }
 
-    const auto selected = std::find_if(ordered_candidates.begin(), ordered_candidates.end(), [&](const WordItem &item) {
-        return item.source == CandidateSource::EnglishDictionary && item.pinyin == entry_key && item.word == value;
+    // 只和英文候选比。混输列表里还有中文，它们的权重是另一个词库的量纲：拿「全表最高 + 1000」
+    // 当新权重，选一次英文就会压过「在」这种一千多万的高频字，而且权重按词全局生效，之后凡是
+    // 前缀能查出它的输入都受影响。英文排在中文的第几位由按输入记的英文槽位决定（english_slot）。
+    std::vector<WordItem> english_candidates;
+    std::copy_if(ordered_candidates.begin(), ordered_candidates.end(), std::back_inserter(english_candidates),
+                 [](const WordItem &item) { return item.source == CandidateSource::EnglishDictionary; });
+    const auto selected = std::find_if(english_candidates.begin(), english_candidates.end(), [&](const WordItem &item) {
+        return item.pinyin == entry_key && item.word == value;
     });
-    if (selected == ordered_candidates.end())
+    if (selected == english_candidates.end())
     {
         rollback_user();
         return false;
     }
-    const size_t rank = static_cast<size_t>(selected - ordered_candidates.begin());
+    const size_t rank = static_cast<size_t>(selected - english_candidates.begin());
     if (rank == 0)
     {
         const bool committed = execute_sql(user_db.get(), "COMMIT");
@@ -652,10 +661,10 @@ bool adjust_english_candidate_ranking(const std::string &english_db_path, const 
     else if (!force_top && mode == "promote")
         target = rank > 4 ? 4 : rank - 1;
     const std::int64_t maximum_weight =
-        std::accumulate(ordered_candidates.begin(), ordered_candidates.end(), std::int64_t{0},
+        std::accumulate(english_candidates.begin(), english_candidates.end(), std::int64_t{0},
                         [](std::int64_t maximum, const WordItem &item) { return (std::max)(maximum, item.weight); });
     const std::int64_t new_weight =
-        target == 0 ? (std::max)(maximum_weight, selected->weight) + 1000 : ordered_candidates[target - 1].weight + 1;
+        target == 0 ? (std::max)(maximum_weight, selected->weight) + 1000 : english_candidates[target - 1].weight + 1;
 
     auto english_db = open_database(english_db_path, SQLITE_OPEN_READWRITE);
     auto update = english_db
@@ -835,11 +844,12 @@ bool write_quick_phrase_slot(sqlite3 *db, const std::string &schema, const std::
 }
 
 // 计一次数；到 trigger_count 时置 reached 并清零，计数不会越过状态导出允许的上限。
-bool count_quick_phrase_selection(sqlite3 *db, const std::string &schema, const std::string &code,
-                                  const char *direction, int trigger_count, bool &reached)
+// context_prefix 区分快捷短语组和英文槽位，两者的计数互不干扰。
+bool count_slot_selection(sqlite3 *db, const std::string &schema, const std::string &context_prefix,
+                          const std::string &code, const char *direction, int trigger_count, bool &reached)
 {
     reached = false;
-    const std::string context = kQuickPhraseSelectionContext + code;
+    const std::string context = context_prefix + code;
     {
         auto counter = prepare(db, "INSERT INTO " + schema +
                                        "candidate_selection_state(context_key,entry_key,value,selection_count)"
@@ -901,7 +911,8 @@ bool learn_quick_phrase_selection(const std::string &main_db_path, const std::st
     if (slot == 0 && first_in_group)
         return commit();
     bool reached = false;
-    if (!count_quick_phrase_selection(database.get(), schema, code, "promote", trigger_count, reached))
+    if (!count_slot_selection(database.get(), schema, kQuickPhraseSelectionContext, code, "promote", trigger_count,
+                              reached))
         return rollback();
     if (!reached)
         return commit();
@@ -963,11 +974,95 @@ bool learn_quick_phrase_bypass(const std::string &user_db_path, const std::strin
     if (target > static_cast<size_t>(slot))
         return commit();
     bool reached = false;
-    if (!count_quick_phrase_selection(db.get(), "", code, "bypass", trigger_count, reached))
+    if (!count_slot_selection(db.get(), "", kQuickPhraseSelectionContext, code, "bypass", trigger_count, reached))
         return rollback();
     if (reached && !write_quick_phrase_slot(db.get(), "", code, (std::min)(slot + 1, max_slot)))
         return rollback();
     return commit();
+}
+
+namespace
+{
+const std::string kEnglishSlotSelectionContext = "english_slot:";
+
+bool write_english_slot(sqlite3 *db, const std::string &code, int slot)
+{
+    auto stmt = prepare(db, "INSERT INTO english_slots(code,slot) VALUES(?1,?2)"
+                            " ON CONFLICT(code) DO UPDATE SET slot=excluded.slot");
+    return stmt && bind_text(stmt.get(), 1, code) &&
+           sqlite3_bind_int(stmt.get(), 2, (std::max)(0, slot)) == SQLITE_OK && sqlite3_step(stmt.get()) == SQLITE_DONE;
+}
+
+// 选择计数与写槽位放在一个事务里；write_slot 只在计数到 trigger_count 时调用。
+template <typename WriteSlot>
+bool count_and_write_english_slot(const std::string &user_db_path, const std::string &code, const char *direction,
+                                  int trigger_count, WriteSlot write_slot)
+{
+    UserDatabase db(user_db_path);
+    if (!db || !execute_sql(db.get(), "BEGIN IMMEDIATE"))
+        return false;
+    const auto rollback = [&]() {
+        (void)execute_sql(db.get(), "ROLLBACK");
+        return false;
+    };
+    bool reached = false;
+    if (!count_slot_selection(db.get(), "", kEnglishSlotSelectionContext, code, direction, trigger_count, reached))
+        return rollback();
+    if (reached && !write_slot(db.get()))
+        return rollback();
+    return execute_sql(db.get(), "COMMIT") || rollback();
+}
+} // namespace
+
+std::optional<int> english_slot(const std::string &user_db_path, const std::string &code)
+{
+    if (code.empty())
+        return std::nullopt;
+    UserDatabase db(user_db_path);
+    auto stmt = db ? prepare(db.get(), "SELECT slot FROM english_slots WHERE code=?1") : Stmt{};
+    if (!stmt || !bind_text(stmt.get(), 1, code) || sqlite3_step(stmt.get()) != SQLITE_ROW)
+        return std::nullopt;
+    return (std::max)(0, sqlite3_column_int(stmt.get(), 0));
+}
+
+bool set_english_slot(const std::string &user_db_path, const std::string &code, int slot)
+{
+    if (code.empty())
+        return false;
+    UserDatabase db(user_db_path);
+    return db && write_english_slot(db.get(), code, slot);
+}
+
+bool learn_english_slot_selection(const std::string &user_db_path, const std::string &code, int english_index,
+                                  const std::string &mode, int linear_step, int trigger_count)
+{
+    if (code.empty() || english_index < 0)
+        return false;
+    // 已经在首位就是默认上屏的那一个，没有可学的。
+    if (mode == "disabled" || english_index == 0)
+        return true;
+    // 和中文调频同一套名次规则：按它此刻在列表里的名次算目标位置。
+    const int target =
+        static_cast<int>(ranking_target(static_cast<size_t>(english_index), mode, (std::max)(1, linear_step), false));
+    return count_and_write_english_slot(user_db_path, code, "promote", trigger_count,
+                                        [&](sqlite3 *db) { return write_english_slot(db, code, target); });
+}
+
+bool learn_english_slot_bypass(const std::string &user_db_path, const std::string &code, int english_index,
+                               int selected_index, const std::string &mode, int linear_step, int trigger_count,
+                               int max_slot)
+{
+    if (code.empty() || english_index < 0 || selected_index <= english_index)
+        return false;
+    if (mode == "disabled" || english_index >= max_slot)
+        return true;
+    // 和快捷短语组同一个判据：选中的候选按调频模式的目标位置落在英文的位置或更前，才算越过了它。
+    const size_t target = ranking_target(static_cast<size_t>(selected_index), mode, (std::max)(1, linear_step), false);
+    if (target > static_cast<size_t>(english_index))
+        return true;
+    return count_and_write_english_slot(user_db_path, code, "bypass", trigger_count, [&](sqlite3 *db) {
+        return write_english_slot(db, code, (std::min)(english_index + 1, max_slot));
+    });
 }
 
 bool learn_entered_english_word(const std::string &english_db_path, const std::string &user_db_path,
