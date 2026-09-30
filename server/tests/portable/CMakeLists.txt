@@ -32,7 +32,10 @@ if(MSIME_PORTABLE_TESTS_SANITIZE AND NOT MSVC)
     target_link_options(portable_tests PRIVATE -fsanitize=address,undefined)
 endif()
 
-if(NOT MSVC)
+if(MSVC)
+    # Standalone project, so the server's directory-wide /utf-8 does not reach it.
+    target_compile_options(portable_tests PRIVATE /utf-8)
+else()
     target_compile_options(portable_tests PRIVATE -Wall -Wextra -Wpedantic -Werror)
 endif()
 

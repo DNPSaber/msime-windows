@@ -13,6 +13,9 @@ project(${PROJECT_NAME} LANGUAGES CXX C)
 # Release binaries need usable symbols for crash diagnosis. Keep the PDB beside the DLL so the
 # release job can validate and publish it without changing the binary's install layout.
 if(MSVC)
+    # Sources are UTF-8 without a BOM and hold wide punctuation literals (L"“" and the like). /utf-8
+    # used to arrive only through fmt's interface options, which the tests below never link.
+    add_compile_options(/utf-8)
     set(CMAKE_MSVC_DEBUG_INFORMATION_FORMAT "ProgramDatabase")
     add_compile_options("$<$<CONFIG:Release>:/Zi>")
     add_link_options("$<$<CONFIG:Release>:/DEBUG>")

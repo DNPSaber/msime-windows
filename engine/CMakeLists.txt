@@ -157,6 +157,9 @@ if(BUILD_TESTING)
     add_test(NAME segmentation_contract COMMAND test_segmentation_contract)
 
     add_executable(test_windows_ipc_contract contracts/tests/windows_ipc_contract.cpp)
+    if(MSVC)
+        target_compile_options(test_windows_ipc_contract PRIVATE /utf-8)
+    endif()
     add_test(NAME windows_ipc_contract COMMAND test_windows_ipc_contract)
 
     add_executable(test_punctuation_contract contracts/tests/punctuation_contract.cpp)

@@ -4,6 +4,10 @@ cmake_minimum_required(VERSION 3.25)
 if(CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR)
     project(MsimeTsfLocalPolicyTests LANGUAGES CXX)
     enable_testing()
+    # windows/CMakeLists.txt sets this for the in-tree build; the sources and headers are UTF-8.
+    if(MSVC)
+        add_compile_options(/utf-8)
+    endif()
 endif()
 
 add_executable(test_client_fallback client_fallback.cpp)
