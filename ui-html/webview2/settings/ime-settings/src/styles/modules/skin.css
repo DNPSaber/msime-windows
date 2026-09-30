@@ -4,7 +4,6 @@
 .skin-theme-card.has-skin-decoration .skin-preview-stage { overflow: visible; }
 .skin-theme-card + .skin-theme-card { margin-top: 18px; }
 .skin-theme-header { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 20px 24px; }
-.skin-theme-description { margin-top: 5px; color: var(--text-muted); font-size: 13px; }
 .skin-theme-actions {
   display: flex;
   flex-direction: column;
@@ -21,7 +20,7 @@
   border: 1px solid var(--border-color);
   border-radius: 6px;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--font-size-caption);
   line-height: 1;
   cursor: pointer;
 }

@@ -58,12 +58,6 @@
   padding: 8px 4px;
 }
 
-.input-setting-description {
-  color: var(--text-muted);
-  font-size: 12px;
-  margin-top: 5px;
-}
-
 .translation-api-options {
   margin-top: 8px;
 }
@@ -333,11 +327,6 @@
 
 .toggle-section-details .section-header {
   padding: 2px 0;
-}
-
-.toggle-section-details .section-title {
-  font-size: 15px;
-  font-weight: 400;
 }
 
 .toggle-section-details .input-setting-description {
