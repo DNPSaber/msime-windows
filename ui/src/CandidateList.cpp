@@ -432,9 +432,11 @@ SizeF CandidateList::Measure(const SizeF &availableSize)
             horizontal
                 ? std::max(textWidth, translationWidth)
                 : textWidth + (item.translation.empty() ? 0.0f : appearance_.fontSize * 0.65f + translationWidth);
-        const float width = appearance_.contentPadLeft + appearance_.textPadLeft +
-                            std::max(EstimateTextWidth(item.label, appearance_.labelFontSize), 9.0f) +
-                            appearance_.labelGap + contentWidth + appearance_.contentPadRight;
+        float width = appearance_.contentPadLeft + appearance_.textPadLeft +
+                      std::max(EstimateTextWidth(item.label, appearance_.labelFontSize), 9.0f) + appearance_.labelGap +
+                      contentWidth + appearance_.contentPadRight;
+        if (horizontal)
+            width = std::max(width, appearance_.minItemWidth);
         widths.push_back(std::min(width, availableWidth));
         maxWidth = std::max(maxWidth, width);
     }
@@ -546,7 +548,8 @@ void CandidateList::Render(DeviceResources &deviceResources)
                 const float barWidth = (std::max)(appearance_.selectedBarWidth, 3.0f);
                 const float barHeight = (std::max)(appearance_.selectedBarHeight, barWidth * 2.0f);
                 const float barY = itemRect.y + std::max((itemRect.height - barHeight) * 0.5f, 0.0f);
-                const RectF selectedBar = {itemRect.x - barWidth * 0.5f, barY, barWidth, barHeight};
+                const float barX = appearance_.selectedBarInside ? itemRect.x : itemRect.x - barWidth * 0.5f;
+                const RectF selectedBar = {barX, barY, barWidth, barHeight};
                 FillRoundedRect(deviceResources, selectedBar, barWidth * 0.5f, appearance_.selectedBarColor,
                                 appearance_.selectedBarColor, 0.0f);
             }

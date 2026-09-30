@@ -607,6 +607,15 @@ int PrepareHtmlForWnds()
     }
     std::wstring entireHtmlPathFtbWnd = assetPath + htmlFtbWnd;
     ::HTMLStringFtbWnd = ReadHtmlFileWithFallback(entireHtmlPathFtbWnd, assetPath + L"/html/webview2/ftb/default.html");
+    if (baseCandidateSkin == "microsoft")
+    {
+        // 微软皮肤沿用默认工具栏页面，只把拖拽条换成候选框选中条的紫色；与 ResolveFloatingToolbarSkin 同值。
+        // 插在外部皮肤的覆盖之前，外部皮肤写了 handle 时仍以它为准。
+        const size_t headEnd = ::HTMLStringFtbWnd.find(L"</head>");
+        if (headEnd != std::wstring::npos)
+            ::HTMLStringFtbWnd.insert(
+                headEnd, L"<style id=\"built-in-toolbar-skin\">.drag-handle { background: #E183D9; }</style>");
+    }
     if (activeExternalCandidateSkin && !::HTMLStringFtbWnd.empty())
     {
         const size_t htmlTag = ::HTMLStringFtbWnd.find(L"<html");

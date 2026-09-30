@@ -269,7 +269,8 @@ bool ReadToolbarColors(const toml::node *node, ToolbarColors &out)
 
 const std::vector<std::string> &BuiltInIds()
 {
-    static const std::vector<std::string> ids = {"fluent", "wechat", "graphite", "willow_green", "autumn_osmanthus"};
+    static const std::vector<std::string> ids = {"fluent",       "wechat",           "graphite",
+                                                 "willow_green", "autumn_osmanthus", "microsoft"};
     return ids;
 }
 

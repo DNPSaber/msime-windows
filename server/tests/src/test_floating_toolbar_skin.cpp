@@ -40,6 +40,17 @@ TEST_CASE(floating_toolbar_skin_follows_builtin_skin_pages)
     const FloatingToolbarSkin autumnLight = ResolveFloatingToolbarSkin("autumn_osmanthus", true);
     REQUIRE_EQ(FlattenCandidateColor(autumnLight.fill, autumnLight.fill), RGB(214, 236, 240));
     REQUIRE_EQ(FlattenCandidateColor(autumnLight.glyph, autumnLight.fill), RGB(26, 26, 26));
+
+    // Microsoft keeps the default toolbar and only takes its purple selection bar colour for the handle.
+    for (const bool light : {false, true})
+    {
+        const FloatingToolbarSkin microsoft = ResolveFloatingToolbarSkin("microsoft", light);
+        const FloatingToolbarSkin fluent = ResolveFloatingToolbarSkin("fluent", light);
+        REQUIRE_EQ(FlattenCandidateColor(microsoft.handle, microsoft.fill), RGB(225, 131, 217));
+        REQUIRE_EQ(FlattenCandidateColor(microsoft.fill, microsoft.fill),
+                   FlattenCandidateColor(fluent.fill, fluent.fill));
+        REQUIRE_EQ(microsoft.radius, fluent.radius);
+    }
 }
 
 // An external skin's [toolbar] tables reach the D2D toolbar too, not only the WebView2 page.

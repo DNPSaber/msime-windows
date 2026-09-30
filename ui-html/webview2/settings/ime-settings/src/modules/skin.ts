@@ -33,12 +33,12 @@ type ExternalSkin = {
 };
 type SkinScanIssue = { folder: string; reason: string };
 
-const BUILTIN_SKINS = ['fluent', 'wechat', 'graphite', 'willow_green', 'autumn_osmanthus'] as const;
+const BUILTIN_SKINS = ['fluent', 'wechat', 'graphite', 'willow_green', 'autumn_osmanthus', 'microsoft'] as const;
 type BuiltinSkin = typeof BUILTIN_SKINS[number];
 const previewOverrides: Record<string, SkinPreviewTheme | null> = {
-  fluent: null, wechat: null, graphite: null, willow_green: null, autumn_osmanthus: null
+  fluent: null, wechat: null, graphite: null, willow_green: null, autumn_osmanthus: null, microsoft: null
 };
-const BUILTIN_PREVIEW_CLASSES = ['skin-wechat', 'skin-graphite', 'skin-willow-green', 'skin-autumn-osmanthus'];
+const BUILTIN_PREVIEW_CLASSES = ['skin-wechat', 'skin-graphite', 'skin-willow-green', 'skin-autumn-osmanthus', 'skin-microsoft'];
 const loadedExternalStyleIds = new Set<string>();
 let activeTheme: SkinPreviewTheme = 'dark';
 let activeSkin: CandidateSkin = 'fluent';
@@ -70,6 +70,7 @@ function builtinPreviewClass(skinId: string): string {
   if (skinId === 'graphite') return 'skin-graphite';
   if (skinId === 'willow_green') return 'skin-willow-green';
   if (skinId === 'autumn_osmanthus') return 'skin-autumn-osmanthus';
+  if (skinId === 'microsoft') return 'skin-microsoft';
   const external = findExternalSkin(skinId);
   return external ? builtinPreviewClass(external.base) : '';
 }
@@ -429,7 +430,8 @@ function applyBuiltinCardTheme(skin: BuiltinSkin, theme: SkinPreviewTheme): void
   if (title) {
     const name = skin === 'wechat' ? '微信绿主题' : skin === 'graphite' ? '石墨 Graphite'
       : skin === 'willow_green' ? '杨柳青 Willow green'
-      : skin === 'autumn_osmanthus' ? '秋桂 Autumn osmanthus' : 'Fluent 主题';
+      : skin === 'autumn_osmanthus' ? '秋桂 Autumn osmanthus'
+      : skin === 'microsoft' ? '微软 Microsoft' : 'Fluent 主题';
     title.textContent = `${name}(${theme === 'light' ? 'Light' : 'Dark'})`;
   }
   card.querySelectorAll<HTMLButtonElement>('[data-skin-preview-switch]').forEach((button) => {

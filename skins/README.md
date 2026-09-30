@@ -18,7 +18,7 @@
 
 ## 默认皮肤设置（`default/`）
 
-[`default/`](default/) 不是外部皮肤，而是五个内置皮肤（`fluent`、`wechat`、`graphite`、`willow_green`、`autumn_osmanthus`）各自的设置清单。安装包会把它们放到数据目录的 `skins\default\<id>\skin.toml`，升级时只补缺失的文件、不覆盖已有的，所以可以直接在那里改。
+[`default/`](default/) 不是外部皮肤，而是六个内置皮肤（`fluent`、`wechat`、`graphite`、`willow_green`、`autumn_osmanthus`、`microsoft`）各自的设置清单。安装包会把它们放到数据目录的 `skins\default\<id>\skin.toml`，升级时只补缺失的文件、不覆盖已有的，所以可以直接在那里改。
 
 内置皮肤的外观仍由输入法内置样式决定，这份清单只承载皮肤级的开关，目前支持：
 

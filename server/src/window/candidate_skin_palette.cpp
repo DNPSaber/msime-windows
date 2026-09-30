@@ -121,6 +121,13 @@ CandidateSkinPalette ResolveCandidateSkinPalette(const std::string &skinId, bool
                         : CandidateSkinPalette{CandidateColorFromRgb(0x1C1F23), CandidateColorFromRgb(0x30353B),
                                                CandidateColorFromRgb(0xAEB6C2)};
     }
+    else if (paletteSkinId == "microsoft")
+    {
+        palette = light ? CandidateSkinPalette{CandidateColorFromRgb(0xF9F9F9), D2D1::ColorF(0, 0.1f),
+                                               CandidateColorFromRgb(0x1A1A1A)}
+                        : CandidateSkinPalette{CandidateColorFromRgb(0x2C2C2C), CandidateColorFromRgb(0x1C1C1C),
+                                               CandidateColorFromRgb(0xFFFFFF)};
+    }
     if (packageColors)
     {
         if (!packageColors->surface.empty())
