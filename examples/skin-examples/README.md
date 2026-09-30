@@ -94,6 +94,7 @@ icon = "#f6e4eb"
 - 卡片实际最小宽度取 `min_width_dip` 和装饰图 `width_dip` 中较大的那个。
 - 背景图画在底色之上、文字之下，并按圆角裁剪。
 - 细分配色（普通候选文字、预编辑文字与光标、选中行的文字 / 序号 / 翻译 / 竖条、预编辑底色与分隔线）不写时都回落到 `text` 或 `accent`，完整的回落规则见 [schema/README.md](schema/README.md)。设置页里的「候选文字颜色」仍优先于皮肤的文字色。
+- 所有颜色键都可以写十六进制 `#rgb` / `#rgba` / `#rrggbb` / `#rrggbbaa`，也可以写 `rgb()` / `rgba()` 或 `transparent`。十六进制必须带 `#`，不透明度在末尾（`#RRGGBBAA`），详见 [schema/README.md](schema/README.md#颜色格式)。
 - `font_family` 排在用户设置的字体前面，缺字时回落到用户字体；字号始终由用户设置决定。
 - `page_arrows = true` 可以打开候选框里的翻页箭头；不写时沿用 `base` 内置皮肤的设置（出厂为关闭）。
 - `[toolbar]` 下的所有键都可以省略，没写的沿用 `base` 皮肤；配置对 D2D 和 WebView2 两种工具栏渲染器都生效。
