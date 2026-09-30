@@ -42,6 +42,7 @@ pwsh -File ./Prepare-PackageFiles.ps1 -TargetVersion 1.2.3 -RepoRoot .. `
 - **数据目录必须整个归输入法**（[#537](https://github.com/metasequoiaime/MSIME-Windows/issues/537)）。用户选的目录里已经有别的文件、或者选了驱动器根目录时，安装器改用其中的 `metasequoiaime` 子目录，并在向导里把实际位置告诉用户；连那个子目录也不空就拒绝。输入法用过的目录（有标记，或历史默认位置）原样沿用
 - 安装器在数据目录里放一个 `.metasequoiaime-data` 标记文件。只有标记里带 `exclusive: adopted empty by the installer` 这一行（安装时目录是空的），或目录就是历史默认位置，覆盖安装才整目录清理、卸载才整目录删除
 - 旧版安装器不管目录里原来有什么都写标记，所以只有旧标记（没有那一行）的目录不能再信：覆盖安装、换目录和卸载都只按 `IsShippedAppDataItem` / `IsRuntimeAppDataItem` / `IsPreservedAppDataItem` 名单删输入法自己的条目，`html`、`logs`、`skins` 这种通用目录名只删输入法写进去的部分，最后目录空了才删目录。包里新增顶层文件要同步 `IsShippedAppDataItem`，`tests/package-files.ps1` 会拿真实打出的 `app_data` 核对；Server 在数据目录根下新写文件要同步 `IsRuntimeAppDataItem`
+- 仓库 `skins\` 下的外部皮肤（除 `default\` 和素材授权为 `UNVERIFIED*` 的）随包装到 `skins\<id>`，完整包和轻量包都带，卸载不删。`Prepare-PackageFiles.ps1` 同时写出 `bundled_skins.manifest`（每行 `id|相对路径|sha256`），安装器在 `PrepareToInstall` 里拿它核对用户机器上的同名目录：文件集合和内容完全一致就直接覆盖，否则先改名成 `<id>.bak`（已有就 `<id>.2.bak`……，不覆盖旧备份）再装。Server 扫描皮肤时跳过 `*.bak` 目录。`tests/bundled-skins.ps1` 把这段 Pascal 编进探针安装器真跑一遍
 - 静默安装用 `/DATADIR="D:\MetasequoiaIME"` 指定；该值在 `PrepareToInstall` 里和向导页走同一套换子目录和校验
 
 ## 运行时依赖检查

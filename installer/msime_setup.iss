@@ -132,6 +132,13 @@ Source: "{#MySourceRoot}\default_skins\*"; \
     DestDir: "{code:GetDataDir}\skins\default"; \
     Flags: onlyifdoesntexist recursesubdirs createallsubdirs uninsneveruninstall
 
+; 仓库 skins\ 下的外部皮肤，同名目录整目录覆盖。用户机器上的同名皮肤和随包的不一样时，
+; PrepareToInstall 里的 BackupChangedBundledSkins 先把它改名成 <id>.bak 再复制。
+Source: "{#MySourceRoot}\bundled_skins\*"; \
+    DestDir: "{code:GetDataDir}\skins"; \
+    Flags: ignoreversion recursesubdirs createallsubdirs uninsneveruninstall
+Source: "{#MySourceRoot}\bundled_skins.manifest"; Flags: dontcopy
+
 #ifdef LightPackage
 ; 轻量包只覆盖前端 HTML，不带词库/辅助码/出厂配置。
 Source: "{#MySourceRoot}\app_data\html\*"; \
@@ -1398,6 +1405,115 @@ begin
   RemoveDataDir(OldDir);
 end;
 
+function CountFilesUnder(const Directory: String): Integer;
+var
+  FindRec: TFindRec;
+begin
+  Result := 0;
+  if FindFirst(AddBackslash(Directory) + '*', FindRec) then
+  begin
+    try
+      repeat
+        if (FindRec.Name <> '.') and (FindRec.Name <> '..') then
+        begin
+          if (FindRec.Attributes and FILE_ATTRIBUTE_DIRECTORY) <> 0 then
+            Result := Result + CountFilesUnder(AddBackslash(Directory) + FindRec.Name)
+          else
+            Result := Result + 1;
+        end;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+end;
+
+{ 数据目录里的同名皮肤与随包的文件集合、内容完全一致时返回 True。
+  清单每行「id|相对路径|sha256」，由 Prepare-PackageFiles.ps1 按 id 分组写出。}
+function SkinMatchesBundle(const SkinDir, Id: String; const Lines: TArrayOfString): Boolean;
+var
+  Index, P, Expected: Integer;
+  Rest, FilePath: String;
+begin
+  Result := False;
+  Expected := 0;
+  for Index := 0 to GetArrayLength(Lines) - 1 do
+  begin
+    P := Pos('|', Lines[Index]);
+    if (P = 0) or (Copy(Lines[Index], 1, P - 1) <> Id) then
+      continue;
+    Rest := Copy(Lines[Index], P + 1, Length(Lines[Index]));
+    P := Pos('|', Rest);
+    if P = 0 then
+      exit;
+    Expected := Expected + 1;
+    FilePath := AddBackslash(SkinDir) + Copy(Rest, 1, P - 1);
+    if not FileExists(FilePath) then
+      exit;
+    try
+      if CompareText(GetSHA256OfFile(FilePath), Copy(Rest, P + 1, Length(Rest))) <> 0 then
+        exit;
+    except
+      exit;
+    end;
+  end;
+  { 多出来的文件也算改过：整目录覆盖不会删它们，留着就和随包的不是一个皮肤了。}
+  Result := CountFilesUnder(SkinDir) = Expected;
+end;
+
+{ 覆盖随包皮肤之前，把用户机器上内容不同的同名目录改名成 <id>.bak；
+  已经有 .bak 就用 <id>.2.bak、<id>.3.bak……，不覆盖上一次的备份——那可能正是用户改过的版本。
+  内容一样的不备份，否则每次升级都会多一份一模一样的 .bak。Server 扫描皮肤时跳过 .bak 目录。}
+function BackupChangedBundledSkins: String;
+var
+  Lines: TArrayOfString;
+  Index, P, N: Integer;
+  Id, LastId, SkinsDir, SkinDir, BackupDir: String;
+begin
+  Result := '';
+  ExtractTemporaryFile('bundled_skins.manifest');
+  if not LoadStringsFromFile(ExpandConstant('{tmp}\bundled_skins.manifest'), Lines) then
+  begin
+    Result := '无法读取随包皮肤清单，安装文件可能不完整。';
+    exit;
+  end;
+  SkinsDir := AddBackslash(GetDataDir('')) + 'skins';
+  LastId := '';
+  for Index := 0 to GetArrayLength(Lines) - 1 do
+  begin
+    P := Pos('|', Lines[Index]);
+    if P = 0 then
+      continue;
+    Id := Copy(Lines[Index], 1, P - 1);
+    if Id = LastId then
+      continue;
+    LastId := Id;
+    SkinDir := AddBackslash(SkinsDir) + Id;
+    if not DirExists(SkinDir) then
+      continue;
+    if SkinMatchesBundle(SkinDir, Id, Lines) then
+    begin
+      Log('Bundled skin ' + Id + ' is unchanged; no backup needed.');
+      continue;
+    end;
+    BackupDir := SkinDir + '.bak';
+    N := 2;
+    while DirExists(BackupDir) or FileExists(BackupDir) do
+    begin
+      BackupDir := AddBackslash(SkinsDir) + Id + '.' + IntToStr(N) + '.bak';
+      N := N + 1;
+    end;
+    if not RenameFile(SkinDir, BackupDir) then
+    begin
+      Result :=
+        '无法备份皮肤目录 ' + SkinDir + '。' + #13#10 +
+        '请关闭正在打开该目录或其中图片的程序后重试安装。';
+      exit;
+    end;
+    Log('Backed up skin ' + SkinDir + ' to ' + BackupDir);
+  end;
+end;
+
 function PrepareToInstall(var NeedsRestart: Boolean): String;
 var
   DataDirProblem: String;
@@ -1423,6 +1539,13 @@ begin
   StopImeProcesses;
   { 进程停了才能动数据文件：msime_user.db 会被 Server 打开着。}
   DataDirProblem := MigrateUserDataDir(ResolvePreviousDataDir, GetDataDir(''));
+  if DataDirProblem <> '' then
+  begin
+    Result := DataDirProblem;
+    exit;
+  end;
+  { 迁移之后再备份：换了数据目录时，要比对的是已经搬到新目录的皮肤。}
+  DataDirProblem := BackupChangedBundledSkins;
   if DataDirProblem <> '' then
   begin
     Result := DataDirProblem;

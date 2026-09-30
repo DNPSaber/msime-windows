@@ -64,6 +64,7 @@ $tsf32Pdb = Join-Path $RepoRoot (Join-Path $TsfDirectory 'build32-release\Releas
 $tsf64Pdb = Join-Path $RepoRoot (Join-Path $TsfDirectory 'build64-release\Release\MetasequoiaImeTsf.pdb')
 $webviewRoot = Join-Path $RepoRoot (Join-Path $UiHtmlDirectory 'webview2')
 $defaultSkinsSource = Join-Path $RepoRoot 'skins\default'
+$bundledSkinsSource = Join-Path $RepoRoot 'skins'
 $serverConfig = Join-Path $RepoRoot (Join-Path $ServerDirectory 'assets\config\config.toml')
 $factoryConfig = Join-Path $PSScriptRoot 'default_config\config.default.toml'
 $pinyinTable = Join-Path $RepoRoot (Join-Path $ServerDirectory 'assets\tables\pinyin.txt')
@@ -242,6 +243,50 @@ Copy-DirectoryContents -Source (Join-Path $webviewRoot 'settings\ime-settings\di
 $targetDefaultSkins = Join-Path $PSScriptRoot 'default_skins'
 Reset-Directory -LiteralPath $targetDefaultSkins
 Copy-DirectoryContents -Source $defaultSkinsSource -Destination $targetDefaultSkins
+
+# 仓库 skins\ 下的外部皮肤随包装到数据目录的 skins\<id>，同名的直接覆盖。覆盖前安装程序拿
+# bundled_skins.manifest 核对用户机器上的同名目录：内容与随包的一模一样就不动，否则先改名成
+# <id>.bak 备份（Server 扫描时跳过 .bak 目录）。清单每行是「id|相对路径|sha256」，
+# 安装程序按字节比较，所以路径限定 ASCII、不能含 |。
+# 素材授权没核实的皮肤（[license] assets = "UNVERIFIED..."）只能放在仓库里演示，不进安装包。
+$targetBundledSkins = Join-Path $PSScriptRoot 'bundled_skins'
+$bundledSkinsManifest = Join-Path $PSScriptRoot 'bundled_skins.manifest'
+Reset-Directory -LiteralPath $targetBundledSkins
+$manifestLines = [Collections.Generic.List[string]]::new()
+$bundledSkinIds = [Collections.Generic.List[string]]::new()
+foreach ($skinDir in @(Get-ChildItem -LiteralPath $bundledSkinsSource -Directory | Sort-Object Name)) {
+    $id = $skinDir.Name
+    if ($id -ceq 'default') { continue }
+    if ($id -cnotmatch '^[a-z0-9][a-z0-9._-]{0,63}$' -or $id -match '\.bak$') {
+        throw "皮肤目录名不是有效的外部皮肤 ID：$($skinDir.FullName)"
+    }
+    $skinManifest = Join-Path $skinDir.FullName 'skin.toml'
+    Assert-PathExists -LiteralPath $skinManifest -Description "皮肤 $id 的 skin.toml"
+    $skinText = [IO.File]::ReadAllText($skinManifest)
+    if ($skinText -notmatch "(?m)^\s*id\s*=\s*`"$([regex]::Escape($id))`"\s*(#.*)?$") {
+        throw "皮肤 $id 的 skin.toml 里 id 与目录名不一致，Server 不会加载它：$skinManifest"
+    }
+    if ($skinText -match '(?m)^\s*assets\s*=\s*"UNVERIFIED') {
+        Write-Host "跳过皮肤 ${id}：素材授权未核实，不随安装包分发。"
+        continue
+    }
+    $destination = Join-Path $targetBundledSkins $id
+    Copy-DirectoryContents -Source $skinDir.FullName -Destination $destination
+    foreach ($file in @(Get-ChildItem -LiteralPath $destination -Recurse -File -Force | Sort-Object FullName)) {
+        $relative = $file.FullName.Substring($destination.Length + 1)
+        if ($relative -notmatch '^[\x20-\x7E]+$' -or $relative.Contains('|')) {
+            throw "皮肤文件名只能用 ASCII 且不能含 |（安装程序按清单逐字节比对）：$($file.FullName)"
+        }
+        $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        $manifestLines.Add("$id|$relative|$hash")
+    }
+    $bundledSkinIds.Add($id)
+}
+if ($bundledSkinIds.Count -eq 0) {
+    throw "没有可随包分发的外部皮肤：$bundledSkinsSource"
+}
+[IO.File]::WriteAllLines($bundledSkinsManifest, $manifestLines, [Text.UTF8Encoding]::new($false))
+Write-Host "随包皮肤：$($bundledSkinIds -join ', ')"
 
 # Server Release 输出整体复制，但测试程序及其 PDB 绝不能进入安装包。
 # 带 -IncludeSymbols 时其他 PDB 保留在对应 EXE 旁边，方便安装后直接进行崩溃分析。
