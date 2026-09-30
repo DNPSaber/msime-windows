@@ -70,4 +70,15 @@
 
 ## 颜色格式
 
-支持十六进制 `#rgb` / `#rgba` / `#rrggbb` / `#rrggbbaa`（大小写均可，末尾两位或一位是不透明度），以及 `rgb()` / `rgba()`。十六进制必须带 `#`。
+所有颜色键——`[candidate.dark]` / `[candidate.light]` 里除 `show_selected_bar` 外的键、`[candidate.*.menu]` 和 `[toolbar.dark]` / `[toolbar.light]` 的全部键——都接受以下写法。数字、布尔、枚举和路径类的键不是颜色，不能写成颜色值。
+
+| 写法 | 示例 | 说明 |
+|---|---|---|
+| `#rgb` / `#rrggbb` | `#e8a`、`#e08aa8` | 不透明 |
+| `#rgba` / `#rrggbbaa` | `#e8a4`、`#e08aa847` | 末尾一位或两位是不透明度 |
+| `rgb(r, g, b)` | `rgb(224, 138, 168)` | `r`、`g`、`b` 为 0–255 |
+| `rgba(r, g, b, a)` | `rgba(224, 138, 168, 0.28)` | `a` 为 0–1 |
+| `transparent` | `transparent` | 全透明，等同 `#0000` |
+
+- 十六进制大小写均可，但**必须带 `#`**：原生（D2D）渲染器不带 `#` 也能识别，WebView2 渲染器按 CSS 解析，会把它当作无效值，两种渲染结果就不一致了。
+- 不透明度在**末尾**（`#RRGGBBAA`），不是 Windows 常见的 `#AARRGGBB`。例如 `#e9e8e89d` 约为 62% 不透明，`rgba(224, 138, 168, 0.28)` 与 `#e08aa847` 等价。
