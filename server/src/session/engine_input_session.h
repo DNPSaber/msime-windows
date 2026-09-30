@@ -17,6 +17,7 @@ class EngineInputSession : public IInputSession
 
     void reset_state() override;
     void reset_cache() override;
+    void reset_sentence_cache() override;
 
     const std::vector<WordItem> &get_candidates() const override;
     bool expand_initial_candidates() override;
