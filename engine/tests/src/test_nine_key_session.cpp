@@ -6,6 +6,7 @@
 #include <iostream>
 #include <stdexcept>
 #include "contracts/assets/assets.h"
+#include <cstdio>
 
 using namespace metasequoia;
 void require(bool ok, const char *message)
@@ -26,7 +27,7 @@ void type(Session &session, const std::string &digits)
     for (char digit : digits)
         require(session.character(digit).handled, "digit unhandled");
 }
-int main()
+int run_test()
 {
     const auto directory =
         std::filesystem::temp_directory_path() /
@@ -181,4 +182,18 @@ int main()
     require(failed_learning.commit == "米" && failed_learning.diagnostic && failing.snapshot().preedit.empty(),
             "failed learning lost commit or diagnostic");
     std::cout << "Nine-key input contract passed\n";
+    return 0;
+}
+
+int main()
+{
+    try
+    {
+        return run_test();
+    }
+    catch (const std::exception &error)
+    {
+        std::fprintf(stderr, "%s\n", error.what());
+        return 1;
+    }
 }

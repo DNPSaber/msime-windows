@@ -2,8 +2,9 @@
 #include <fstream>
 #include <iostream>
 #include <iterator>
+#include <cstdio>
 
-int main(int argc, char **argv)
+int run_test(int argc, char **argv)
 {
     if (argc != 2)
         return 2;
@@ -25,4 +26,18 @@ int main(int argc, char **argv)
         }
     }
     std::cout << fixtures.as_array().size() << " shared fixtures passed\n";
+    return 0;
+}
+
+int main(int argc, char **argv)
+{
+    try
+    {
+        return run_test(argc, argv);
+    }
+    catch (const std::exception &error)
+    {
+        std::fprintf(stderr, "%s\n", error.what());
+        return 1;
+    }
 }

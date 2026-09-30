@@ -43,7 +43,6 @@ int main()
     const auto directory =
         std::filesystem::temp_directory_path() /
         ("msime-fuzzy-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
-    std::filesystem::create_directories(directory);
     struct Cleanup
     {
         std::filesystem::path path;
@@ -55,6 +54,9 @@ int main()
     } cleanup{directory};
     try
     {
+        // 建目录也得在 try 里：这是这批测试最靠前的一次可能失败的系统调用，漏在外面就又变成
+        // 逃出 main 的异常，ctest 只看得到 0xC0000409，看不到到底哪个路径被拒了。
+        std::filesystem::create_directories(directory);
         sqlite3 *db = nullptr;
         require(sqlite3_open((directory / "msime.db").u8string().c_str(), &db) == SQLITE_OK, "open fixture");
         const auto insert_weighted = [&](const std::string &key, const std::string &word, std::int64_t weight) {

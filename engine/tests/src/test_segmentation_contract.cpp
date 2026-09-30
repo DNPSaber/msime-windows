@@ -4,6 +4,7 @@
 #include <sqlite3.h>
 #include <stdexcept>
 #include <iostream>
+#include <cstdio>
 namespace
 {
 std::filesystem::path CreatePinyinCacheDatabase()
@@ -45,7 +46,7 @@ std::filesystem::path CreatePinyinCacheDatabase()
     return path;
 }
 } // namespace
-int main()
+int run_test()
 {
     const auto path = CreatePinyinCacheDatabase();
     int result = 0;
@@ -67,4 +68,17 @@ int main()
     }
     std::filesystem::remove(path);
     return result;
+}
+
+int main()
+{
+    try
+    {
+        return run_test();
+    }
+    catch (const std::exception &error)
+    {
+        std::fprintf(stderr, "%s\n", error.what());
+        return 1;
+    }
 }

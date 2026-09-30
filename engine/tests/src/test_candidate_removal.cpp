@@ -9,6 +9,7 @@
 #include <chrono>
 #include <fstream>
 #include <stdexcept>
+#include <cstdio>
 
 namespace
 {
@@ -65,7 +66,7 @@ std::size_t index_of(const Session &session, const std::string &word)
 }
 } // namespace
 
-int main()
+int run_test()
 {
     using namespace metasequoia;
     const auto root = std::filesystem::temp_directory_path() /
@@ -224,4 +225,18 @@ int main()
     require(main_before == bytes(resources / assets::main_dictionary) &&
                 english_before == bytes(resources / assets::english_dictionary),
             "Removal modified immutable resources");
+    return 0;
+}
+
+int main()
+{
+    try
+    {
+        return run_test();
+    }
+    catch (const std::exception &error)
+    {
+        std::fprintf(stderr, "%s\n", error.what());
+        return 1;
+    }
 }
