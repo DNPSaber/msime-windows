@@ -324,7 +324,12 @@ void WorkerThread()
 
         case TaskType::LangbarRightClick: {
             ::ReadDataFromNamedPipe(0b001101);
-            PostMessage(::global_hwnd_menu, WM_LANGBAR_RIGHTCLICK, 0, 0);
+            // Snapshot the icon rect here: later key and candidate tasks reuse
+            // these globals before a deferred menu show gets replayed.
+            auto *icon = new (std::nothrow) RECT{Global::Point[0], Global::Point[1], static_cast<LONG>(Global::Keycode),
+                                                 static_cast<LONG>(Global::ModifiersDown)};
+            if (icon && !PostMessage(::global_hwnd_menu, WM_LANGBAR_RIGHTCLICK, 0, reinterpret_cast<LPARAM>(icon)))
+                delete icon;
             break;
         }
 

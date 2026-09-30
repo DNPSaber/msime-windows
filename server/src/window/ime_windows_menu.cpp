@@ -10,6 +10,7 @@
 #include "defines/globals.h"
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <utility>
 #include "webview2/windows_webview2.h"
 #include "utils/webview_utils.h"
@@ -112,8 +113,12 @@ LRESULT CALLBACK WndProcMenuWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
     }
 
     case WM_LANGBAR_RIGHTCLICK: {
-        g_trayMenuAnchor = {Global::Point[0], Global::Point[1], static_cast<LONG>(Global::Keycode),
-                            static_cast<LONG>(Global::ModifiersDown)};
+        // A fresh right-click carries the icon rect; replayed deferred shows post
+        // lParam 0 and keep the anchor captured by that right-click.
+        if (std::unique_ptr<RECT> icon{reinterpret_cast<RECT *>(lParam)})
+        {
+            g_trayMenuAnchor = *icon;
+        }
         if (TrayMenuPresenter::Instance().IsBound())
         {
             TrayMenuPresenter::Instance().ShowFromLangBar();
