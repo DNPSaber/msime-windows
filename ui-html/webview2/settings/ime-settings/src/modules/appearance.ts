@@ -110,12 +110,6 @@ function renderFallbackFonts(): void {
   const displayed = [...previewFallbackFonts];
   if (addingFallbackFont || displayed.length === 0) displayed.push('');
   displayed.forEach((font, index) => {
-    if (index > 0) {
-      const comma = document.createElement('span');
-      comma.textContent = '，';
-      comma.setAttribute('aria-hidden', 'true');
-      list.appendChild(comma);
-    }
     const dropdown = document.createElement('div');
     dropdown.className = 'dropdown fallback-font-dropdown';
     const button = document.createElement('div');

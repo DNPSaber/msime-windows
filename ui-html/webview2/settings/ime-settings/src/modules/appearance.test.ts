@@ -66,13 +66,15 @@ function labels() { return selects().map((button) => button.children[0].value).f
 function choose(index: number, value: string) { return transforms.get(`fallbackFontMenu${index}`)!(value); }
 function family() { return (preview.style as unknown as { fontFamily: string }).fontFamily; }
 
-it('shows ordered selectors separated by fullwidth commas and saves replacement/removal', () => {
+it('shows ordered selectors without separators and saves replacement/removal', () => {
   applyAppearanceConfig(undefined, undefined, undefined, {
     english_font: 'Segoe UI', fallback_fonts: ['Font A', 'Font B'],
     fallback_font_css_families: ['Family A', 'Family B']
   });
   expect(family()).toBe('"Segoe UI", "Family A", "Family B", sans-serif');
-  expect(list.children[1].textContent).toBe('，');
+  expect(list.children.map((element) => element.className)).toEqual([
+    'dropdown fallback-font-dropdown', 'dropdown fallback-font-dropdown', 'dropdown-toggle fallback-font-add'
+  ]);
   const saved = choose(1, 'Font C');
   expect(labels()).toEqual(['Font A', 'Font C']);
   expect(family()).toBe('"Segoe UI", "Family A", "Font C", sans-serif');
