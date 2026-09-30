@@ -109,14 +109,16 @@ bool IsQuickPhraseInput(const std::string &raw)
 }
 
 // 快捷短语混进全拼/双拼的普通候选（Shift+K 模式另走
-// IsQuickPhraseInput）：按整串编码精确匹配，只在输入是纯小写字母、没有辅助码、
-// 不在造词、光标前缀没截断时出现。整组插在第 slot 个普通候选之前，槽位由调频学出来，
-// 最多退到首页末位。
+// IsQuickPhraseInput）：按整串编码精确匹配，只在输入是纯小写字母、不在造词、光标前缀
+// 没截断时出现。整组插在第 slot 个普通候选之前，槽位由调频学出来，最多退到首页末位。
+// 不看辅助码：双拼开着辅助码时，任何「完整音节 + 一个字母」的奇数长编码（dia = di + a）
+// 都会被认成带辅助码，按辅助码拦掉就等于这类编码永远出不来。整串精确等于用户自定义的
+// 编码时，按短语处理。
 void PlaceQuickPhrases(std::vector<WordItem> &items, const std::string &current_input)
 {
     const SchemeType scheme = g_inputSession->current_scheme_type();
     if (!GetConfiguredQuickPhraseCandidatesEnabled() ||
-        (scheme != SchemeType::Quanpin && scheme != SchemeType::Shuangpin) || g_inputSession->has_active_helpcode() ||
+        (scheme != SchemeType::Quanpin && scheme != SchemeType::Shuangpin) ||
         GlobalIme::composition.creating_word.active || g_inputSession->prefix_end() != current_input.size() ||
         current_input.empty() || !std::all_of(current_input.begin(), current_input.end(), [](unsigned char ch) {
             return ch >= 'a' && ch <= 'z';
