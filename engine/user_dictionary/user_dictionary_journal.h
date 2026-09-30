@@ -55,6 +55,22 @@ bool learn_quick_phrase_selection(const std::string &main_db_path, const std::st
 bool learn_quick_phrase_bypass(const std::string &user_db_path, const std::string &code, int ordinary_rank,
                                const std::string &mode, int linear_step, int trigger_count, int max_slot);
 
+// 中英混输里英文候选的调频状态，思路同快捷短语：英文词库和中文词库的权重不在同一个量纲上，
+// 不能比大小，所以按输入（小写）记一个槽位：首个英文候选在整个候选列表里的下标，0 是首位。
+// 没有记录时由调用方决定默认位置（精确匹配紧跟第一个中文候选，补全词在首页末位）。
+std::optional<int> english_slot(const std::string &user_db_path, const std::string &code);
+// 用户显式置顶英文候选：直接写槽位，不走计数。
+bool set_english_slot(const std::string &user_db_path, const std::string &code, int slot);
+// 用户选中了占着槽位的英文候选，english_index 是它此刻在列表里的下标。累计到 trigger_count
+// 次后，按调频模式从这个名次算出目标位置写成槽位，和中文调频一样可以一路升到首位。
+bool learn_english_slot_selection(const std::string &user_db_path, const std::string &code, int english_index,
+                                  const std::string &mode, int linear_step, int trigger_count);
+// 用户越过英文候选选了排在它后面的候选。english_index / selected_index 是两者在列表里的下标，
+// 选中的候选按调频模式的目标位置越过英文时，累计到 trigger_count 次后英文后退一位，最多到 max_slot。
+bool learn_english_slot_bypass(const std::string &user_db_path, const std::string &code, int english_index,
+                               int selected_index, const std::string &mode, int linear_step, int trigger_count,
+                               int max_slot);
+
 struct ReplayResult
 {
     int applied = 0;

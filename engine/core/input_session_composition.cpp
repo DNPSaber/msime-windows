@@ -462,6 +462,26 @@ bool InputSession::is_all_complete_pure_pinyin() const
     return !segmentation.empty() && quanpin::is_complete_pinyin_input(segmentation);
 }
 
+bool InputSession::reads_as_pinyin() const
+{
+    if (has_active_helpcode())
+        return true;
+    std::string raw = remove_delimiters(request().raw_input);
+    std::transform(raw.begin(), raw.end(), raw.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    if (raw.empty())
+        return false;
+    if (is_shuangpin())
+    {
+        // 双拼两键一个音节，打到一半时末尾会剩一个声母键。
+        return raw.size() == 1 || shuangpin::is_complete_input(raw, shuangpin_profile_) ||
+               shuangpin::is_complete_input(raw.substr(0, raw.size() - 1), shuangpin_profile_);
+    }
+    if (current_scheme_type() == SchemeType::Quanpin)
+        return !quanpin::cut_one_piece_min_segments(raw, false).empty();
+    return false;
+}
+
 bool InputSession::wubi_unique_four_code() const
 {
     // Both modes spell words rather than codes; a wubi code is not composed inside them. No host

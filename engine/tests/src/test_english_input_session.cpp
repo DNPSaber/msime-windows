@@ -239,6 +239,80 @@ int run_test()
                                            "AND key='nimbus' AND value='Nimbus' AND operation='upsert'") == 1200,
                     "English ranking was not journaled for upgrade replay.");
         }
+
+        // 混输列表里的中文候选不能当英文调频的基准：中文词库的权重是另一个量纲，拿它 + 1000 会让
+        // 选过一次的英文永久压过「在」这种高频字。
+        const std::vector<WordItem> mixed_ranked{WordItem("ni", "你", 19195987, CandidateSource::Database),
+                                                 WordItem("nimbus", "Nimbus", 1200, CandidateSource::EnglishDictionary),
+                                                 WordItem("ninja", "Ninja", 200, CandidateSource::EnglishDictionary)};
+        require(user_dictionary::adjust_english_candidate_ranking(english_db, user_db, "english:nin", mixed_ranked,
+                                                                  "ninja", "Ninja", "promote", 1, 1, false),
+                "English ranking in a mixed list failed.");
+        {
+            Database database(english_mode_directory / "english.db");
+            require(database.query_integer("SELECT weight FROM english_words WHERE word='ninja' AND "
+                                           "display='Ninja'") == 2200,
+                    "English ranking used a Chinese candidate's weight as its baseline.");
+        }
+    }
+    {
+        const std::string user_db = user_dictionary::default_user_db_path();
+        require(!user_dictionary::english_slot(user_db, "zai").has_value(), "An unlearned English slot was stored.");
+
+        // 补全词默认在首页末位（下标 6）：每选中一次按 promote 的名次规则前移，能一路升到首位。
+        const int expected_promotions[] = {4, 3, 2, 1, 0};
+        int english_index = 6;
+        for (const int expected : expected_promotions)
+        {
+            require(user_dictionary::learn_english_slot_selection(user_db, "zai", english_index, "promote", 1, 1) &&
+                        user_dictionary::english_slot(user_db, "zai") == expected,
+                    "Selecting the slotted English candidate did not promote it by rank.");
+            english_index = expected;
+        }
+        // 已在首位：没有可学的。
+        require(user_dictionary::learn_english_slot_selection(user_db, "zai", 0, "promote", 1, 1) &&
+                    user_dictionary::english_slot(user_db, "zai") == 0,
+                "Selecting a first English candidate changed its slot.");
+
+        // 英文在首位时越过它选了第二个候选（「在」）：英文后退一位，不会赶不走。
+        require(user_dictionary::learn_english_slot_bypass(user_db, "zai", 0, 1, "promote", 1, 1, 6) &&
+                    user_dictionary::english_slot(user_db, "zai") == 1,
+                "Bypassing a first English candidate did not demote it.");
+        // 选的候选离得太远、调频目标没越过英文，不算越过。
+        require(user_dictionary::learn_english_slot_bypass(user_db, "zai", 1, 7, "promote", 1, 1, 6) &&
+                    user_dictionary::english_slot(user_db, "zai") == 1,
+                "A pick that does not pass the English candidate demoted it.");
+
+        // trigger_count：累计够次数才动。
+        require(user_dictionary::learn_english_slot_bypass(user_db, "bus", 1, 2, "promote", 1, 2, 6) &&
+                    !user_dictionary::english_slot(user_db, "bus").has_value(),
+                "An English slot moved before reaching the trigger count.");
+        require(user_dictionary::learn_english_slot_bypass(user_db, "bus", 1, 2, "promote", 1, 2, 6) &&
+                    user_dictionary::english_slot(user_db, "bus") == 2,
+                "An English slot did not move at the trigger count.");
+
+        // 已在首页末位不再后退；调频关闭时不学。
+        require(user_dictionary::learn_english_slot_bypass(user_db, "bus", 6, 7, "promote", 1, 1, 6) &&
+                    user_dictionary::english_slot(user_db, "bus") == 2,
+                "An English slot moved past the last slot of the first page.");
+        require(user_dictionary::set_english_slot(user_db, "github", 3) &&
+                    user_dictionary::learn_english_slot_selection(user_db, "github", 3, "disabled", 1, 1) &&
+                    user_dictionary::english_slot(user_db, "github") == 3,
+                "English slot learning ran with frequency adjustment disabled.");
+    }
+    {
+        const auto reads_as_pinyin = [](SchemeType scheme, const std::string &input) {
+            metasequoia::InputSession session(scheme);
+            type(session, input);
+            return session.reads_as_pinyin();
+        };
+        require(reads_as_pinyin(SchemeType::Quanpin, "zai"), "A complete syllable did not read as pinyin.");
+        require(reads_as_pinyin(SchemeType::Quanpin, "bus"), "A syllable with a jianpin tail did not read as pinyin.");
+        require(!reads_as_pinyin(SchemeType::Quanpin, "github"), "An English-only spelling read as pinyin.");
+        require(!reads_as_pinyin(SchemeType::Quanpin, "upstream"), "An English-only spelling read as pinyin.");
+        require(reads_as_pinyin(SchemeType::Shuangpin, "zd"), "A complete shuangpin code did not read as pinyin.");
+        require(reads_as_pinyin(SchemeType::Shuangpin, "zdb"),
+                "A shuangpin code with a pending initial did not read as pinyin.");
     }
     dedicated.set_dedicated_english_mode(false);
     require(!dedicated.dedicated_english_mode() && !dedicated.has_composition(),
