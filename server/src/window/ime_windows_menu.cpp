@@ -5,10 +5,12 @@
 #include "ipc/ipc.h"
 #include "ime_windows.h"
 #include "window/tray_menu_presenter.h"
+#include "window/tray_menu_placement.h"
 #include "defines/defines.h"
 #include "defines/globals.h"
 #include <algorithm>
 #include <cmath>
+#include <memory>
 #include <utility>
 #include "webview2/windows_webview2.h"
 #include "utils/webview_utils.h"
@@ -20,6 +22,20 @@ using namespace ime_windows_detail;
 
 namespace
 {
+RECT g_trayMenuAnchor{};
+
+POINT MenuAnchorCenter()
+{
+    return {g_trayMenuAnchor.left + (g_trayMenuAnchor.right - g_trayMenuAnchor.left) / 2,
+            g_trayMenuAnchor.top + (g_trayMenuAnchor.bottom - g_trayMenuAnchor.top) / 2};
+}
+
+POINT MenuPosition()
+{
+    const RECT content{0, 0, ::MENU_WINDOW_WIDTH, ::MENU_WINDOW_HEIGHT};
+    return FanyImeUi::TrayMenuPosition(g_trayMenuAnchor, content, GetMonitorCoordinatesFromPoint(MenuAnchorCenter()));
+}
+
 // A small CSS-DIP reserve absorbs fractional line-height/border rounding in
 // Chromium. Because it is converted with the target monitor's DPI, this becomes
 // 2/3/4 physical pixels at 100%/150%/200% instead of being scale-dependent.
@@ -35,7 +51,7 @@ void UpdateMenuPhysicalSizeCache(HWND hwnd, FLOAT scale)
     {
         scale = 1.0f;
     }
-    HalfScreenDipLimits limits = QueryWebViewHalfScreenDipLimitsForHwnd(hwnd);
+    HalfScreenDipLimits limits = QueryHalfScreenDipLimitsForPoint(MenuAnchorCenter());
     // During WM_DPICHANGED, GetDpiForWindow can still expose the old DPI. Derive
     // the DIP budget from the message's scale so cap and pixel conversion agree.
     const double monitorWidthPx = static_cast<double>((std::max)(1, limits.monitor.right - limits.monitor.left));
@@ -56,10 +72,21 @@ void UpdateMenuPhysicalSizeCache(HWND hwnd, FLOAT scale)
 void ApplyMenuPhysicalSizeFromDips(HWND hwnd, FLOAT scale, UINT flags)
 {
     UpdateMenuPhysicalSizeCache(hwnd, scale);
-    SetWindowPos(hwnd, nullptr, 0, 0, ::MENU_WINDOW_WIDTH, ::MENU_WINDOW_HEIGHT, flags);
+    POINT position{};
+    if (IsWindowVisible(hwnd))
+    {
+        position = MenuPosition();
+        flags &= ~SWP_NOMOVE;
+    }
+    SetWindowPos(hwnd, nullptr, position.x, position.y, ::MENU_WINDOW_WIDTH, ::MENU_WINDOW_HEIGHT, flags);
     SyncHostWebViewBounds(::webviewControllerMenuWnd.Get(), hwnd);
 }
 } // namespace
+
+RECT GetTrayMenuAnchorRect()
+{
+    return g_trayMenuAnchor;
+}
 
 LRESULT CALLBACK WndProcMenuWindow(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
@@ -86,6 +113,12 @@ LRESULT CALLBACK WndProcMenuWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
     }
 
     case WM_LANGBAR_RIGHTCLICK: {
+        // A fresh right-click carries the icon rect; replayed deferred shows post
+        // lParam 0 and keep the anchor captured by that right-click.
+        if (std::unique_ptr<RECT> icon{reinterpret_cast<RECT *>(lParam)})
+        {
+            g_trayMenuAnchor = *icon;
+        }
         if (TrayMenuPresenter::Instance().IsBound())
         {
             TrayMenuPresenter::Instance().ShowFromLangBar();
@@ -105,12 +138,8 @@ LRESULT CALLBACK WndProcMenuWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
             break;
         }
         FTB_DIAG_LOGF(L"menu show begin {}", DescribeTrayMenuHostState());
-        int left = Global::Point[0];
-        int top = Global::Point[1];
-        int right = Global::Keycode;
-        // Refresh physical size from CSS DIPs * this HWND's current DPI so a
-        // live display-scale change cannot leave a stale pixel cache.
-        const FLOAT scale = GetWebViewRasterizationScale(hwnd);
+        // Preserve WebView text scaling while targeting the icon's monitor
+        const FLOAT scale = QueryCandidateHalfScreenDipLimitsForPoint(hwnd, MenuAnchorCenter()).scale;
         ::SCALE = scale;
         if (::MENU_CONTENT_WIDTH_DIP <= 0.0)
         {
@@ -121,10 +150,7 @@ LRESULT CALLBACK WndProcMenuWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
             ::MENU_CONTENT_HEIGHT_DIP = 300.0;
         }
         UpdateMenuPhysicalSizeCache(hwnd, scale);
-        int iconWidth = static_cast<int>((right - left) * ::SCALE);
-        int iconMiddleX = left + iconWidth / 2;
-        int menuX = iconMiddleX - ::MENU_WINDOW_WIDTH / 2;
-        int menuY = top - ::MENU_WINDOW_HEIGHT;
+        const POINT position = MenuPosition();
         EnsureSmallWindowsTopmost(L"show-menu");
         // Host can appear before WebView paints; pending topmost/content refresh
         // runs when navigations complete. Pass cached physical size (kept current
@@ -144,8 +170,8 @@ LRESULT CALLBACK WndProcMenuWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
         BOOL okShowMenu = SetWindowPos( //
             ::global_hwnd_menu,         //
             zorder,                     //
-            menuX,                      //
-            menuY,                      //
+            position.x,                 //
+            position.y,                 //
             ::MENU_WINDOW_WIDTH,        //
             ::MENU_WINDOW_HEIGHT,       //
             flag                        //
@@ -169,8 +195,9 @@ LRESULT CALLBACK WndProcMenuWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
         // a sized visible child and wv_visible=true means the menu should be on
         // screen; if it is not, the controller is compositing against a stale
         // parent and nothing in this handler can be blamed.
-        FTB_DIAG_LOGF(L"menu show end   pos=({},{}) size={}x{} zorder={} {}", menuX, menuY, ::MENU_WINDOW_WIDTH,
-                      ::MENU_WINDOW_HEIGHT, zorder == HWND_TOPMOST ? L"topmost" : L"top", DescribeTrayMenuHostState());
+        FTB_DIAG_LOGF(L"menu show end   pos=({},{}) size={}x{} zorder={} {}", position.x, position.y,
+                      ::MENU_WINDOW_WIDTH, ::MENU_WINDOW_HEIGHT, zorder == HWND_TOPMOST ? L"topmost" : L"top",
+                      DescribeTrayMenuHostState());
         // Refresh before paint so the toggle matches Settings / config.toml.
         SyncMenuFloatingToolbarToggle();
         /* 安装鼠标钩子 */
@@ -201,7 +228,8 @@ LRESULT CALLBACK WndProcMenuWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
         UpdateMenuPhysicalSizeCache(hwnd, scale);
         if (suggested)
         {
-            SetWindowPos(hwnd, nullptr, suggested->left, suggested->top, ::MENU_WINDOW_WIDTH, ::MENU_WINDOW_HEIGHT,
+            const POINT position = IsWindowVisible(hwnd) ? MenuPosition() : POINT{suggested->left, suggested->top};
+            SetWindowPos(hwnd, nullptr, position.x, position.y, ::MENU_WINDOW_WIDTH, ::MENU_WINDOW_HEIGHT,
                          SWP_NOZORDER | SWP_NOACTIVATE);
         }
         else

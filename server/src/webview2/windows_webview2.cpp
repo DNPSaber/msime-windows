@@ -461,8 +461,8 @@ void MaybeFlushPendingTrayMenuShow()
     }
     pendingTrayMenuShow = false;
     FTB_DIAG_LOGF(L"menu replaying show that was deferred until the webview was ready");
-    // Global::Point / Keycode / ModifiersDown still hold the langbar rect from
-    // the right-click that arrived while the menu WebView was not ready.
+    // lParam 0: the menu host reuses the icon rect it saved from the right-click
+    // that arrived while the menu WebView was not ready.
     PostMessage(::global_hwnd_menu, WM_LANGBAR_RIGHTCLICK, 0, 0);
 }
 

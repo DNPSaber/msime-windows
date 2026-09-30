@@ -2,7 +2,6 @@
 
 #include "config/ime_config.h"
 #include "defines/globals.h"
-#include "global/globals.h"
 #include "ipc/ipc.h"
 #include "log/ftb_diag_log.h"
 #include "settings/settings_launcher.h"
@@ -10,6 +9,7 @@
 #include "voice-input/voice_input_service.h"
 #include "webview2/windows_webview2.h"
 #include "window/ime_windows.h"
+#include "window/tray_menu_placement.h"
 
 #include "msimeui/Controls.h"
 #include "msimeui/DeviceResources.h"
@@ -267,28 +267,14 @@ void TrayMenuPresenter::SyncFloatingToolbarToggle()
 
 void TrayMenuPresenter::PlaceAndShow(float widthDip, float heightDip)
 {
-    const int left = Global::Point[0];
-    const int top = Global::Point[1];
-    const int right = Global::Keycode;
-    const int bottom = Global::ModifiersDown;
-    (void)bottom;
-    FLOAT scale = GetWindowScale(hwnd_);
-    if (scale <= 0.0f)
-    {
-        scale = GetScaleForPoint(POINT{left, top});
-    }
-    if (scale <= 0.0f)
-    {
-        scale = 1.0f;
-    }
-    const HalfScreenDipLimits limits = QueryHalfScreenDipLimitsForPoint(POINT{left, top});
+    const RECT icon = GetTrayMenuAnchorRect();
+    const POINT anchor{icon.left + (icon.right - icon.left) / 2, icon.top + (icon.bottom - icon.top) / 2};
+    const HalfScreenDipLimits limits = QueryHalfScreenDipLimitsForPoint(anchor);
+    const FLOAT scale = limits.scale;
     widthDip = static_cast<float>(ClampWidthDipToHalfScreen(widthDip, limits));
     heightDip = static_cast<float>(ClampHeightDipToHalfScreen(heightDip, limits));
     const int widthPx = (std::max)(1, static_cast<int>(std::ceil(widthDip * scale)));
     const int heightPx = (std::max)(1, static_cast<int>(std::ceil(heightDip * scale)));
-    const int iconWidth = static_cast<int>((right - left) * scale);
-    const int iconMiddleX = left + iconWidth / 2;
-    // Only the left inset feeds the horizontal centring below; menuY is derived from the bottom pad.
     float cardLeftDip = kShadowPadLeft;
     if (impl_->card)
     {
@@ -299,21 +285,22 @@ void TrayMenuPresenter::PlaceAndShow(float widthDip, float heightDip)
         }
     }
     const int cardLeftPx = static_cast<int>(std::lround(cardLeftDip * scale));
-    const int cardWidthPx = widthPx - cardLeftPx - static_cast<int>(std::lround(kShadowPadRight * scale));
-    int menuX = iconMiddleX - cardWidthPx / 2 - cardLeftPx;
-    int menuY = top - (heightPx - static_cast<int>(std::lround(kShadowPadBottom * scale)));
+    const RECT content{cardLeftPx, static_cast<LONG>(std::lround(kShadowPadTop * scale)),
+                       widthPx - static_cast<LONG>(std::lround(kShadowPadRight * scale)),
+                       heightPx - static_cast<LONG>(std::lround(kShadowPadBottom * scale))};
+    const POINT position = FanyImeUi::TrayMenuPosition(icon, content, limits.monitor);
     ::MENU_CONTENT_WIDTH_DIP = widthDip;
     ::MENU_CONTENT_HEIGHT_DIP = heightDip;
     ::MENU_WINDOW_WIDTH = widthPx;
     ::MENU_WINDOW_HEIGHT = heightPx;
     EnsureSmallWindowsTopmost(L"show-menu");
     const HWND zorder = AreSmallWindowsTopmostApplied() ? HWND_TOPMOST : HWND_TOP;
-    SetWindowPos(hwnd_, zorder, menuX, menuY, widthPx, heightPx, SWP_SHOWWINDOW | SWP_NOACTIVATE);
+    SetWindowPos(hwnd_, zorder, position.x, position.y, widthPx, heightPx, SWP_SHOWWINDOW | SWP_NOACTIVATE);
     RaiseTrayMenuAboveSmallWindows(L"show-menu");
     impl_->resources.EnsureForComposition(hwnd_);
     Present();
     openToUser_ = true;
-    FTB_DIAG_LOGF(L"menu d2d show pos=({},{}) size={}x{}", menuX, menuY, widthPx, heightPx);
+    FTB_DIAG_LOGF(L"menu d2d show pos=({},{}) size={}x{}", position.x, position.y, widthPx, heightPx);
 }
 
 void TrayMenuPresenter::ShowFromLangBar()
