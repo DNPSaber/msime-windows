@@ -62,7 +62,7 @@ if(MSVC)
     target_compile_definitions(metasequoia_ime_ngram PRIVATE
         _HAS_AUTO_PTR_ETC=1 NOMINMAX _CRT_SECURE_NO_WARNINGS)
     # 上游副本，不为它改代码风格，也不逐个修收窄转换告警。
-    target_compile_options(metasequoia_ime_ngram PRIVATE /wd4244 /wd4267 /wd4996 /wd4018 /wd4334)
+    target_compile_options(metasequoia_ime_ngram PRIVATE /utf-8 /wd4244 /wd4267 /wd4996 /wd4018 /wd4334)
 endif()
 
 # kenlm 的 _open 走 ANSI 代码页，本仓的路径是 UTF-8。强制包含一个只声明
