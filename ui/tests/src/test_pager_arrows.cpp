@@ -52,6 +52,28 @@ TEST_CASE(PagerArrowsKeepButtonsInTrailingBottomCorner)
     REQUIRE(!pager->HitTest({105.0f, 55.0f}));
 }
 
+TEST_CASE(PagerArrowsDividerTakesRoomBeforeButtons)
+{
+    auto pager = std::make_shared<PagerArrows>();
+    PagerArrows::Appearance appearance;
+    appearance.buttonWidth = 10.0f;
+    appearance.buttonHeight = 12.0f;
+    appearance.glyph = PagerArrows::Glyph::Triangle;
+    appearance.glyphSize = 10.0f;
+    appearance.dividerWidth = 1.0f;
+    appearance.dividerGap = 3.0f;
+    pager->SetAppearance(appearance);
+    const SizeF measured = pager->MeasureInLayout({500.0f, 500.0f});
+    REQUIRE_NEAR(measured.width, 24.0f);
+    REQUIRE_NEAR(measured.height, 12.0f);
+    REQUIRE_NEAR(appearance.GlyphWidth(), 8.4f);
+
+    // The divider is drawn left of the buttons, so the buttons still sit in the trailing corner.
+    pager->Arrange({0.0f, 0.0f, 24.0f, 12.0f});
+    REQUIRE_NEAR(pager->GetPartBounds(PagerArrows::Part::Previous).x, 4.0f);
+    REQUIRE(pager->HitTestPart({2.0f, 6.0f}) == PagerArrows::Part::None);
+}
+
 TEST_CASE(PagerArrowsTrackEnabledParts)
 {
     auto pager = MakePager();

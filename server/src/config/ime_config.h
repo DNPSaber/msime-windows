@@ -436,7 +436,8 @@ const std::string &GetConfiguredUiBackend();
 bool SetConfiguredUiBackend(const std::string &backend);
 // Process-lifetime renderer chosen at InitImeConfig. Independent of later reloads.
 bool UseD2dSmallWindowUi();
-// "fluent" | "wechat" | "graphite" | "willow_green" | "autumn_osmanthus" — candidate-window and floating-toolbar skin.
+// "fluent" | "wechat" | "graphite" | "willow_green" | "autumn_osmanthus" | "microsoft"
+// — candidate-window and floating-toolbar skin.
 const std::string &GetConfiguredCandidateSkin();
 bool SetConfiguredCandidateSkin(const std::string &skin);
 const std::string &GetConfiguredCandidateWindowPreeditStyle();

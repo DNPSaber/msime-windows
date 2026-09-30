@@ -534,6 +534,9 @@ class CandidateList : public Visual
         // items, spread the spare width evenly over that line's items so the
         // last one reaches the list's right edge (full-bleed highlights).
         bool justifyHorizontalRows = false;
+        // Horizontal only: items narrower than this are widened to it, content
+        // stays leading. 0 keeps every item at its natural width.
+        float minItemWidth = 0.0f;
         float contentPadLeft = 5.0f;
         float contentPadRight = 5.0f;
         // Part of itemHeight that is the row's bottom padding. Lines stacked
@@ -545,6 +548,8 @@ class CandidateList : public Visual
         float selectedBarWidth = 3.0f;
         float selectedBarHeight = 12.8f;
         bool showSelectedBar = true;
+        // false centres the bar on the row's leading edge; true puts it just inside the row.
+        bool selectedBarInside = false;
         D2D1_COLOR_F rowFillHover = D2D1::ColorF(0x343434);
         D2D1_COLOR_F rowFillPressed = D2D1::ColorF(0x353535);
         D2D1_COLOR_F rowFillSelected = D2D1::ColorF(0x3E3E3E, 0.725f);
@@ -662,9 +667,10 @@ class CandidateList : public Visual
     ContextMenuHandler onContextMenu_;
 };
 
-// A pair of small "previous" / "next" chevron buttons side by side, e.g. to page a
-// list. Chevrons are drawn as strokes, so they do not depend on any font. A
-// disabled button keeps its slot (the layout does not jump) and ignores clicks.
+// A pair of small "previous" / "next" buttons side by side, e.g. to page a list.
+// The arrows are drawn as geometry (stroked chevrons or filled triangles), so they
+// do not depend on any font. A disabled button keeps its slot (the layout does
+// not jump) and ignores clicks. An optional vertical divider sits before them.
 class PagerArrows : public Visual
 {
   public:
@@ -675,26 +681,42 @@ class PagerArrows : public Visual
         Next,
     };
 
+    enum class Glyph
+    {
+        Chevron,
+        Triangle,
+    };
+
     struct Appearance
     {
         // Size of one button; the control is two buttons plus gap wide.
         float buttonWidth = 12.0f;
         float buttonHeight = 14.0f;
         float gap = 0.0f;
-        // Chevron height and stroke, centred in its button.
+        Glyph glyph = Glyph::Chevron;
+        // Glyph height, centred in its button. strokeWidth is the chevron's line width, or for a
+        // triangle how far each corner is rounded off along its edges.
         float glyphSize = 7.0f;
         float strokeWidth = 1.3f;
         float cornerRadius = 3.0f;
+        // A vertical rule as tall as the buttons, dividerGap before the previous
+        // button. dividerWidth 0 draws nothing and takes no space.
+        float dividerWidth = 0.0f;
+        float dividerGap = 0.0f;
+        D2D1_COLOR_F dividerColor = D2D1::ColorF(0, 0.0f);
         D2D1_COLOR_F glyphColor = D2D1::ColorF(0xE9E8E8, 0.8f);
         D2D1_COLOR_F disabledGlyphColor = D2D1::ColorF(0xE9E8E8, 0.25f);
         D2D1_COLOR_F hoverFill = D2D1::ColorF(0x414141);
         D2D1_COLOR_F pressedFill = D2D1::ColorF(0x353535);
 
-        // Horizontal extent of one chevron, so callers can line its tip up with neighbouring content.
+        // Horizontal extent of one glyph, so callers can line its tip up with neighbouring content.
         float GlyphWidth() const
         {
-            return glyphSize * 0.5f * 0.55f;
+            return glyph == Glyph::Triangle ? glyphSize * kTriangleAspect : glyphSize * 0.5f * 0.55f;
         }
+
+        // Width of a triangle over its height.
+        static constexpr float kTriangleAspect = 0.84f;
     };
 
     using ClickHandler = std::function<void(Part part)>;

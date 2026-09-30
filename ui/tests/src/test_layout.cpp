@@ -376,6 +376,27 @@ TEST_CASE(horizontal_candidate_translation_area_activates_the_candidate)
     REQUIRE(activated == 1);
 }
 
+TEST_CASE(horizontal_candidates_are_widened_to_the_minimum_item_width)
+{
+    CandidateList list(28.0f);
+    CandidateList::Appearance appearance;
+    appearance.itemHeight = 28.0f;
+    appearance.itemGap = 4.0f;
+    appearance.minItemWidth = 90.0f;
+    list.SetAppearance(appearance);
+    list.SetOrientation(CandidateList::Orientation::Horizontal);
+    list.SetItems({{L"1", L"a", L"", L""}, {L"2", L"b", L"", L""}});
+    const SizeF size = list.MeasureInLayout({1000.0f, 1000.0f});
+    list.ArrangeInLayout({0.0f, 0.0f, size.width, size.height});
+    REQUIRE_NEAR(list.GetItemBounds(0).width, 90.0f);
+    REQUIRE_NEAR(list.GetItemBounds(1).x, 94.0f);
+    REQUIRE_NEAR(size.width, 184.0f);
+
+    // Vertical rows already span the list, so the minimum does not apply there.
+    list.SetOrientation(CandidateList::Orientation::Vertical);
+    REQUIRE(list.MeasureInLayout({1000.0f, 1000.0f}).width < 90.0f);
+}
+
 TEST_CASE(vertical_candidate_translation_stays_on_the_same_line)
 {
     CandidateList list(28.0f);

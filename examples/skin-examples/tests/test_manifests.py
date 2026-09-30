@@ -8,7 +8,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 # MSIME_SKINS_DIR points the same checks at another skin collection, e.g. the repository's skins/.
 SKINS_DIR = Path(os.environ.get("MSIME_SKINS_DIR", ROOT / "skins")).resolve()
-BUILTIN_SKINS = ("fluent", "wechat", "graphite", "willow_green", "autumn_osmanthus")
+BUILTIN_SKINS = ("fluent", "wechat", "graphite", "willow_green", "autumn_osmanthus", "microsoft")
 
 
 class ManifestTests(unittest.TestCase):

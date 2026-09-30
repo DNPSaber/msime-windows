@@ -111,6 +111,19 @@ struct CandSkinTokens
     float itemPadRight = 0.0f;
     // 横排时把卡片多出的宽度均分给同一行各项，铺满高亮的皮肤（杨柳青）末项才能贴到卡片右边。
     bool justifyRows = false;
+    // 序号字号相对候选字号的比例、序号与候选之间的空、横排每项的最小宽度（0 为不限）。
+    float labelScale = 0.8f;
+    float labelGap = 1.5f;
+    float minItemWidth = 0.0f;
+    // 选中条的尺寸；selectedBarInside 让它落在高亮左缘之内，而不是骑在左缘上。
+    float selectedBarWidth = 3.0f;
+    float selectedBarHeightEm = 0.85f;
+    bool selectedBarInside = false;
+    // 翻页箭头画成候选文字色的实心三角（微软拼音那样），横排时前面再加一条分隔线。
+    bool trianglePager = false;
+    // 预编辑行隐藏时抵掉它与列表之间的 2px 行距，让卡片上下内边距一致。贴角皮肤总是这样做。
+    bool trimHiddenPreeditGap = false;
+    D2D1_COLOR_F pagerDivider = D2D1::ColorF(0, 0.0f);
     msimeui::Thickness preeditMargin{};
     D2D1_COLOR_F rowTextSelected = D2D1::ColorF(0, 0.0f);
     D2D1_COLOR_F rowLabelSelected = D2D1::ColorF(0, 0.0f);
@@ -468,6 +481,7 @@ void CandidatePresenter::ApplySkin()
         RebuildScene();
         lastSkinFingerprint_ = skinKey;
     }
+    const float fontSize = static_cast<float>((std::max)(12, GetConfiguredCandidateFontSize()));
     if (baseSkin == "fluent")
     {
         if (horizontalLayout)
@@ -627,6 +641,53 @@ void CandidatePresenter::ApplySkin()
             tokens.menuHover = ColorFromRgb(0x637885);
         }
     }
+    else if (baseSkin == "microsoft")
+    {
+        // 几何随字号缩放，对应 CSS 里以 em 写的尺寸（ui-html/webview2/candwnd/skins/microsoft/）。
+        tokens.borderWidth = 1.0f;
+        tokens.radius = 8.0f;
+        tokens.containerPad = std::round(fontSize * 0.3f);
+        tokens.itemRadius = 4.0f;
+        tokens.itemExtraHeight = std::round(fontSize * 0.47f);
+        // 序号左端距高亮左缘 0.76em，其中 5 DIP 是列表固定的 textPadLeft。
+        tokens.itemPadLeft = (std::max)(0.0f, std::round(fontSize * 0.76f) - 5.0f);
+        tokens.itemPadRight = std::round(fontSize * 0.9f);
+        if (horizontalLayout)
+        {
+            tokens.itemGap = std::round(fontSize * 0.28f);
+            tokens.minItemWidth = std::round(fontSize * 4.35f);
+        }
+        tokens.labelScale = 1.0f;
+        tokens.labelGap = std::round(fontSize * 0.2f);
+        tokens.selectedBarWidth = (std::max)(3.0f, fontSize * 0.24f);
+        tokens.selectedBarHeightEm = 1.1f;
+        tokens.selectedBarInside = true;
+        tokens.trianglePager = true;
+        tokens.trimHiddenPreeditGap = true;
+        tokens.accent = ColorFromRgb(0xE183D9);
+        if (candLight)
+        {
+            tokens.selected = ColorFromRgb(0xEAEAEA);
+            tokens.hover = ColorFromRgb(0xF0F0F0);
+            tokens.number = ColorFromRgb(0x5F5F5F);
+            tokens.pagerDivider = ColorFromRgb(0xE0E0E0);
+            tokens.menuFill = ColorFromRgb(0xF9F9F9);
+            tokens.menuBorder = D2D1::ColorF(0, 0.1f);
+            tokens.menuText = ColorFromRgb(0x1A1A1A);
+            tokens.menuHover = ColorFromRgb(0xEAEAEA);
+        }
+        else
+        {
+            tokens.selected = ColorFromRgb(0x383838);
+            tokens.hover = ColorFromRgb(0x353535);
+            tokens.number = ColorFromRgb(0xCFCFCF);
+            tokens.pagerDivider = ColorFromRgb(0x3D3D3D);
+            tokens.menuFill = ColorFromRgb(0x2C2C2C);
+            tokens.menuBorder = ColorFromRgb(0x1C1C1C);
+            tokens.menuText = ColorFromRgb(0xFFFFFF);
+            tokens.menuHover = ColorFromRgb(0x383838);
+        }
+    }
 
     if (package)
     {
@@ -693,7 +754,6 @@ void CandidatePresenter::ApplySkin()
     theme.windowBackground = D2D1::ColorF(0, 0.0f);
     msimeui::ThemeManager::SetCurrent(theme);
 
-    const float fontSize = static_cast<float>((std::max)(12, GetConfiguredCandidateFontSize()));
     const float preeditSize = static_cast<float>((std::max)(12, GetConfiguredCandidateWindowPreeditFontSize()));
     msimeui::CandidateList::Appearance appearance;
     appearance.fontFamily = string_to_wstring(ResolveSystemFontFamilyForCss(GetConfiguredCandidateEnglishFont()));
@@ -708,7 +768,7 @@ void CandidatePresenter::ApplySkin()
     appearance.itemHeight = fontSize * 1.35f + tokens.itemExtraHeight;
     appearance.itemGap = tokens.itemGap;
     appearance.fontSize = fontSize;
-    appearance.labelFontSize = fontSize * 0.8f;
+    appearance.labelFontSize = fontSize * tokens.labelScale;
     appearance.annotationFontSize = fontSize;
     appearance.contentPadLeft = tokens.itemPadLeft;
     appearance.contentPadRight = tokens.itemPadRight;
@@ -716,9 +776,11 @@ void CandidatePresenter::ApplySkin()
     // 对应 CSS 里 .row.cand 的 padding 包住整个 .text（杨柳青横排上下各 6px）。
     appearance.contentPadBottom = tokens.itemExtraHeight * 0.5f;
     appearance.textPadLeft = 5.0f;
-    appearance.labelGap = 1.5f;
-    appearance.selectedBarWidth = 3.0f;
-    appearance.selectedBarHeight = fontSize * 0.85f;
+    appearance.labelGap = tokens.labelGap;
+    appearance.minItemWidth = tokens.minItemWidth;
+    appearance.selectedBarWidth = tokens.selectedBarWidth;
+    appearance.selectedBarHeight = fontSize * tokens.selectedBarHeightEm;
+    appearance.selectedBarInside = tokens.selectedBarInside;
     appearance.showSelectedBar = tokens.showSelectedBar;
     appearance.selectedBarColor = tokens.selectedBar.a > 0.001f ? tokens.selectedBar : tokens.accent;
     appearance.cornerRadius = tokens.itemRadius;
@@ -730,7 +792,8 @@ void CandidatePresenter::ApplySkin()
     // 隐藏的预编辑行高度为 0，但 body 仍在它和列表之间留 2px 行距；贴角皮肤把它抵掉，
     // 让首项贴着卡片的内容顶边（秋桂四边内边距一致，杨柳青高亮直抵卡片顶边）。
     if (preeditHidden)
-        impl_->preedit->SetMargin({0.0f, 0.0f, 0.0f, tokens.outerItemRadius > 0.0f ? -2.0f : 0.0f});
+        impl_->preedit->SetMargin(
+            {0.0f, 0.0f, 0.0f, tokens.outerItemRadius > 0.0f || tokens.trimHiddenPreeditGap ? -2.0f : 0.0f});
     else
         impl_->preedit->SetMargin(tokens.preeditMargin);
     appearance.textColor = palette.candidateText;
@@ -765,8 +828,39 @@ void CandidatePresenter::ApplySkin()
         pagerAppearance.disabledGlyphColor = WithAlpha(tokens.number, 0.3f);
         pagerAppearance.hoverFill = tokens.hover;
         pagerAppearance.pressedFill = tokens.selected.a > 0.001f ? tokens.selected : tokens.hover;
+        if (tokens.trianglePager)
+        {
+            // 微软拼音式：候选文字色的实心三角，按钮与候选行等高。横排时按钮更宽，前面隔一条分隔线，
+            // 与 CSS 的 .page-arrow 同一组 em 尺寸。
+            pagerAppearance.glyph = msimeui::PagerArrows::Glyph::Triangle;
+            // 高 0.56em、宽 0.47em，三个角各圆掉高度的四分之一，尖端是钝的。
+            pagerAppearance.glyphSize = fontSize * 0.56f;
+            pagerAppearance.strokeWidth = pagerAppearance.glyphSize * 0.25f;
+            pagerAppearance.cornerRadius = tokens.itemRadius;
+            pagerAppearance.gap = 0.0f;
+            pagerAppearance.glyphColor = palette.candidateText;
+            pagerAppearance.disabledGlyphColor = WithAlpha(palette.candidateText, 0.25f);
+            pagerAppearance.buttonHeight = std::round(appearance.itemHeight);
+            if (horizontalLayout)
+            {
+                pagerAppearance.buttonWidth = std::round(fontSize * 1.73f);
+                pagerAppearance.dividerWidth = 1.0f;
+                pagerAppearance.dividerGap = std::round(fontSize * 0.12f);
+                pagerAppearance.dividerColor = tokens.pagerDivider;
+            }
+            else
+            {
+                pagerAppearance.buttonWidth = std::round(fontSize * 1.2f);
+                pagerAppearance.buttonHeight = std::round(fontSize * 1.2f);
+            }
+        }
         impl_->pager->SetAppearance(pagerAppearance);
-        if (horizontalLayout)
+        if (horizontalLayout && tokens.trianglePager)
+        {
+            // 与最后一项隔 0.3em，按钮与行等高，不用再抬。
+            impl_->pager->SetMargin({std::round(fontSize * 0.3f), 0.0f, 0.0f, 0.0f});
+        }
+        else if (horizontalLayout)
         {
             // 横排：窄列与候选之间留一点空，箭头竖直居中在最后一行上。
             const float lift = (std::max)(0.0f, (appearance.itemHeight - pagerAppearance.buttonHeight) * 0.5f);

@@ -42,6 +42,19 @@ TEST_CASE(candidate_skin_palette_matches_autumn_osmanthus_light_and_dark_preview
     REQUIRE_EQ(FlattenCandidateColor(light.text, light.surface), RGB(31, 49, 56));
 }
 
+TEST_CASE(candidate_skin_palette_matches_microsoft_light_and_dark_preview)
+{
+    const CandidateSkinPalette dark = ResolveCandidateSkinPalette("microsoft", false, "auto");
+    REQUIRE_EQ(FlattenCandidateColor(dark.surface, dark.surface), RGB(44, 44, 44));
+    REQUIRE_EQ(FlattenCandidateColor(dark.border, dark.surface), RGB(28, 28, 28));
+    REQUIRE_EQ(FlattenCandidateColor(dark.text, dark.surface), RGB(255, 255, 255));
+
+    const CandidateSkinPalette light = ResolveCandidateSkinPalette("microsoft", true, "auto");
+    REQUIRE_EQ(FlattenCandidateColor(light.surface, light.surface), RGB(249, 249, 249));
+    REQUIRE(std::abs(light.border.a - 0.1f) < 0.001f);
+    REQUIRE_EQ(FlattenCandidateColor(light.text, light.surface), RGB(26, 26, 26));
+}
+
 TEST_CASE(candidate_skin_palette_custom_missing_colors_inherit_package_base)
 {
     CandidateSkinCatalog::CandidateColors colors;

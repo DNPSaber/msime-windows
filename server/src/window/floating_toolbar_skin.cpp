@@ -56,6 +56,11 @@ FloatingToolbarSkin ResolveFloatingToolbarSkin(const std::string &skinId, bool l
         skin.hover = light ? CandidateColorFromRgb(0xFFE399, 0.70f) : CandidateColorFromRgb(0xF97D0A, 0.28f);
         skin.radius = 10.0f;
     }
+    else if (skinId == "microsoft")
+    {
+        // 其余沿用默认（Fluent）工具栏，只有拖拽条跟候选框选中条同为紫色。
+        skin.handle = CandidateColorFromRgb(0xE183D9);
+    }
     return skin;
 }
 

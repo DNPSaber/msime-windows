@@ -134,7 +134,7 @@
 }
 
 /* 同候选窗 fluent 横排：首项、尾项落在外框四角上的高亮角与外框同为 6px；其余内置皮肤在 skin.css 自带规则。 */
-.wnd-h:not(.skin-wechat, .skin-graphite, .skin-willow-green, .skin-autumn-osmanthus) {
+.wnd-h:not(.skin-wechat, .skin-graphite, .skin-willow-green, .skin-autumn-osmanthus, .skin-microsoft) {
   .container > .pinyin + .row-wrapper > .cand { border-bottom-left-radius: 6px; }
   .container.preedit-hidden > .pinyin + .row-wrapper > .cand { border-top-left-radius: 6px; }
   .container > .row-wrapper:is(:last-child, .last-visible) > .cand { border-bottom-right-radius: 6px; }
