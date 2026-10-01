@@ -824,6 +824,25 @@ int run_test()
                     "Selecting a corrected phrase left an unconsumed input suffix.");
         }
 
+        // PRD R5 regression: a fully legal spelling whose alias reading won the
+        // query (haoyonga -> hao'yong'ga) must still preedit the typed letters.
+        // The rewritten segmentation used to leak into the preedit verbatim,
+        // adding a phantom letter and shifting the TSF caret (haoyongg|a).
+        struct LegalSpellingCase
+        {
+            const char *pinyin;
+            const char *expected_preedit;
+        };
+        const std::array<LegalSpellingCase, 4> legal_spelling_preedit_cases = {
+            {{"haoyonga", "haoyonga"}, {"dongua", "dongua"}, {"zhonguo", "zhonguo"}, {"dongan", "dongan"}}};
+        for (const auto &test_case : legal_spelling_preedit_cases)
+        {
+            metasequoia::InputSession session;
+            type(session, test_case.pinyin);
+            require(session.get_pinyin_segmentation_with_cases() == test_case.expected_preedit,
+                    "A legal spelling with an alias reading must preedit the typed letters.");
+        }
+
         metasequoia::InputSession no_autocorrect_session(SchemeType::Quanpin, 0u);
         require(no_autocorrect_session.quanpin_autocorrect_types() == 0,
                 "The requested pinyin autocorrect setting was not retained.");
