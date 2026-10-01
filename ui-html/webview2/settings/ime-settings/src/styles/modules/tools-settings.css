@@ -13,8 +13,15 @@
   background: var(--card-bg-solid);
 }
 
-.clipboard-history-section {
+.clipboard-history-section,
+.mixed-candidates-section {
   margin-bottom: 18px;
+}
+
+/* 候选混输总开关关闭：子开关由 input.css 的 .toggle-section-details.is-disabled 置灰，下拉框在这里补上 */
+.mixed-candidates-section .toggle-section-details.is-disabled .dropdown {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .quick-phrase-heading .ftb-toggle-btn,

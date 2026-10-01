@@ -297,6 +297,36 @@ bool SetConfiguredQuickPhraseFrequencyEnabled(bool enabled)
     return true;
 }
 
+bool GetConfiguredMixedCandidatesEnabled()
+{
+    return g_mixed_candidates_enabled;
+}
+
+bool SetConfiguredMixedCandidatesEnabled(bool enabled)
+{
+    if (!WriteConfiguredValue("utility", "mixed_candidates", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_mixed_candidates_enabled = enabled;
+    return true;
+}
+
+bool GetConfiguredDateTimeCandidatesEnabled()
+{
+    return g_date_time_candidates_enabled;
+}
+
+bool SetConfiguredDateTimeCandidatesEnabled(bool enabled)
+{
+    if (!WriteConfiguredValue("utility", "date_time_candidates", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_date_time_candidates_enabled = enabled;
+    return true;
+}
+
 bool GetConfiguredDateTimeModeEnabled()
 {
     return g_date_time_mode_enabled;

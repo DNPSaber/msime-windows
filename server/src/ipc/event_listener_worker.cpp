@@ -117,12 +117,9 @@ struct Task
     std::vector<EnglishIme::TranslationResult> translation_results;
     uint64_t translation_generation = 0;
     bool translation_merge = false;
-    std::vector<WordItem> emoji_candidates;
-    std::string emoji_input;
-    uint64_t emoji_generation = 0;
-    std::vector<WordItem> kaomoji_candidates;
-    std::string kaomoji_input;
-    uint64_t kaomoji_generation = 0;
+    MixedCandidates::Result mixed_result;
+    std::string mixed_input;
+    uint64_t mixed_generation = 0;
     std::string session_pinyin;
     std::string session_word;
     bool session_pinyin_is_canonical = false;
@@ -387,13 +384,8 @@ void WorkerThread()
             break;
         }
 
-        case TaskType::ApplyEmojiCandidates: {
-            ApplyEmojiCandidates(std::move(task.emoji_candidates), task.emoji_input, task.emoji_generation);
-            break;
-        }
-
-        case TaskType::ApplyKaomojiCandidates: {
-            ApplyKaomojiCandidates(std::move(task.kaomoji_candidates), task.kaomoji_input, task.kaomoji_generation);
+        case TaskType::ApplyMixedCandidates: {
+            ApplyMixedCandidates(std::move(task.mixed_result), task.mixed_input, task.mixed_generation);
             break;
         }
 
@@ -598,7 +590,8 @@ void WorkerThread()
             WordItem item;
             if (!ResolveCandidateItem(task.candidate_one_based_index, item) ||
                 item.source == CandidateSource::QuickPhrase || item.source == CandidateSource::Emoji ||
-                item.source == CandidateSource::Kaomoji || item.source == CandidateSource::Generated)
+                item.source == CandidateSource::Kaomoji || item.source == CandidateSource::DateTime ||
+                item.source == CandidateSource::Generated)
             {
                 break;
             }
@@ -878,9 +871,9 @@ void EnqueueCandidateTranslations(std::vector<EnglishIme::TranslationResult> res
     pipe_queueCv.notify_one();
 }
 
-void EnqueueEmojiCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation)
+void EnqueueMixedCandidates(MixedCandidates::Result result, const std::string &input, uint64_t generation)
 {
-    const AsyncRequestOrigin origin = FindEmojiRequestOrigin(input, generation);
+    const AsyncRequestOrigin origin = FindMixedRequestOrigin(input, generation);
     if (origin.client_id == 0 || origin.activation_epoch == 0)
     {
         return;
@@ -888,31 +881,10 @@ void EnqueueEmojiCandidates(std::vector<WordItem> candidates, const std::string 
     {
         std::lock_guard lock(queueMutex);
         Task task;
-        task.type = TaskType::ApplyEmojiCandidates;
-        task.emoji_candidates = std::move(candidates);
-        task.emoji_input = input;
-        task.emoji_generation = generation;
-        task.client_id = origin.client_id;
-        task.activation_epoch = origin.activation_epoch;
-        taskQueue.push(std::move(task));
-    }
-    pipe_queueCv.notify_one();
-}
-
-void EnqueueKaomojiCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation)
-{
-    const AsyncRequestOrigin origin = FindKaomojiRequestOrigin(input, generation);
-    if (origin.client_id == 0 || origin.activation_epoch == 0)
-    {
-        return;
-    }
-    {
-        std::lock_guard lock(queueMutex);
-        Task task;
-        task.type = TaskType::ApplyKaomojiCandidates;
-        task.kaomoji_candidates = std::move(candidates);
-        task.kaomoji_input = input;
-        task.kaomoji_generation = generation;
+        task.type = TaskType::ApplyMixedCandidates;
+        task.mixed_result = std::move(result);
+        task.mixed_input = input;
+        task.mixed_generation = generation;
         task.client_id = origin.client_id;
         task.activation_epoch = origin.activation_epoch;
         taskQueue.push(std::move(task));

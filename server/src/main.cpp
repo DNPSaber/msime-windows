@@ -16,8 +16,7 @@
 #include "cloud/cloud_translation.h"
 #include "ai/ai_assistant.h"
 #include "english/english_ime.h"
-#include "emoji/emoji_ime.h"
-#include "kaomoji/kaomoji_ime.h"
+#include "mixed/mixed_candidates.h"
 #include "engine/neural/rescore_worker.h"
 #include "utils/common_utils.h"
 #include "utils/single_instance.h"
@@ -192,14 +191,11 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance, _In_ HINSTANCE /*hPrevInstance*/,
                             [](std::vector<EnglishIme::TranslationResult> results, uint64_t generation) {
                                 FanyNamedPipe::EnqueueCandidateTranslations(std::move(results), generation, true);
                             });
-    EmojiIme::Start(CommonUtils::get_ime_data_path() + "\\others.db",
-                    [](std::vector<WordItem> candidates, const std::string &input, uint64_t generation) {
-                        FanyNamedPipe::EnqueueEmojiCandidates(std::move(candidates), input, generation);
-                    });
-    KaomojiIme::Start(CommonUtils::get_ime_data_path() + "\\others.db",
-                      [](std::vector<WordItem> candidates, const std::string &input, uint64_t generation) {
-                          FanyNamedPipe::EnqueueKaomojiCandidates(std::move(candidates), input, generation);
-                      });
+    MixedCandidates::Start(CommonUtils::get_ime_data_path() + "\\english.db",
+                           CommonUtils::get_ime_data_path() + "\\others.db",
+                           [](MixedCandidates::Result result, const std::string &input, uint64_t generation) {
+                               FanyNamedPipe::EnqueueMixedCandidates(std::move(result), input, generation);
+                           });
 
     int ret = CreateCandidateWindow(hInstance);
 
@@ -208,8 +204,7 @@ int CALLBACK WinMain(_In_ HINSTANCE hInstance, _In_ HINSTANCE /*hPrevInstance*/,
 
     EnglishIme::Stop();
     CloudTranslation::Stop();
-    EmojiIme::Stop();
-    KaomojiIme::Stop();
+    MixedCandidates::Stop();
     AiAssistant::Stop();
     CloudIme::Stop();
     ClipboardMonitor::Stop();

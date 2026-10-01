@@ -10,6 +10,7 @@
 #include <cstdint>
 #include "session/input_session.h"
 #include "english/english_ime.h"
+#include "mixed/mixed_candidates.h"
 
 inline std::condition_variable pipe_queueCv;
 inline std::atomic_bool pipe_running = true;
@@ -55,8 +56,7 @@ void CancelCloudCandidateRequest();
 void EnqueueEnglishCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation);
 void EnqueueCandidateTranslations(std::vector<EnglishIme::TranslationResult> results, uint64_t generation,
                                   bool merge = false);
-void EnqueueEmojiCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation);
-void EnqueueKaomojiCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation);
+void EnqueueMixedCandidates(MixedCandidates::Result result, const std::string &input, uint64_t generation);
 void EnqueueCandidateUiAction(CandidateUiAction action, int one_based_index, int fixed_position = 0);
 // Paging carries a step count rather than a candidate index. Steps coalesce
 // into a page task already queued for the same client, so spinning the wheel

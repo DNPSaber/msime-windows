@@ -161,20 +161,6 @@ export function applyFrequencyConfig(config: any): void {
   applyDropdownValue('frequencyLinearStepBtn', 'frequencyLinearStepMenu', String(config?.linear_step ?? 1));
 }
 
-function syncZhEnMixedInputOptionsEnabled(enabled: boolean): void {
-  document.getElementById('zhEnMixedInputOptions')?.classList.toggle('is-disabled', !enabled);
-}
-
-export function applyZhEnMixedInputConfig(enabled?: boolean, minChars?: number): void {
-  if (typeof enabled === 'boolean') {
-    applyToggleState('zhEnToggleBtn', enabled);
-    syncZhEnMixedInputOptionsEnabled(enabled);
-  }
-  if (typeof minChars === 'number' && Number.isFinite(minChars)) {
-    applyDropdownValue('zhEnTriggerLengthBtn', 'zhEnTriggerLengthMenu', String(minChars));
-  }
-}
-
 function syncCandidateTranslationOptions(enabled: boolean): void {
   document.getElementById('candidateTranslationApiOptions')?.classList.toggle('is-disabled', !enabled);
 }
@@ -378,10 +364,6 @@ export function setupInput(): void {
   setupToggleButton('escapeKeepsSelectedWordToggleBtn', (active) => {
     updateConfig('input.escape_keeps_selected_word', active);
   });
-  setupToggleButton('zhEnToggleBtn', (active) => {
-    syncZhEnMixedInputOptionsEnabled(active);
-    updateConfig('general.cn_en_mixed_input', active);
-  });
   setupToggleButton('candidateTranslationsToggleBtn', (active) => {
     syncCandidateTranslationOptions(active);
     updateConfig('general.candidate_translations', active);
@@ -434,20 +416,6 @@ export function setupInput(): void {
     () => `translation.${activeTranslationProvider()}`,
     translationTestConfig
   );
-  setupDropdownMenu(
-    'zhEnTriggerLengthBtn',
-    'zhEnTriggerLengthMenu',
-    '',
-    true,
-    'general.cn_en_mixed_input_min_chars',
-    Number
-  );
-  setupToggleButton('emojiMixedInputToggleBtn', (active) => {
-    updateConfig('general.emoji_mixed_input', active);
-  });
-  setupToggleButton('kaomojiMixedInputToggleBtn', (active) => {
-    updateConfig('general.kaomoji_mixed_input', active);
-  });
   setupToggleButton('cloudCandidatesToggleBtn', (active) => {
     updateConfig('general.cloud_candidates', active);
   });

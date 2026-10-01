@@ -85,13 +85,12 @@ void PostCaretStateBadge(FanyImeUi::CaretStateBadge badge, int x, int y);
 void UpdateCloudInput(const std::string &input, uint64_t client_id = 0, uint64_t activation_epoch = 0);
 void UpdateEnglishInput(const std::string &input, uint64_t client_id = 0, uint64_t activation_epoch = 0,
                         bool dedicated_mode = false);
-void UpdateEmojiInput(const std::string &input, uint64_t client_id = 0, uint64_t activation_epoch = 0);
-void UpdateKaomojiInput(const std::string &input, uint64_t client_id = 0, uint64_t activation_epoch = 0);
+// 混输（英文、emoji、颜文字、日期时间）的查询请求；request.input 为空表示取消。
+void UpdateMixedInput(MixedCandidates::Request request, uint64_t client_id = 0, uint64_t activation_epoch = 0);
 void UpdateAiInput(const std::string &identity, uint64_t client_id = 0, uint64_t activation_epoch = 0);
 AsyncRequestOrigin FindCloudRequestOrigin(const std::string &input, uint64_t generation);
 AsyncRequestOrigin FindEnglishRequestOrigin(const std::string &input, uint64_t generation);
-AsyncRequestOrigin FindEmojiRequestOrigin(const std::string &input, uint64_t generation);
-AsyncRequestOrigin FindKaomojiRequestOrigin(const std::string &input, uint64_t generation);
+AsyncRequestOrigin FindMixedRequestOrigin(const std::string &input, uint64_t generation);
 AsyncRequestOrigin FindAiRequestOrigin(const std::string &input, uint64_t generation);
 std::string CandidateTextForOutput(const std::string &text);
 void AppendAiContext(const std::string &committed_word);
@@ -124,8 +123,7 @@ enum class TaskType
     ApplyAiCandidate,
     ApplyEnglishCandidates,
     ApplyCandidateTranslations,
-    ApplyEmojiCandidates,
-    ApplyKaomojiCandidates,
+    ApplyMixedCandidates,
     StoreUserPhrase,
     ClientActivated,
     ClientDeactivated,
@@ -200,8 +198,7 @@ void ApplyAiCandidate(const std::string &candidate, const std::string &identity,
                       const std::optional<metasequoia::OnlineQuery> &query);
 void ApplyEnglishCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation);
 void ApplyCandidateTranslations(std::vector<EnglishIme::TranslationResult> results, uint64_t generation, bool merge);
-void ApplyEmojiCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation);
-void ApplyKaomojiCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation);
+void ApplyMixedCandidates(MixedCandidates::Result result, const std::string &input, uint64_t generation);
 void EnqueueStoreUserPhraseTask(const std::string &pinyin, const std::string &word, bool pinyin_is_canonical = false);
 bool ResolveCandidateItem(int one_based_index, WordItem &item);
 bool SendCurrentDataToClient(uint64_t client_id, uint64_t activation_epoch, uint64_t request_id);

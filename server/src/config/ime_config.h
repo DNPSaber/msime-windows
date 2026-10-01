@@ -366,6 +366,12 @@ bool SetConfiguredQuickPhraseCandidatesEnabled(bool enabled);
 // 快捷短语参与调频：关掉后快捷短语组固定在首位，选择也不再学习。
 bool GetConfiguredQuickPhraseFrequencyEnabled();
 bool SetConfiguredQuickPhraseFrequencyEnabled(bool enabled);
+// 候选混输总开关：关掉后英文、emoji、颜文字、快捷短语、日期时间都不再混进候选，各自的开关值保留。
+bool GetConfiguredMixedCandidatesEnabled();
+bool SetConfiguredMixedCandidatesEnabled(bool enabled);
+// 全拼/双拼里输入 rq / sj / xq 等唤醒词时，把当前日期、时间、星期混进候选。
+bool GetConfiguredDateTimeCandidatesEnabled();
+bool SetConfiguredDateTimeCandidatesEnabled(bool enabled);
 bool GetConfiguredDateTimeModeEnabled();
 bool SetConfiguredDateTimeModeEnabled(bool enabled);
 bool GetConfiguredEmojiModeEnabled();

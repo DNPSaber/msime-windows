@@ -55,7 +55,8 @@ bool BuildTranslationQuery(const WordItem &item, EnglishIme::TranslationQuery &q
     const std::string visible = item.word;
     if (visible.empty())
         return false;
-    if (item.source == CandidateSource::Emoji || item.source == CandidateSource::Kaomoji)
+    if (item.source == CandidateSource::Emoji || item.source == CandidateSource::Kaomoji ||
+        item.source == CandidateSource::DateTime)
         return false;
     if (item.source == CandidateSource::EnglishDictionary && !item.pinyin.empty())
     {
@@ -117,7 +118,7 @@ bool IsQuickPhraseInput(const std::string &raw)
 void PlaceQuickPhrases(std::vector<WordItem> &items, const std::string &current_input)
 {
     const SchemeType scheme = g_inputSession->current_scheme_type();
-    if (!GetConfiguredQuickPhraseCandidatesEnabled() ||
+    if (!GetConfiguredMixedCandidatesEnabled() || !GetConfiguredQuickPhraseCandidatesEnabled() ||
         (scheme != SchemeType::Quanpin && scheme != SchemeType::Shuangpin) ||
         GlobalIme::composition.creating_word.active || g_inputSession->prefix_end() != current_input.size() ||
         current_input.empty() || !std::all_of(current_input.begin(), current_input.end(), [](unsigned char ch) {
@@ -135,6 +136,24 @@ void PlaceQuickPhrases(std::vector<WordItem> &items, const std::string &current_
         slot = static_cast<std::size_t>(std::clamp(stored, 0, max_slot));
     }
     metasequoia::local_modes::place_quick_phrases(items, std::move(phrases), slot);
+}
+
+// 日期时间混入普通候选的唤醒词，与 Shift+T 模式同一套（rq / riqi / date、sj / shijian / time、
+// xq / xingqi / week）。整串精确匹配才算：全拼直接认原始输入；双拼的整拼要按方案换算，shijian 在
+// 小鹤里打成 uijm，所以再拿换算出的全拼认一次。
+std::string DateTimeMixedKeyword(const std::string &current_input, SchemeType scheme)
+{
+    if (current_input.empty() || !std::all_of(current_input.begin(), current_input.end(),
+                                              [](unsigned char ch) { return ch >= 'a' && ch <= 'z'; }))
+        return {};
+    if (metasequoia::local_modes::is_date_time_keyword(current_input))
+        return current_input;
+    if (scheme != SchemeType::Shuangpin)
+        return {};
+    std::string quanpin = g_inputSession->get_quanpin();
+    quanpin.erase(std::remove_if(quanpin.begin(), quanpin.end(), [](char ch) { return ch == '\'' || ch == ' '; }),
+                  quanpin.end());
+    return metasequoia::local_modes::is_date_time_keyword(quanpin) ? quanpin : std::string{};
 }
 
 bool IsUnicodeInput(const std::string &raw)
@@ -262,7 +281,8 @@ std::string BuildCurrentCandidatePage()
         }
         if (show_helpcodes && item.source != CandidateSource::EnglishDictionary &&
             item.source != CandidateSource::QuickPhrase && item.source != CandidateSource::Emoji &&
-            item.source != CandidateSource::Kaomoji && item.source != CandidateSource::Generated)
+            item.source != CandidateSource::Kaomoji && item.source != CandidateSource::DateTime &&
+            item.source != CandidateSource::Generated)
             view.annotation = g_inputSession->get_helpcode_annotation(item.word, uppercase_all_helpcodes);
         if (item.source == CandidateSource::CloudSuggestion)
             view.badge = " ☁️";
@@ -709,44 +729,36 @@ void PrepareCandidateList(uint64_t client_id, uint64_t activation_epoch)
         UpdateEnglishInput(current_input.substr(1), client_id, activation_epoch, true);
         g_dedicated_english_answer_pending = EnglishIme::IsRunning();
     }
-    else if (!IsSpecialModeCompositionActive(current_input) && GetConfiguredEnglishCandidatesEnabled() &&
-             (scheme == SchemeType::Quanpin || scheme == SchemeType::Shuangpin) &&
-             !GlobalIme::composition.creating_word.active)
-    {
-        UpdateEnglishInput(current_input, client_id, activation_epoch);
-    }
     else
     {
         UpdateEnglishInput("");
     }
     const double englishMs = segment.Split();
 
+    // 混输的英文、emoji、颜文字、日期时间交给同一条后台线程（MixedCandidates），查完一次合并。
+    // 快捷短语不在这里：它要跟着翻页扩展重新放置，已经在上面同步混进去了。
+    MixedCandidates::Request mixed;
     if (!g_english_input_mode && !IsSpecialModeCompositionActive(current_input) &&
-        GetConfiguredEmojiMixedInputEnabled() && (scheme == SchemeType::Quanpin || scheme == SchemeType::Shuangpin) &&
+        GetConfiguredMixedCandidatesEnabled() && (scheme == SchemeType::Quanpin || scheme == SchemeType::Shuangpin) &&
         !GlobalIme::composition.creating_word.active)
     {
-        UpdateEmojiInput(current_input, client_id, activation_epoch);
+        mixed.english = GetConfiguredEnglishCandidatesEnabled();
+        mixed.english_min_prefix = static_cast<size_t>(GetConfiguredEnglishMixedInputMinChars());
+        mixed.emoji = GetConfiguredEmojiMixedInputEnabled();
+        mixed.kaomoji = GetConfiguredKaomojiMixedInputEnabled();
+        if (GetConfiguredDateTimeCandidatesEnabled() && g_inputSession->prefix_end() == current_input.size())
+            mixed.date_time_keyword = DateTimeMixedKeyword(current_input, scheme);
+        if (mixed.english || mixed.emoji || mixed.kaomoji || !mixed.date_time_keyword.empty())
+        {
+            mixed.input = current_input;
+            mixed.scheme = scheme;
+        }
     }
-    else
-    {
-        UpdateEmojiInput("");
-    }
-    const double emojiMs = segment.Split();
-
-    if (!g_english_input_mode && !IsSpecialModeCompositionActive(current_input) &&
-        GetConfiguredKaomojiMixedInputEnabled() && (scheme == SchemeType::Quanpin || scheme == SchemeType::Shuangpin) &&
-        !GlobalIme::composition.creating_word.active)
-    {
-        UpdateKaomojiInput(current_input, client_id, activation_epoch);
-    }
-    else
-    {
-        UpdateKaomojiInput("");
-    }
-    const double kaomojiMs = segment.Split();
+    UpdateMixedInput(std::move(mixed), client_id, activation_epoch);
+    const double mixedMs = segment.Split();
 
     CAND_DIAG_LOGF(L"candidate build total_ms={:.1f} query_ms={:.1f} fixed_pos_ms={:.1f} branch_ms={:.1f} "
-                   L"ui_ms={:.1f} english_ms={:.1f} emoji_ms={:.1f} kaomoji_ms={:.1f} items={}",
-                   segment.TotalMs(), queryMs, fixedPosMs, branchMs, uiMs, englishMs, emojiMs, kaomojiMs, itemCount);
+                   L"ui_ms={:.1f} english_ms={:.1f} mixed_ms={:.1f} items={}",
+                   segment.TotalMs(), queryMs, fixedPosMs, branchMs, uiMs, englishMs, mixedMs, itemCount);
 }
 } // namespace FanyNamedPipe

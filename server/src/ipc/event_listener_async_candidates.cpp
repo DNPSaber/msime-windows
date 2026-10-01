@@ -1,4 +1,5 @@
-// 异步候选结果回到任务线程后的合并：云联想、AI 联想、神经重排、英文、译文、emoji 与颜文字。
+// 异步候选结果回到任务线程后的合并：云联想、AI 联想、神经重排、专用英文、译文，以及混输
+// （英文、emoji、颜文字、日期时间）。
 #include "ipc/event_listener_internal.h"
 #include <Windows.h>
 #include <string>
@@ -18,8 +19,7 @@
 #include "ai/ai_assistant.h"
 #include "english/english_ime.h"
 #include "config/ime_config.h"
-#include "emoji/emoji_ime.h"
-#include "kaomoji/kaomoji_ime.h"
+#include "mixed/mixed_candidates.h"
 
 using namespace event_listener_detail;
 
@@ -189,6 +189,7 @@ void ApplyAiCandidate(const std::string &candidate, const std::string &identity,
     RefreshCandidatePageUi(true);
 }
 
+// 专用英文（英文状态、Shift+Y）的整页英文候选。中文里混进来的英文走 ApplyMixedCandidates。
 void ApplyEnglishCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation)
 {
     const std::string session_input =
@@ -196,89 +197,47 @@ void ApplyEnglishCandidates(std::vector<WordItem> candidates, const std::string 
     const bool y_mode = IsYModeInput(session_input);
     const bool dedicated_mode = g_english_input_mode || y_mode;
     const std::string expected_input = y_mode ? session_input.substr(1) : session_input;
-    if ((!dedicated_mode && !GetConfiguredEnglishCandidatesEnabled()) ||
-        !EnglishIme::IsCurrent(input, generation, dedicated_mode) || g_inputSession == nullptr ||
-        (!dedicated_mode && g_inputSession->current_scheme_type() != SchemeType::Quanpin &&
-         g_inputSession->current_scheme_type() != SchemeType::Shuangpin) ||
+    if (!dedicated_mode || !EnglishIme::IsCurrent(input, generation, dedicated_mode) || g_inputSession == nullptr ||
         expected_input != input || GlobalIme::composition.creating_word.active || g_translation_candidates_active)
     {
         return;
     }
 
     auto &items = Global::candidate_ui.items;
-    if (dedicated_mode)
+    std::string context_input = input;
+    std::transform(context_input.begin(), context_input.end(), context_input.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    user_dictionary::apply_fixed_positions(user_dictionary::default_user_db_path(), "english:" + context_input,
+                                           candidates, false, {}, false);
+    if (y_mode)
     {
-        std::string context_input = input;
-        std::transform(context_input.begin(), context_input.end(), context_input.begin(),
-                       [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
-        user_dictionary::apply_fixed_positions(user_dictionary::default_user_db_path(), "english:" + context_input,
-                                               candidates, false, {}, false);
-        if (y_mode)
-        {
-            candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
-                                            [&](const WordItem &item) {
-                                                if (item.word.size() != input.size())
+        candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
+                                        [&](const WordItem &item) {
+                                            if (item.word.size() != input.size())
+                                                return false;
+                                            for (size_t i = 0; i < input.size(); ++i)
+                                            {
+                                                if (std::tolower(static_cast<unsigned char>(item.word[i])) !=
+                                                    std::tolower(static_cast<unsigned char>(input[i])))
                                                     return false;
-                                                for (size_t i = 0; i < input.size(); ++i)
-                                                {
-                                                    if (std::tolower(static_cast<unsigned char>(item.word[i])) !=
-                                                        std::tolower(static_cast<unsigned char>(input[i])))
-                                                        return false;
-                                                }
-                                                return true;
-                                            }),
-                             candidates.end());
-            candidates.insert(candidates.begin(), WordItem("", input, 0, CandidateSource::Generated));
-        }
-        else if (candidates.empty() && !input.empty())
-        {
-            // A raw fallback is selectable, but it is not an english.db row
-            // and therefore must not participate in dictionary mutations.
-            candidates.emplace_back("", input, 0, CandidateSource::Generated);
-        }
-        items = std::move(candidates);
-        Global::candidate_ui.item_total_count = static_cast<int>(items.size());
-        Global::candidate_ui.page_index = 0;
-        Global::candidate_ui.select_first_on_page();
-        Global::candidate_ui.clear_page();
-        g_dedicated_english_answer_pending = false;
-        RefreshCandidatePageUi(true);
-        return;
+                                            }
+                                            return true;
+                                        }),
+                         candidates.end());
+        candidates.insert(candidates.begin(), WordItem("", input, 0, CandidateSource::Generated));
     }
-    items.erase(std::remove_if(items.begin(), items.end(),
-                               [](const WordItem &item) { return item.source == CandidateSource::EnglishDictionary; }),
-                items.end());
-
-    std::vector<WordItem> unique_candidates;
-    for (auto &candidate : candidates)
+    else if (candidates.empty() && !input.empty())
     {
-        const bool duplicate =
-            std::any_of(items.begin(), items.end(), [&](const WordItem &item) { return item.word == candidate.word; });
-        if (!duplicate)
-        {
-            unique_candidates.push_back(std::move(candidate));
-        }
+        // A raw fallback is selectable, but it is not an english.db row
+        // and therefore must not participate in dictionary mutations.
+        candidates.emplace_back("", input, 0, CandidateSource::Generated);
     }
-
-    if (!unique_candidates.empty())
-    {
-        user_dictionary::apply_fixed_positions(user_dictionary::default_user_db_path(), EnglishRankingContextKey(),
-                                               unique_candidates, false);
-        const size_t insert_index = std::min<size_t>(1, items.size());
-        items.insert(items.begin() + static_cast<std::ptrdiff_t>(insert_index), std::move(unique_candidates.front()));
-        user_dictionary::apply_fixed_positions(user_dictionary::default_user_db_path(), CurrentRankingContextKey(),
-                                               items, false, {}, g_inputSession->has_active_helpcode());
-        for (size_t index = 1; index < unique_candidates.size(); ++index)
-        {
-            items.push_back(std::move(unique_candidates[index]));
-        }
-        FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, CurrentEnglishPlacement(items));
-    }
-
+    items = std::move(candidates);
     Global::candidate_ui.item_total_count = static_cast<int>(items.size());
     Global::candidate_ui.page_index = 0;
     Global::candidate_ui.select_first_on_page();
     Global::candidate_ui.clear_page();
+    g_dedicated_english_answer_pending = false;
     RefreshCandidatePageUi(true);
 }
 
@@ -332,55 +291,46 @@ void ApplyCandidateTranslations(std::vector<EnglishIme::TranslationResult> resul
         CloudTranslation::RequestMisses(std::move(misses), generation);
 }
 
-void ApplyEmojiCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation)
+namespace
 {
-    if (!GetConfiguredEmojiMixedInputEnabled() || !EmojiIme::IsCurrent(input, generation) ||
-        g_inputSession == nullptr || g_translation_candidates_active ||
-        (g_inputSession->current_scheme_type() != SchemeType::Quanpin &&
-         g_inputSession->current_scheme_type() != SchemeType::Shuangpin) ||
-        g_inputSession->get_pinyin_sequence_with_cases() != input || GlobalIme::composition.creating_word.active)
-    {
-        return;
-    }
-
-    auto &items = Global::candidate_ui.items;
-    items.erase(std::remove_if(items.begin(), items.end(),
-                               [](const WordItem &item) { return item.source == CandidateSource::Emoji; }),
-                items.end());
-
+// 去掉列表里同来源的旧候选和与已有候选同文本的新候选，返回剩下的新候选。
+std::vector<WordItem> ReplaceSourceAndDeduplicate(std::vector<WordItem> &items, CandidateSource source,
+                                                  std::vector<WordItem> candidates)
+{
+    items.erase(
+        std::remove_if(items.begin(), items.end(), [source](const WordItem &item) { return item.source == source; }),
+        items.end());
     std::vector<WordItem> unique_candidates;
     for (auto &candidate : candidates)
     {
-        const bool duplicate =
-            std::any_of(items.begin(), items.end(), [&](const WordItem &item) { return item.word == candidate.word; });
+        const bool duplicate = std::any_of(items.begin(), items.end(),
+                                           [&](const WordItem &item) { return item.word == candidate.word; }) ||
+                               std::any_of(unique_candidates.begin(), unique_candidates.end(),
+                                           [&](const WordItem &item) { return item.word == candidate.word; });
         if (!duplicate)
-        {
             unique_candidates.push_back(std::move(candidate));
-        }
     }
-
-    if (!unique_candidates.empty())
-    {
-        const size_t insert_index = std::min<size_t>(2, items.size());
-        items.insert(items.begin() + static_cast<std::ptrdiff_t>(insert_index), std::move(unique_candidates.front()));
-        for (size_t index = 1; index < unique_candidates.size(); ++index)
-        {
-            items.push_back(std::move(unique_candidates[index]));
-        }
-        FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, CurrentEnglishPlacement(items));
-    }
-
-    Global::candidate_ui.item_total_count = static_cast<int>(items.size());
-    Global::candidate_ui.page_index = 0;
-    Global::candidate_ui.select_first_on_page();
-    Global::candidate_ui.clear_page();
-    RefreshCandidatePageUi(true);
+    return unique_candidates;
 }
 
-void ApplyKaomojiCandidates(std::vector<WordItem> candidates, const std::string &input, uint64_t generation)
+// 首个插到 insert_index（最终位置由 NormalizeMixedCandidateOrder 按来源统一摆），其余追加到末尾。
+void InsertFirstAndAppendRest(std::vector<WordItem> &items, std::vector<WordItem> candidates, size_t insert_index)
 {
-    if (!GetConfiguredKaomojiMixedInputEnabled() || !KaomojiIme::IsCurrent(input, generation) ||
-        g_inputSession == nullptr || g_translation_candidates_active ||
+    if (candidates.empty())
+        return;
+    insert_index = (std::min)(insert_index, items.size());
+    items.insert(items.begin() + static_cast<std::ptrdiff_t>(insert_index), std::move(candidates.front()));
+    for (size_t index = 1; index < candidates.size(); ++index)
+        items.push_back(std::move(candidates[index]));
+}
+} // namespace
+
+// 混输线程（MixedCandidates）查完一次输入后，把英文、emoji、颜文字、日期时间一并合进当前候选，
+// 只刷新一次候选窗。各来源的开关在这里再核一遍：请求发出后用户可能刚在设置页关掉了它。
+void ApplyMixedCandidates(MixedCandidates::Result result, const std::string &input, uint64_t generation)
+{
+    if (!GetConfiguredMixedCandidatesEnabled() || !MixedCandidates::IsCurrent(input, generation) ||
+        g_inputSession == nullptr || g_english_input_mode || g_translation_candidates_active ||
         (g_inputSession->current_scheme_type() != SchemeType::Quanpin &&
          g_inputSession->current_scheme_type() != SchemeType::Shuangpin) ||
         g_inputSession->get_pinyin_sequence_with_cases() != input || GlobalIme::composition.creating_word.active)
@@ -389,31 +339,52 @@ void ApplyKaomojiCandidates(std::vector<WordItem> candidates, const std::string 
     }
 
     auto &items = Global::candidate_ui.items;
-    items.erase(std::remove_if(items.begin(), items.end(),
-                               [](const WordItem &item) { return item.source == CandidateSource::Kaomoji; }),
-                items.end());
+    const size_t size_before = items.size();
+    bool changed = false;
 
-    std::vector<WordItem> unique_candidates;
-    for (auto &candidate : candidates)
+    if (GetConfiguredDateTimeCandidatesEnabled())
     {
-        const bool duplicate =
-            std::any_of(items.begin(), items.end(), [&](const WordItem &item) { return item.word == candidate.word; });
-        if (!duplicate)
+        auto date_time = ReplaceSourceAndDeduplicate(items, CandidateSource::DateTime, std::move(result.date_time));
+        changed = changed || !date_time.empty();
+        InsertFirstAndAppendRest(items, std::move(date_time), 1);
+    }
+
+    if (GetConfiguredEnglishCandidatesEnabled())
+    {
+        auto english =
+            ReplaceSourceAndDeduplicate(items, CandidateSource::EnglishDictionary, std::move(result.english));
+        if (!english.empty())
         {
-            unique_candidates.push_back(std::move(candidate));
+            changed = true;
+            user_dictionary::apply_fixed_positions(user_dictionary::default_user_db_path(), EnglishRankingContextKey(),
+                                                   english, false);
+            const size_t insert_index = std::min<size_t>(1, items.size());
+            items.insert(items.begin() + static_cast<std::ptrdiff_t>(insert_index), std::move(english.front()));
+            user_dictionary::apply_fixed_positions(user_dictionary::default_user_db_path(), CurrentRankingContextKey(),
+                                                   items, false, {}, g_inputSession->has_active_helpcode());
+            for (size_t index = 1; index < english.size(); ++index)
+                items.push_back(std::move(english[index]));
         }
     }
 
-    if (!unique_candidates.empty())
+    if (GetConfiguredEmojiMixedInputEnabled())
     {
-        const size_t insert_index = std::min<size_t>(3, items.size());
-        items.insert(items.begin() + static_cast<std::ptrdiff_t>(insert_index), std::move(unique_candidates.front()));
-        for (size_t index = 1; index < unique_candidates.size(); ++index)
-        {
-            items.push_back(std::move(unique_candidates[index]));
-        }
-        FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, CurrentEnglishPlacement(items));
+        auto emoji = ReplaceSourceAndDeduplicate(items, CandidateSource::Emoji, std::move(result.emoji));
+        changed = changed || !emoji.empty();
+        InsertFirstAndAppendRest(items, std::move(emoji), 2);
     }
+
+    if (GetConfiguredKaomojiMixedInputEnabled())
+    {
+        auto kaomoji = ReplaceSourceAndDeduplicate(items, CandidateSource::Kaomoji, std::move(result.kaomoji));
+        changed = changed || !kaomoji.empty();
+        InsertFirstAndAppendRest(items, std::move(kaomoji), 3);
+    }
+
+    // 全被去重掉、列表也没少东西时，屏幕上的那页就是对的，不必重画。
+    if (!changed && items.size() == size_before)
+        return;
+    FanyImeIpc::NormalizeMixedCandidateOrder(items, 1, CurrentEnglishPlacement(items));
 
     Global::candidate_ui.item_total_count = static_cast<int>(items.size());
     Global::candidate_ui.page_index = 0;

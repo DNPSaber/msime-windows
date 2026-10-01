@@ -23,6 +23,9 @@ enum class CandidateSource
     // keyboard 档更快。两者都属于「猜出来的整句」，落库/学习判定与 Generated/Fallback 同类。
     NeuralDesktop,
     NeuralKeyboard,
+    // 全拼/双拼里打 rq / sj / xq 等唤醒词时混进普通候选的日期、时间、星期。Shift+T 模式里的同一批
+    // 文本仍记 Generated：那是独占的候选列表，不和别的候选排位置。
+    DateTime,
 };
 
 struct WordItem

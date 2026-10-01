@@ -1057,6 +1057,22 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                                     PostSettingsConfig();
                                 }
                             }
+                            else if (path == "utility.mixed_candidates")
+                            {
+                                const bool value = json::value_to<bool>(data.at("value"));
+                                if (SetConfiguredMixedCandidatesEnabled(value))
+                                {
+                                    PostSettingsConfig();
+                                }
+                            }
+                            else if (path == "utility.date_time_candidates")
+                            {
+                                const bool value = json::value_to<bool>(data.at("value"));
+                                if (SetConfiguredDateTimeCandidatesEnabled(value))
+                                {
+                                    PostSettingsConfig();
+                                }
+                            }
                             else if (path == "utility.date_time_mode")
                             {
                                 const bool value = json::value_to<bool>(data.at("value"));
@@ -1450,6 +1466,8 @@ void PostSettingsConfig()
             {"quick_phrase", GetConfiguredQuickPhraseEnabled()},
             {"quick_phrase_candidates", GetConfiguredQuickPhraseCandidatesEnabled()},
             {"quick_phrase_frequency", GetConfiguredQuickPhraseFrequencyEnabled()},
+            {"mixed_candidates", GetConfiguredMixedCandidatesEnabled()},
+            {"date_time_candidates", GetConfiguredDateTimeCandidatesEnabled()},
             {"date_time_mode", GetConfiguredDateTimeModeEnabled()},
             {"emoji_mode", GetConfiguredEmojiModeEnabled()},
             {"kaomoji_mode", GetConfiguredKaomojiModeEnabled()},

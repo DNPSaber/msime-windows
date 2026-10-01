@@ -29,8 +29,6 @@
 #include "english/english_ime.h"
 #include "config/ime_config.h"
 #include "conversion/chinese_converter.h"
-#include "emoji/emoji_ime.h"
-#include "kaomoji/kaomoji_ime.h"
 #include "log/candidate_diag_log.h"
 #include "ipc/event_listener_internal.h"
 
@@ -291,13 +289,11 @@ namespace
 std::mutex g_async_request_mutex;
 uint64_t g_cloud_generation = 0;
 uint64_t g_english_generation = 0;
-uint64_t g_emoji_generation = 0;
-uint64_t g_kaomoji_generation = 0;
+uint64_t g_mixed_generation = 0;
 uint64_t g_ai_generation = 0;
 AsyncRequestOrigin g_cloud_request_origin;
 AsyncRequestOrigin g_english_request_origin;
-AsyncRequestOrigin g_emoji_request_origin;
-AsyncRequestOrigin g_kaomoji_request_origin;
+AsyncRequestOrigin g_mixed_request_origin;
 AsyncRequestOrigin g_ai_request_origin;
 std::string g_ai_context;
 std::mutex g_status_snapshot_mutex;
@@ -457,23 +453,14 @@ void UpdateEnglishInput(const std::string &input, uint64_t client_id, uint64_t a
                                    : AsyncRequestOrigin{client_id, activation_epoch, g_english_generation, input};
 }
 
-void UpdateEmojiInput(const std::string &input, uint64_t client_id, uint64_t activation_epoch)
+void UpdateMixedInput(MixedCandidates::Request request, uint64_t client_id, uint64_t activation_epoch)
 {
     std::lock_guard lock(g_async_request_mutex);
-    EmojiIme::OnInputChanged(input, g_inputSession ? g_inputSession->current_scheme_type() : SchemeType::Quanpin);
-    ++g_emoji_generation;
-    g_emoji_request_origin = input.empty() ? AsyncRequestOrigin{}
-                                           : AsyncRequestOrigin{client_id, activation_epoch, g_emoji_generation, input};
-}
-
-void UpdateKaomojiInput(const std::string &input, uint64_t client_id, uint64_t activation_epoch)
-{
-    std::lock_guard lock(g_async_request_mutex);
-    KaomojiIme::OnInputChanged(input, g_inputSession ? g_inputSession->current_scheme_type() : SchemeType::Quanpin);
-    ++g_kaomoji_generation;
-    g_kaomoji_request_origin = input.empty()
-                                   ? AsyncRequestOrigin{}
-                                   : AsyncRequestOrigin{client_id, activation_epoch, g_kaomoji_generation, input};
+    const std::string input = request.input;
+    MixedCandidates::OnInputChanged(std::move(request));
+    ++g_mixed_generation;
+    g_mixed_request_origin = input.empty() ? AsyncRequestOrigin{}
+                                           : AsyncRequestOrigin{client_id, activation_epoch, g_mixed_generation, input};
 }
 } // namespace event_listener_detail
 
@@ -537,22 +524,12 @@ AsyncRequestOrigin FindEnglishRequestOrigin(const std::string &input, uint64_t g
     return {};
 }
 
-AsyncRequestOrigin FindEmojiRequestOrigin(const std::string &input, uint64_t generation)
+AsyncRequestOrigin FindMixedRequestOrigin(const std::string &input, uint64_t generation)
 {
     std::lock_guard lock(g_async_request_mutex);
-    if (g_emoji_request_origin.generation == generation && g_emoji_request_origin.input == input)
+    if (g_mixed_request_origin.generation == generation && g_mixed_request_origin.input == input)
     {
-        return g_emoji_request_origin;
-    }
-    return {};
-}
-
-AsyncRequestOrigin FindKaomojiRequestOrigin(const std::string &input, uint64_t generation)
-{
-    std::lock_guard lock(g_async_request_mutex);
-    if (g_kaomoji_request_origin.generation == generation && g_kaomoji_request_origin.input == input)
-    {
-        return g_kaomoji_request_origin;
+        return g_mixed_request_origin;
     }
     return {};
 }
@@ -683,8 +660,7 @@ void ClearState()
     g_translation_saved_selected_index = 0;
     EnglishIme::ClearTranslations();
     CloudTranslation::Clear();
-    UpdateEmojiInput("");
-    UpdateKaomojiInput("");
+    UpdateMixedInput({});
     UpdateAiInput("");
     /* Clear dict engine state */
     g_inputSession->reset_state();
