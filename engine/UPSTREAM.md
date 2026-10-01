@@ -26,9 +26,16 @@ The engine's own nested submodules were expanded in place at the commits it pinn
 for its own `src/libime/core/kenlm` submodule, so the query code and the shipped `sc.lm` come from
 the same generation of kenlm. Only the query subset was copied: `lm/*.{hh,cc}`, `util/` and
 `util/double-conversion/`. `lm/builder`, `lm/filter`, `lm/interpolate` and `lm/wrappers` are not
-here, and no file that is here includes them. The sources are unmodified; the two Windows
-adaptations it needs — a wide-character `util::_open` and the `_HAS_AUTO_PTR_ETC` definition — live
-outside the subtree, in `ngram/kenlm_file_io.h` and `ngram/CMakeLists.txt`.
+here, and no file that is here includes them. The sources are unmodified except for the one local
+patch below; the two Windows adaptations it needs — a wide-character `util::_open` and the
+`_HAS_AUTO_PTR_ETC` definition — live outside the subtree, in `ngram/kenlm_file_io.h` and
+`ngram/CMakeLists.txt`.
+
+**Local patch:** `util/string_stream.hh` `StringStream::AdvanceTo` — `&*out_.end()` and
+`&*out_.begin()` dereference string iterators, which the MSVC checked iterators reject (a
+"Debug Error!" assert under any `_DEBUG` build, on every formatted kenlm message). `out_.data() +
+out_.size()` computes the same past-the-end pointer without touching iterators; release behaviour
+is unchanged because the asserts were compiled out there anyway.
 
 Two of those files, `googlepinyinime-rev/src/{include/userdict.h,share/userdict.cpp}`, are committed
 upstream with CRLF and arrive here with LF. That is this repository's `.gitattributes` (`* text=auto
