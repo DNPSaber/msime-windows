@@ -480,6 +480,33 @@ TEST_CASE(KaomojiMixedCandidateSitsRightAfterEmoji)
     REQUIRE_EQ(items[5].source, CandidateSource::Kaomoji);
 }
 
+TEST_CASE(DateTimeMixedCandidateLeadsAsyncCandidates)
+{
+    const auto local = [](std::string word) { return WordItem("rq", std::move(word), 100); };
+    const auto date = [](std::string word) { return WordItem("", std::move(word), 1, CandidateSource::DateTime); };
+    const auto english = [] { return WordItem("rq", "rq", 1, CandidateSource::EnglishDictionary); };
+    const auto emoji = [] { return WordItem("rq", "\xF0\x9F\x98\x80", 1, CandidateSource::Emoji); };
+    const auto cloud = [] { return WordItem("rq", "云候选", 1, CandidateSource::CloudSuggestion); };
+
+    // 日期紧跟首个中文候选，排在云、英文、emoji 前面；其余日期格式追加在末尾。
+    std::vector<WordItem> items = {local("人群"), emoji(),       english(),         date("2026年10月2日"),
+                                   cloud(),       local("日期"), date("2026-10-02")};
+    FanyImeIpc::NormalizeMixedCandidateOrder(items);
+    REQUIRE_EQ(items[0].word, std::string("人群"));
+    REQUIRE_EQ(items[1].word, std::string("2026年10月2日"));
+    REQUIRE_EQ(items[2].source, CandidateSource::CloudSuggestion);
+    REQUIRE_EQ(items[3].source, CandidateSource::EnglishDictionary);
+    REQUIRE_EQ(items[4].source, CandidateSource::Emoji);
+    REQUIRE_EQ(items[5].word, std::string("日期"));
+    REQUIRE_EQ(items.back().word, std::string("2026-10-02"));
+
+    // 快捷短语组仍排在日期前面，不被拆开。
+    items = {local("人群"), date("2026年10月2日"), WordItem("rq", "如期而至", 100000, CandidateSource::QuickPhrase)};
+    FanyImeIpc::NormalizeMixedCandidateOrder(items);
+    REQUIRE_EQ(items[1].source, CandidateSource::QuickPhrase);
+    REQUIRE_EQ(items[2].source, CandidateSource::DateTime);
+}
+
 TEST_CASE(QuickPhraseGroupStaysWholeAndAheadOfAsyncCandidates)
 {
     const auto local = [](std::string word) { return WordItem("ni", std::move(word), 100); };

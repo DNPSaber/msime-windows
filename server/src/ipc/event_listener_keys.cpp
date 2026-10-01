@@ -609,8 +609,7 @@ void HandleCreatingWordEscape(uint64_t client_id, uint64_t activation_epoch, uin
         g_inputSession->recompute_candidates();
         UpdateCloudInput("");
         UpdateEnglishInput("");
-        UpdateEmojiInput("");
-        UpdateKaomojiInput("");
+        UpdateMixedInput({});
         UpdateAiInput("");
         g_dedicated_english_answer_pending = false;
         ClearSpecialModeTriggers();

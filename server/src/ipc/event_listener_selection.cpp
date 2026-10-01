@@ -245,7 +245,8 @@ void ProcessSelectionKey(UINT keycode, uint64_t client_id, uint64_t activation_e
         std::string curWordPinyin = curWordItem.pinyin;
         if (curWordItem.source == CandidateSource::EnglishDictionary ||
             curWordItem.source == CandidateSource::QuickPhrase || curWordItem.source == CandidateSource::Emoji ||
-            curWordItem.source == CandidateSource::Kaomoji || curWordItem.source == CandidateSource::Generated)
+            curWordItem.source == CandidateSource::Kaomoji || curWordItem.source == CandidateSource::DateTime ||
+            curWordItem.source == CandidateSource::Generated)
         {
             Global::candidate_ui.selected_text =
                 string_to_wstring(CandidateTextForOutput(GlobalIme::composition.creating_word.word + curWord));
@@ -279,8 +280,7 @@ void ProcessSelectionKey(UINT keycode, uint64_t client_id, uint64_t activation_e
             }
             UpdateCloudInput("");
             UpdateEnglishInput("");
-            UpdateEmojiInput("");
-            UpdateKaomojiInput("");
+            UpdateMixedInput({});
             g_inputSession->reset_state();
             if (g_r_mode_original_session)
             {

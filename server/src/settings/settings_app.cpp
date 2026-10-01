@@ -520,6 +520,8 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"quick_phrase", GetConfiguredQuickPhraseEnabled()},
             {"quick_phrase_candidates", GetConfiguredQuickPhraseCandidatesEnabled()},
             {"quick_phrase_frequency", GetConfiguredQuickPhraseFrequencyEnabled()},
+            {"mixed_candidates", GetConfiguredMixedCandidatesEnabled()},
+            {"date_time_candidates", GetConfiguredDateTimeCandidatesEnabled()},
             {"date_time_mode", GetConfiguredDateTimeModeEnabled()},
             {"emoji_mode", GetConfiguredEmojiModeEnabled()},
             {"kaomoji_mode", GetConfiguredKaomojiModeEnabled()},
@@ -877,6 +879,10 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredQuickPhraseCandidatesEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.quick_phrase_frequency")
         return SetConfiguredQuickPhraseFrequencyEnabled(json::value_to<bool>(data.at("value")));
+    if (path == "utility.mixed_candidates")
+        return SetConfiguredMixedCandidatesEnabled(json::value_to<bool>(data.at("value")));
+    if (path == "utility.date_time_candidates")
+        return SetConfiguredDateTimeCandidatesEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.date_time_mode")
         return SetConfiguredDateTimeModeEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.emoji_mode")

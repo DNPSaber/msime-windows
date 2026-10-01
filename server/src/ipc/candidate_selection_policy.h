@@ -135,6 +135,8 @@ inline std::optional<size_t> SlottedEnglishIndex(const std::vector<WordItem> &it
 //   cloud:            Chinese, cloud, AI, English, emoji, kaomoji
 //   cloud only:       Chinese, cloud, English, emoji, kaomoji
 //   base:             Chinese, English, emoji, kaomoji
+// 日期时间只在 rq / sj / xq 这类唤醒词上出现，用户打它就是要日期，所以它排在所有异步候选前面，
+// 紧跟首个中文候选：Chinese, date/time, cloud, ...
 // The learned English slot (EnglishPlacement) moves the English candidate away
 // from that default afterwards, and explicit English ranking choices are
 // reapplied last.
@@ -145,6 +147,7 @@ inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t lo
     std::vector<WordItem> english_candidates;
     std::vector<WordItem> emoji_candidates;
     std::vector<WordItem> kaomoji_candidates;
+    std::vector<WordItem> date_time_candidates;
     std::optional<WordItem> cloud_candidate;
     std::optional<WordItem> ai_candidate;
     local_candidates.reserve(items.size());
@@ -169,6 +172,9 @@ inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t lo
             break;
         case CandidateSource::Kaomoji:
             kaomoji_candidates.push_back(std::move(item));
+            break;
+        case CandidateSource::DateTime:
+            date_time_candidates.push_back(std::move(item));
             break;
         default:
             local_candidates.push_back(std::move(item));
@@ -196,6 +202,11 @@ inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t lo
     }
 
     size_t slot = IndexAfterLocalCandidates(items, local_prefix_slots);
+    if (!date_time_candidates.empty())
+    {
+        insert_at(slot++, std::move(date_time_candidates.front()));
+        date_time_candidates.erase(date_time_candidates.begin());
+    }
     if (cloud_candidate)
     {
         insert_at(slot++, std::move(*cloud_candidate));
@@ -227,6 +238,8 @@ inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t lo
     for (auto &candidate : emoji_candidates)
         items.push_back(std::move(candidate));
     for (auto &candidate : kaomoji_candidates)
+        items.push_back(std::move(candidate));
+    for (auto &candidate : date_time_candidates)
         items.push_back(std::move(candidate));
 
     // 把英文从默认位置挪到学到的槽位；没学过的补全词挪到首页末位。槽位 0 排在最前，但仍在首位

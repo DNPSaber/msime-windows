@@ -87,7 +87,8 @@ after the current process exits.
 
 Place `english.db` next to `msime.db` in `%LOCALAPPDATA%\metasequoiaime`. Set
 `general.cn_en_mixed_input = true` in `config.toml` to enable asynchronous English prefix candidates for Quanpin and
-Shuangpin.
+Shuangpin. The master switch `utility.mixed_candidates` must also be on; English, emoji, kaomoji and date/time mixed
+candidates are queried together on the single `MixedCandidates` worker thread (`src/mixed/`).
 
 ## Developer Shortcuts
 
