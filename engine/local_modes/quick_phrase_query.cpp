@@ -134,6 +134,7 @@ bool counts_toward_quick_phrase_slot(const WordItem &item)
     case CandidateSource::EnglishDictionary:
     case CandidateSource::Emoji:
     case CandidateSource::Kaomoji:
+    case CandidateSource::DateTime:
         return false;
     default:
         return true;
