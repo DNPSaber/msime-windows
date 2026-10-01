@@ -834,20 +834,21 @@ void test_word_lattice()
                    "Expected the reranker's pick tagged with its own source and the lattice's with Generated.");
         }
 
-        // 重排器同意词格的排序时不该凭空多出一行，但来源要记在重排那边：模型看过并认可了它。
+        // 重排器同意词格的排序时不该凭空多出一行。按 word_lattice.h 的契约，被其他来源认可的
+        // 三元首选只是提前，来源仍记在词格（Generated）上；重排器的首选与它重复，默认不往下补位。
         std::vector<WordItem> agreed;
         quanpin::merge_lattice_candidates(
             agreed, {"ni", "hao"}, make_table_lattice_lookup(table), "ni'hao", {},
             [](std::vector<quanpin::LatticePath> &) { return true; }, CandidateSource::NeuralDesktop);
         expect(agreed.size() == 1,
                fmt::format("A reranker that agrees should add no extra row, got {}", agreed.size()));
-        if (agreed.size() == 1)
+        if (agreed.size() == 1 && alone.size() == 1)
         {
-            expect(agreed.front().source == CandidateSource::NeuralDesktop,
-                   "A reranker that ran and agreed should still be credited for the row.");
+            expect(agreed.front().word == alone.front().word && agreed.front().source == CandidateSource::Generated,
+                   "A trigram pick the reranker agreed with should keep the lattice's source.");
         }
 
-        // 弃权（模型没加载、后台还没算完）与「跑了且同意」不是一回事：来源仍是词格。
+        // 弃权（模型没加载、后台还没算完）时重排器不参与共识，这一行同样只记在词格上。
         std::vector<WordItem> declined;
         quanpin::merge_lattice_candidates(
             declined, {"ni", "hao"}, make_table_lattice_lookup(table), "ni'hao", {},
