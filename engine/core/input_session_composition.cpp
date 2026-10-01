@@ -220,16 +220,16 @@ std::string CutSyllableLetters(const quanpin::AutocorrectCut &cut)
     return FoldQuanpinAutocorrectLetters(letters);
 }
 
-// Rebuilds the preedit from the cased input letters with separators at the raw
-// spans the correction BFS reports. Letters (case included) are preserved
-// verbatim; manual delimiters are replaced by the actual cut positions.
-std::string RebuildQuanpinDisplayFromCut(const std::string &cased_input, const quanpin::AutocorrectCut &cut)
+// Rebuilds the preedit from the cased input letters with a separator after
+// each listed letter count (ascending; the final segment end is excluded).
+// Letters (case included) are preserved verbatim; manual delimiters are
+// replaced by the given boundaries.
+std::string RebuildQuanpinDisplayAtBoundaries(const std::string &cased_input, const std::vector<size_t> &boundaries)
 {
     std::string display;
-    display.reserve(cased_input.size() + cut.segments.size());
+    display.reserve(cased_input.size() + boundaries.size());
     size_t letter_index = 0;
     size_t boundary_index = 0;
-    const size_t boundary_count = cut.segments.empty() ? 0 : cut.segments.size() - 1;
     for (const char ch : cased_input)
     {
         if (ch == '\'')
@@ -238,8 +238,7 @@ std::string RebuildQuanpinDisplayFromCut(const std::string &cased_input, const q
         }
         display.push_back(ch);
         ++letter_index;
-        if (boundary_index < boundary_count &&
-            letter_index == cut.segments[boundary_index].start + cut.segments[boundary_index].raw_text.size())
+        if (boundary_index < boundaries.size() && letter_index == boundaries[boundary_index])
         {
             display.push_back('\'');
             ++boundary_index;
@@ -248,13 +247,55 @@ std::string RebuildQuanpinDisplayFromCut(const std::string &cased_input, const q
     return display;
 }
 
+// Separators at the raw spans the correction BFS reports.
+std::string RebuildQuanpinDisplayFromCut(const std::string &cased_input, const quanpin::AutocorrectCut &cut)
+{
+    std::vector<size_t> boundaries;
+    for (size_t i = 0; i + 1 < cut.segments.size(); ++i)
+    {
+        boundaries.push_back(cut.segments[i].start + cut.segments[i].raw_text.size());
+    }
+    return RebuildQuanpinDisplayAtBoundaries(cased_input, boundaries);
+}
+
+// Separators for a spelling that passed the jianpin guard, read the way the
+// guard reads it: complete syllables plus at most one trailing letter
+// ("dongan" -> dong'an, "haoyongg" -> hao'yong'g). Only the typed letters are
+// cut, so the result is independent of any alias reading that won the query.
+// Returns an empty string when no such reading exists.
+std::string RebuildQuanpinDisplayFromLegalSpelling(const std::string &cased_input, const std::string &raw_input)
+{
+    auto segments = quanpin::cut_one_piece_min_segments(raw_input, true);
+    if (segments.empty() && raw_input.size() > 1)
+    {
+        segments = quanpin::cut_one_piece_min_segments(raw_input.substr(0, raw_input.size() - 1), true);
+        if (!segments.empty())
+        {
+            segments.push_back(raw_input.substr(raw_input.size() - 1));
+        }
+    }
+    if (segments.empty())
+    {
+        return {};
+    }
+
+    std::vector<size_t> boundaries;
+    size_t end = 0;
+    for (size_t i = 0; i + 1 < segments.size(); ++i)
+    {
+        end += segments[i].size();
+        boundaries.push_back(end);
+    }
+    return RebuildQuanpinDisplayAtBoundaries(cased_input, boundaries);
+}
+
 // The preedit must always show the letters the user actually typed (PRD R5).
 // Two layers can rewrite them into canonical pinyin: the scheme alias table
 // (sahng -> shang, baked into raw_segmentation) and the dictionary correction
 // BFS (shabg -> shang, which only re-separates). Both are rebuilt here from
 // the raw letters with separators at the actual cut positions; when the BFS
 // cannot explain a rewrite (length-changing aliases such as mihng -> ming) the
-// raw letters are shown without separators. The rebuild is deliberately
+// input is shown as typed, with no scheme separators. The rebuild is deliberately
 // switch-independent: the alias layer rewrites letters regardless of the
 // autocorrect switches, and AC1 only constrains the candidate list.
 std::string BuildQuanpinAutocorrectDisplay(const QueryRequest &request)
@@ -286,12 +327,19 @@ std::string BuildQuanpinAutocorrectDisplay(const QueryRequest &request)
     if (quanpin::looks_like_syllable_with_jianpin_tail(request.raw_input))
     {
         // The typed spelling is legal, but the scheme alias table may still
-        // have re-segmented it into a reading with copied letters (dongua ->
-        // dong'gua, haoyonga -> hao'yong'ga). The dictionary ranks those
+        // have re-segmented it into a reading with copied letters (dongan ->
+        // dong'gan, haoyonga -> hao'yong'ga). The dictionary ranks those
         // readings against the exact one by frequency, yet the preedit must
         // show the typed letters (PRD R5), so a rewritten base may never
-        // reach it verbatim.
-        return letters_rewritten ? QuanpinLettersWithoutDelimiters(cased) : base;
+        // reach it verbatim. Separate the typed letters by their own legal
+        // reading instead, so one more letter does not drop every separator
+        // (hao'yong -> hao'yong'a, not haoyonga).
+        if (!letters_rewritten)
+        {
+            return base;
+        }
+        const std::string display = RebuildQuanpinDisplayFromLegalSpelling(cased, request.raw_input);
+        return display.empty() ? cased : display;
     }
 
     const auto cut = quanpin::autocorrect_cut_detail(folded_input, types);
@@ -307,9 +355,10 @@ std::string BuildQuanpinAutocorrectDisplay(const QueryRequest &request)
         return RebuildQuanpinDisplayFromCut(cased, cut);
     }
     // The BFS cannot explain the input (e.g. a length-changing alias such as
-    // mihng -> ming): fall back to the plain raw letters when the letters were
-    // rewritten, otherwise keep the scheme segmentation untouched.
-    return letters_rewritten ? QuanpinLettersWithoutDelimiters(cased) : base;
+    // mihng -> ming): fall back to the input exactly as typed when the letters
+    // were rewritten, otherwise keep the scheme segmentation untouched. Manual
+    // delimiters are part of what was typed, so they stay ("mihng'").
+    return letters_rewritten ? cased : base;
 }
 } // namespace
 

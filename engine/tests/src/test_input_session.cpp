@@ -827,20 +827,35 @@ int run_test()
         // PRD R5 regression: a fully legal spelling whose alias reading won the
         // query (haoyonga -> hao'yong'ga) must still preedit the typed letters.
         // The rewritten segmentation used to leak into the preedit verbatim,
-        // adding a phantom letter and shifting the TSF caret (haoyongg|a).
-        struct LegalSpellingCase
+        // adding a phantom letter and shifting the TSF caret (haoyongg|a). The
+        // typed letters keep separators from their own legal reading, so one
+        // more letter does not drop the separators already shown.
+        struct PreeditCase
         {
             const char *pinyin;
             const char *expected_preedit;
         };
-        const std::array<LegalSpellingCase, 4> legal_spelling_preedit_cases = {
-            {{"haoyonga", "haoyonga"}, {"dongua", "dongua"}, {"zhonguo", "zhonguo"}, {"dongan", "dongan"}}};
+        const std::array<PreeditCase, 3> legal_spelling_preedit_cases = {
+            {{"haoyong", "hao'yong"}, {"haoyonga", "hao'yong'a"}, {"dongan", "dong'an"}}};
         for (const auto &test_case : legal_spelling_preedit_cases)
         {
             metasequoia::InputSession session;
             type(session, test_case.pinyin);
             require(session.get_pinyin_segmentation_with_cases() == test_case.expected_preedit,
                     "A legal spelling with an alias reading must preedit the typed letters.");
+        }
+
+        // Inputs the guard does not cover fall back to the input as typed when
+        // the alias layer rewrote the letters: no phantom letter, and a manual
+        // delimiter the user typed stays in place.
+        const std::array<PreeditCase, 4> typed_fallback_preedit_cases = {
+            {{"dongua", "dongua"}, {"zhonguo", "zhonguo"}, {"haoyonga'", "haoyonga'"}, {"hao'yonga", "hao'yonga"}}};
+        for (const auto &test_case : typed_fallback_preedit_cases)
+        {
+            metasequoia::InputSession session;
+            type(session, test_case.pinyin);
+            require(session.get_pinyin_segmentation_with_cases() == test_case.expected_preedit,
+                    "An alias-rewritten input must preedit exactly what was typed.");
         }
 
         metasequoia::InputSession no_autocorrect_session(SchemeType::Quanpin, 0u);
