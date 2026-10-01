@@ -14,8 +14,7 @@ std::string InputSession::editing_text() const
         return "R" + engine_.get_request().raw_input_with_cases;
     if (local_input_mode_ != LocalInputMode::None)
         return local_preedit_;
-    const auto &value = engine_.get_request();
-    return value.raw_input_with_cases.empty() ? value.raw_input : value.raw_input_with_cases;
+    return get_pinyin_sequence_with_cases();
 }
 
 std::size_t InputSession::caret_position() const
@@ -95,6 +94,11 @@ std::vector<std::size_t> InputSession::segment_raw_boundaries() const
 
     if (current_scheme_type() == SchemeType::Shuangpin)
     {
+        // 带句中辅助码的串没有逐音节的单元模型：按段删除、按段跳光标和光标前缀重算都退回逐字符。
+        if (shuangpin::has_mid_sentence_helpcode(raw_with_cases))
+        {
+            return {};
+        }
         const std::size_t helpcode_length =
             shuangpin::detect_active_double_helpcode_length(raw, raw_with_cases, shuangpin_profile_);
         const std::string base =

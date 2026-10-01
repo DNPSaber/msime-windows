@@ -56,6 +56,11 @@ class IInputSession
     // uniqueness required. The Server commits the first candidate when the user types past it.
     virtual bool wubi_four_code_is_complete() const = 0;
     virtual bool has_active_helpcode() const = 0;
+    // 反引号此刻能否作为句中辅助码接进编码串，语义见 engine 同名方法。默认不能。
+    virtual bool accepts_mid_sentence_helpcode_marker() const
+    {
+        return false;
+    }
 
     // 本会话最近上屏的文本，给神经整句重排当前文。空实现：除引擎会话外没人需要前文。
     virtual void set_rescoring_context(std::string)

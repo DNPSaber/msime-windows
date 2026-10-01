@@ -247,6 +247,11 @@ const std::string &GetConfiguredTsfPreeditStyle();
 bool SetConfiguredTsfPreeditStyle(const std::string &style);
 bool GetConfiguredShuangpinHelpcodeEnabled();
 bool SetConfiguredShuangpinHelpcodeEnabled(bool enabled);
+// 双拼句中辅助码（helpcode.shuangpin_mid_sentence_helpcode），默认关闭。
+bool GetConfiguredShuangpinMidSentenceHelpcodeEnabled();
+bool SetConfiguredShuangpinMidSentenceHelpcodeEnabled(bool enabled);
+// MidSentenceHelpcodeChanged 的载荷："1" 表示开关开着且当前方案是双拼。
+std::wstring FormatMidSentenceHelpcodeWorkerPayload();
 const std::string &GetConfiguredShuangpinHelpcodeSchema();
 bool SetConfiguredShuangpinHelpcodeSchema(const std::string &schema);
 bool GetConfiguredQuanpinHelpcodeEnabled();

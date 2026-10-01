@@ -39,6 +39,8 @@ MatrixSearch::MatrixSearch() {
     dmi_pool_used_ = 0;
     xi_an_enabled_ = false;
     dmi_c_phrase_ = false;
+    constraint_accept_ = NULL;
+    constraint_user_ = NULL;
 
     assert(kMaxSearchSteps > 0);
     max_sps_len_ = kMaxSearchSteps - 1;
@@ -170,6 +172,19 @@ void MatrixSearch::flush_cache() {
 void MatrixSearch::set_xi_an_switch(bool xi_an_enabled) { xi_an_enabled_ = xi_an_enabled; }
 
 bool MatrixSearch::get_xi_an_switch() { return xi_an_enabled_; }
+
+void MatrixSearch::set_char_constraints(const uint16* pys_pos, size_t num, CharConstraintFn accept, void* user) {
+    if (NULL == accept || NULL == pys_pos) num = 0;
+    // Without constraints before or after, the incremental search stays valid.
+    // Otherwise decode from scratch: the predicate's behaviour lives behind the
+    // user pointer and cannot be compared, and the rows decoded so far may hold
+    // Hanzi it now rejects (or lack ones it now accepts).
+    const bool reset = num > 0 || !constraint_pys_pos_.empty();
+    constraint_pys_pos_.assign(pys_pos, pys_pos + num);
+    constraint_accept_ = num > 0 ? accept : NULL;
+    constraint_user_ = num > 0 ? user : NULL;
+    if (reset) reset_search();
+}
 
 bool MatrixSearch::reset_search() {
     if (!inited_) return false;
@@ -1000,6 +1015,12 @@ bool MatrixSearch::add_char_qwerty() {
                     assert(oldrow >= dmi->splstr_len);
                     fr_row = oldrow - dmi->splstr_len;
                 }
+                // Before extend_mtrx_nd: it keeps only the first few items and
+                // prunes by score, so filtering afterwards could already have
+                // lost every item that satisfies the constraints. The loop
+                // below still runs when nothing survives, so longest_ext is set
+                // as without constraints and splits like "g ao" stay ruled out.
+                filter_lpis_by_constraints(dmi, fr_row);
                 for (PoolPosType mtrx_nd_pos = matrix_[fr_row].mtrx_nd_pos; mtrx_nd_pos < matrix_[fr_row].mtrx_nd_pos + matrix_[fr_row].mtrx_nd_num; mtrx_nd_pos++) {
                     MatrixNode* mtrx_nd = mtrx_nd_pool_ + mtrx_nd_pos;
 
@@ -1407,6 +1428,59 @@ size_t MatrixSearch::extend_mtrx_nd(MatrixNode* mtrx_nd, LmaPsbItem lpi_items[],
         }
     }
     return matrix_[res_row].mtrx_nd_num;
+}
+
+void MatrixSearch::filter_lpis_by_constraints(const DictMatchInfo* dmi, uint16 fr_row) {
+    if (constraint_pys_pos_.empty() || NULL == constraint_accept_ || 0 == lpi_total_ || dmi_c_phrase_) return;
+
+    const uint16 to_row = static_cast<uint16>(pys_decoded_len_);
+    // Syllable start positions of the word, front to back. Each DMI node in
+    // the chain records the spelling length of the whole word up to and
+    // including its own syllable, so syllable i + 1 starts where node i ends.
+    const size_t spl_num = NULL == dmi ? 1 : static_cast<size_t>(dmi->dict_level) + 1;
+    if (spl_num > kMaxLemmaSize) return;
+    uint16 spl_starts[kMaxLemmaSize];
+    spl_starts[0] = fr_row;
+    size_t level = spl_num - 1;
+    for (const DictMatchInfo* d = dmi; NULL != d && level > 0; level--) {
+        spl_starts[level] = static_cast<uint16>(fr_row + d->splstr_len);
+        d = (PoolPosType)-1 == d->dmi_fr ? NULL : dmi_pool_ + d->dmi_fr;
+    }
+
+    // Which Hanzi of the word each constraint inside it pins.
+    size_t pinned_constraint[kMaxLemmaSize];
+    size_t pinned_offset[kMaxLemmaSize];
+    size_t pinned_num = 0;
+    for (size_t k = 0; k < constraint_pys_pos_.size(); k++) {
+        const uint16 pos = constraint_pys_pos_[k];
+        if (pos < fr_row || pos >= to_row) continue;
+        size_t offset = 0;
+        while (offset < spl_num && spl_starts[offset] != pos) offset++;
+        if (offset == spl_num) {
+            // The word splits the constrained syllable differently from the
+            // caller's segmentation; none of its lemmas can be checked.
+            lpi_total_ = 0;
+            return;
+        }
+        pinned_constraint[pinned_num] = k;
+        pinned_offset[pinned_num] = offset;
+        pinned_num++;
+    }
+    if (0 == pinned_num) return;
+
+    size_t kept = 0;
+    for (size_t pos = 0; pos < lpi_total_; pos++) {
+        // Look the string up even for single characters: extend_dict() does not
+        // fill LmaPsbItem::hanzi, only get_lpis() does.
+        char16 str[kMaxLemmaSize + 1];
+        const uint16 str_len = get_lemma_str(lpi_items_[pos].id, str, kMaxLemmaSize + 1);
+        bool accepted = str_len == spl_num;
+        for (size_t pin = 0; accepted && pin < pinned_num; pin++) {
+            accepted = constraint_accept_(pinned_constraint[pin], str[pinned_offset[pin]], constraint_user_);
+        }
+        if (accepted) lpi_items_[kept++] = lpi_items_[pos];
+    }
+    lpi_total_ = kept;
 }
 
 PoolPosType MatrixSearch::match_dmi(size_t step_to, uint16 spl_ids[], uint16 spl_id_num) {

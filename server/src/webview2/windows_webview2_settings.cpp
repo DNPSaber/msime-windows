@@ -1213,6 +1213,18 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                                     PostSettingsConfig();
                                 }
                             }
+                            else if (path == "helpcode.shuangpin_mid_sentence_helpcode")
+                            {
+                                const bool value = json::value_to<bool>(data.at("value"));
+                                if (SetConfiguredShuangpinMidSentenceHelpcodeEnabled(value))
+                                {
+                                    // TSF 据此决定反引号要不要当编码键吃掉。
+                                    BroadcastToTsfWorkerThreadViaNamedpipe(
+                                        Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged,
+                                        FormatMidSentenceHelpcodeWorkerPayload());
+                                    PostSettingsConfig();
+                                }
+                            }
                             else if (path == "helpcode.shuangpin_helpcode_schema")
                             {
                                 const std::string value = json::value_to<std::string>(data.at("value"));
@@ -1479,6 +1491,7 @@ void PostSettingsConfig()
             {"builtin_skin_page_arrows", BuiltinSkinPageArrowsJson()}}},
           {"helpcode",
            {{"shuangpin_helpcode", GetConfiguredShuangpinHelpcodeEnabled()},
+            {"shuangpin_mid_sentence_helpcode", GetConfiguredShuangpinMidSentenceHelpcodeEnabled()},
             {"shuangpin_helpcode_schema", GetConfiguredShuangpinHelpcodeSchema()},
             {"quanpin_helpcode", GetConfiguredQuanpinHelpcodeEnabled()},
             {"quanpin_helpcode_schema", GetConfiguredQuanpinHelpcodeSchema()},

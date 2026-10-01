@@ -301,4 +301,126 @@ std::string::size_type count_han_chars(const std::string &text)
     return HelpcodeUtils::count_han_chars(text);
 }
 
+namespace
+{
+char to_ascii_lower(char ch)
+{
+    return FanyImeMidSentenceHelpcode::IsAsciiUpper(ch) ? static_cast<char>(ch + ('a' - 'A')) : ch;
+}
+
+std::size_t mid_sentence_block_end(const std::string &raw_input, std::size_t marker)
+{
+    return FanyImeMidSentenceHelpcode::BlockEnd(raw_input.data(), raw_input.size(), marker);
+}
+
+std::size_t count_segments(const std::string &segmentation)
+{
+    return segmentation.empty()
+               ? 0
+               : static_cast<std::size_t>(std::count(segmentation.begin(), segmentation.end(), '\'')) + 1;
+}
+} // namespace
+
+bool has_mid_sentence_helpcode(const std::string &raw_input)
+{
+    return raw_input.find(kMidSentenceHelpcodeMarker) != std::string::npos;
+}
+
+MidSentenceHelpcodeInput parse_mid_sentence_helpcodes(const std::string &raw_input_with_cases,
+                                                      const ShuangpinProfile &profile)
+{
+    MidSentenceHelpcodeInput parsed;
+    parsed.input.reserve(raw_input_with_cases.size());
+    parsed.source_index.reserve(raw_input_with_cases.size() + 1);
+    std::size_t index = 0;
+    while (index < raw_input_with_cases.size())
+    {
+        if (raw_input_with_cases[index] != kMidSentenceHelpcodeMarker)
+        {
+            parsed.input.push_back(raw_input_with_cases[index]);
+            parsed.source_index.push_back(index);
+            ++index;
+            continue;
+        }
+
+        const std::size_t end = mid_sentence_block_end(raw_input_with_cases, index);
+        const std::size_t syllables =
+            count_segments(segment_input(boost::algorithm::to_lower_copy(parsed.input), profile));
+        if (syllables > 0)
+        {
+            const std::size_t syllable = syllables - 1;
+            parsed.decorations.emplace_back(syllable, raw_input_with_cases.substr(index, end - index));
+            if (end > index + 1)
+            {
+                SyllableHelpcode helpcode;
+                helpcode.syllable = syllable;
+                helpcode.first = to_ascii_lower(raw_input_with_cases[index + 1]);
+                helpcode.second = end > index + 2 ? to_ascii_lower(raw_input_with_cases[index + 2]) : 0;
+                // 同一个音节敲了两段，以后一段为准。
+                auto existing = std::find_if(parsed.helpcodes.begin(), parsed.helpcodes.end(),
+                                             [&](const SyllableHelpcode &item) { return item.syllable == syllable; });
+                if (existing != parsed.helpcodes.end())
+                    *existing = helpcode;
+                else
+                    parsed.helpcodes.push_back(helpcode);
+            }
+        }
+        // 反引号段同时是一个确定的音节边界，换成手动分隔符；已经有分隔符就不再叠一个。
+        if (!parsed.input.empty() && parsed.input.back() != '\'')
+        {
+            parsed.input.push_back('\'');
+            parsed.source_index.push_back(index);
+        }
+        index = end;
+    }
+    parsed.source_index.push_back(raw_input_with_cases.size());
+    return parsed;
+}
+
+std::string decorate_mid_sentence_segmentation(const std::string &segmentation, const std::string &raw_input_with_cases,
+                                               const ShuangpinProfile &profile)
+{
+    if (!has_mid_sentence_helpcode(raw_input_with_cases) || segmentation.empty())
+    {
+        return segmentation;
+    }
+    std::vector<std::string> parts;
+    std::size_t start = 0;
+    while (true)
+    {
+        const std::size_t separator = segmentation.find('\'', start);
+        parts.push_back(
+            segmentation.substr(start, separator == std::string::npos ? std::string::npos : separator - start));
+        if (separator == std::string::npos)
+            break;
+        start = separator + 1;
+    }
+    for (const auto &[syllable, text] : parse_mid_sentence_helpcodes(raw_input_with_cases, profile).decorations)
+    {
+        if (syllable < parts.size())
+            parts[syllable] += text;
+    }
+    std::string decorated;
+    for (std::size_t i = 0; i < parts.size(); ++i)
+    {
+        if (i > 0)
+            decorated.push_back('\'');
+        decorated += parts[i];
+    }
+    return decorated;
+}
+
+bool accepts_mid_sentence_helpcode_marker(const std::string &raw_input)
+{
+    return FanyImeMidSentenceHelpcode::AcceptsMarker(raw_input.data(), raw_input.size());
+}
+
+bool accepts_mid_sentence_second_code(const std::string &raw_input, char ch)
+{
+    const std::size_t size = raw_input.size();
+    return FanyImeMidSentenceHelpcode::IsAsciiUpper(ch) && size >= 2 &&
+           raw_input[size - 2] == kMidSentenceHelpcodeMarker &&
+           FanyImeMidSentenceHelpcode::IsAsciiLetter(raw_input[size - 1]);
+}
+
 } // namespace shuangpin

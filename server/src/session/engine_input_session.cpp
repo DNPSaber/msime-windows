@@ -30,6 +30,7 @@ void EngineInputSession::ApplyConfiguration()
         }
     }
     session_.set_shuangpin_helpcode_enabled(GetConfiguredShuangpinHelpcodeEnabled());
+    session_.set_mid_sentence_helpcode_enabled(GetConfiguredShuangpinMidSentenceHelpcodeEnabled());
     session_.set_quanpin_helpcode_enabled(GetConfiguredQuanpinHelpcodeEnabled());
     const unsigned autocorrect_types =
         (GetConfiguredQuanpinAutocorrectTransposition() ? quanpin::kAutocorrectTransposition : 0u) |
@@ -167,6 +168,13 @@ bool EngineInputSession::wubi_four_code_is_complete() const
 bool EngineInputSession::has_active_helpcode() const
 {
     return session_.has_active_helpcode();
+}
+
+bool EngineInputSession::accepts_mid_sentence_helpcode_marker() const
+{
+    // 开关在 ApplyConfiguration 里随每键重读；这里在吃键之前被问到，那一刻配置可能刚改过，
+    // 所以直接按当前配置判断，不等下一次重读。
+    return GetConfiguredShuangpinMidSentenceHelpcodeEnabled() && session_.accepts_mid_sentence_helpcode_marker();
 }
 
 void EngineInputSession::set_rescoring_context(std::string context)

@@ -9,6 +9,7 @@
 #include "../core/key_event.h"
 #include "../core/word_item.h"
 #include "../core/sentence_association_options.h"
+#include "../core/syllable_helpcode.h"
 #include "../neural/neural_decoder.h"
 #include "../quanpin/lattice_rerank.h"
 #include "../quanpin/quanpin_query.h"
@@ -75,6 +76,12 @@ class ShuangpinDictionary
     // 神经重排的上下文，见 QuanpinDictionary::set_rescoring_context。
     void set_rescoring_context(const std::string &context);
 
+    // 句中辅助码约束（见 core/syllable_helpcode.h），随每次查询下发，空表示没有。整句来源
+    // （词格、Google 解码器、神经重排）在解码时就按它筛字，缓存键也带上它。
+    void set_syllable_helpcodes(const SyllableHelpcodes &helpcodes);
+    // 候选覆盖到受约束的音节时，那个位置上的字必须满足约束，不满足的去掉。
+    void filter_by_syllable_helpcodes(std::vector<WordItem> &candidates) const;
+
     explicit ShuangpinDictionary(const ShuangpinProfile &profile = GetXiaoheShuangpinProfile(),
                                  metasequoia::RuntimePaths paths = metasequoia::RuntimePaths::legacy());
     ~ShuangpinDictionary();
@@ -102,8 +109,16 @@ class ShuangpinDictionary
     // 神经重排的上下文（光标前已上屏的文本）。宿主没给就是空串。
     std::string rescoring_context_;
     HelpcodeUtils::SharedKeymap helpcodes_;
+    SyllableHelpcodes syllable_helpcodes_;
+    std::string syllable_helpcodes_signature_;
     std::unordered_map<std::string, sqlite3_stmt *> quanpin_statement_cache_;
     void reset_cache_if_database_changed();
+    // 这个字能不能落在 helpcode 约束的音节上。
+    bool accepts_syllable_char(const SyllableHelpcode &helpcode, const std::string &hanzi) const;
+    // 词（从第一个音节起）的每个字都满足落在它位置上的约束；超出词长的约束不管。
+    bool satisfies_syllable_helpcodes(const std::string &word) const;
+    // 送 Google 解码器出整句。有句中辅助码时约束在解码器内部生效，结果再核一遍字数与约束。
+    std::string decode_google_sentence(const std::string &quanpin_segmentation);
 
     void generate_for_single_char(std::vector<WordItem> &candidate_list, std::string code);
     void filter_with_single_helpcode(                //

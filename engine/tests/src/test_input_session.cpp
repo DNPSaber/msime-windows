@@ -1143,6 +1143,68 @@ int run_test()
                     shuangpin_without_helpcode.preedit() == "ni",
                 "A setter-disabled Shuangpin helpcode key was swallowed.");
 
+        // 句中辅助码：反引号后的第一码筛它前面那个音节上的字（lantian 夹具：你=ab、拟=cd、好=ef）。
+        {
+            const auto has_word = [](const metasequoia::InputSession &target, const std::string &word) {
+                const auto &items = target.candidates();
+                return std::any_of(items.begin(), items.end(), [&](const WordItem &item) { return item.word == word; });
+            };
+            const auto enabled_session = []() {
+                auto session = std::make_unique<metasequoia::InputSession>(SchemeType::Shuangpin);
+                session->set_mid_sentence_helpcode_enabled(true);
+                require(session->set_helpcode_schema("lantian"), "The Lantian helpcode fixture was not selected.");
+                return session;
+            };
+
+            metasequoia::InputSession disabled(SchemeType::Shuangpin);
+            type(disabled, "ni");
+            require(!disabled.handle_character('`').handled && disabled.preedit() == "ni",
+                    "A backquote entered the composition while mid-sentence helpcode was off.");
+
+            auto first_code_session = enabled_session();
+            auto &first_code = *first_code_session;
+            type(first_code, "n");
+            require(!first_code.handle_character('`').handled,
+                    "A backquote was accepted after an incomplete shuangpin syllable.");
+            type(first_code, "i`c");
+            require(!first_code.handle_character('`').handled,
+                    "A second backquote was accepted right after a helpcode block.");
+            type(first_code, "hc");
+            require(first_code.preedit() == "ni`chc" && first_code.get_pinyin_sequence_with_cases() == "ni`chc" &&
+                        first_code.get_pinyin_sequence() == "ni'hc",
+                    "The mid-sentence helpcode block was not kept in the raw input.");
+            require(first_code.get_pinyin_segmentation_with_cases() == "ni`c'hc",
+                    "The mid-sentence helpcode block was not shown after its syllable.");
+            require(has_word(first_code, "拟好") && !has_word(first_code, "你好"),
+                    "The mid-sentence first code did not filter the constrained syllable.");
+
+            auto second_code_session = enabled_session();
+            auto &second_code = *second_code_session;
+            type(second_code, "ni`cDhc");
+            require(has_word(second_code, "拟好") && !has_word(second_code, "你好"),
+                    "A matching uppercase second code filtered the constrained syllable away.");
+            auto wrong_second_code_session = enabled_session();
+            auto &wrong_second_code = *wrong_second_code_session;
+            type(wrong_second_code, "ni`cEhc");
+            require(!has_word(wrong_second_code, "拟好") && !has_word(wrong_second_code, "你好"),
+                    "An uppercase second code did not take part in filtering.");
+
+            // 约束挂在后面的音节上：前面的短候选不受影响，选掉之后约束随剩余部分留下来。
+            auto carried_session = enabled_session();
+            auto &carried = *carried_session;
+            type(carried, "nihcbuhc`x");
+            require(has_word(carried, "你好"), "A constraint on a later syllable filtered a shorter candidate.");
+            const auto committed = carried.select_candidate(candidate_index(carried, "你好"));
+            require(committed.commit == "你好" && carried.preedit() == "buhc`x",
+                    "Selecting a prefix dropped the helpcode block of the remaining syllables.");
+            require(!has_word(carried, "不好") && !has_word(carried, "补好"),
+                    "The carried mid-sentence helpcode no longer filtered the remaining syllables.");
+            require(carried.handle_command(metasequoia::Command::Backspace).handled && carried.preedit() == "buhc`",
+                    "Backspace did not remove the helpcode letter.");
+            require(has_word(carried, "不好") && has_word(carried, "补好"),
+                    "A bare backquote still filtered candidates.");
+        }
+
         require(!session.handle_character('1').handled, "A digit was swallowed instead of passed through.");
         require(!session.handle_command(metasequoia::Command::Backspace).handled,
                 "Backspace was swallowed while no composition was active.");

@@ -19,10 +19,20 @@
 #include "FanyLog.h"
 #include "EditSession.h"
 #include "TfTextLayoutSink.h"
+#include "../../../engine/contracts/mid_sentence_helpcode.h"
 #include <new>
 
 namespace
 {
+// 双拼句中辅助码的反引号：开关开着、光标在串尾，且光标前是一节完整的两键音节时是编码键，
+// 否则仍按标点处理。Server 用同一条形状规则决定收不收（engine/contracts/mid_sentence_helpcode.h）。
+bool IsMidSentenceHelpcodeMarkerKey(UINT uCode, WCHAR wch, const WCHAR *buffer, DWORD_PTR length, DWORD_PTR caret)
+{
+    return Global::MidSentenceHelpcodeEnabled.load(std::memory_order_relaxed) && uCode == VK_OEM_3 && wch == L'`' &&
+           buffer != nullptr && length > 0 && caret >= length &&
+           FanyImeMidSentenceHelpcode::AcceptsMarker(buffer, static_cast<std::size_t>(length));
+}
+
 // 日语模式禁用 -/= 翻页：'-' 是长音符（ー）的输入键。空编码时也要起头组合，
 // 候选框第一项是长音符 ー、第二项是普通连字符 '-'（候选由服务端提供）。
 bool IsJapaneseLongVowelKey(UINT uCode, WCHAR wch)
@@ -304,6 +314,17 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeed( //
         isMicrosoftShuangpinIngKey = chunkLength % 2 == 1;
     }
     if (isMicrosoftShuangpinIngKey)
+    {
+        if (pKeyState)
+        {
+            pKeyState->Category = CATEGORY_COMPOSING;
+            pKeyState->Function = FUNCTION_INPUT;
+        }
+        return TRUE;
+    }
+
+    if (IsMidSentenceHelpcodeMarkerKey(uCode, pwch ? *pwch : 0, _keystrokeBuffer.Get(), _keystrokeBuffer.GetLength(),
+                                       _caretPosition))
     {
         if (pKeyState)
         {

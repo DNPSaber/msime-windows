@@ -4,6 +4,7 @@
 #include "fuzzy_pinyin_options.h"
 #include "scheme_type.h"
 #include "sentence_association_options.h"
+#include "syllable_helpcode.h"
 #include <string>
 #include <vector>
 
@@ -25,6 +26,13 @@ struct QueryRequest
     std::string segmentation;
     bool enable_shuangpin_helpcode = false;
     bool enable_quanpin_helpcode = false;
+    // 句中辅助码，见 syllable_helpcode.h。输入串里带反引号段时，raw_input / raw_input_with_cases /
+    // 各切分都是把每段换成一个 ' 之后的结果，下游按普通手动分隔来切分、推进；原样的输入串放在
+    // raw_input_with_syllable_helpcodes，宿主回读输入串、显示预编辑时用它。没有反引号段时两者
+    // 都为空。syllable_helpcodes 不受开关影响（开关只管能不能敲进去），由开关决定是否参与筛选。
+    bool enable_mid_sentence_helpcode = false;
+    std::string raw_input_with_syllable_helpcodes;
+    SyllableHelpcodes syllable_helpcodes;
     // Autocorrection is type-gated (bit0 transposition, bit1 neighbor in the session-level
     // mask); both default off, so a fresh install never rewrites the user's spelling.
     bool enable_quanpin_autocorrect_transposition = false;

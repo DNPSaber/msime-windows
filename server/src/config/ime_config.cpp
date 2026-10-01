@@ -77,6 +77,7 @@ std::string g_wubi_z_mode = "off";
 std::string g_shuangpin_preedit_mode = "quanpin";
 std::string g_tsf_preedit_style = "raw";
 bool g_shuangpin_helpcode_enabled = true;
+bool g_shuangpin_mid_sentence_helpcode_enabled = false;
 bool g_quanpin_helpcode_enabled = true;
 std::string g_shuangpin_helpcode_schema = "lantian";
 std::string g_quanpin_helpcode_schema = "lantian";
@@ -397,6 +398,7 @@ bool LoadImeConfig()
         g_wubi_z_mode = z_mode == "wildcard" ? "wildcard" : "off";
         g_shuangpin_preedit_mode = tbl["input"]["shuangpin_preedit_mode"].value_or(std::string("quanpin"));
         g_shuangpin_helpcode_enabled = tbl["helpcode"]["shuangpin_helpcode"].value_or(true);
+        g_shuangpin_mid_sentence_helpcode_enabled = tbl["helpcode"]["shuangpin_mid_sentence_helpcode"].value_or(false);
         g_quanpin_helpcode_enabled = tbl["helpcode"]["quanpin_helpcode"].value_or(true);
         const std::string shuangpin_helpcode_schema =
             tbl["helpcode"]["shuangpin_helpcode_schema"].value_or(std::string("lantian"));

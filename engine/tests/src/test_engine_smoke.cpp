@@ -234,6 +234,53 @@ int run_test()
         }
     }
 
+    {
+        // 句中辅助码：约束在建图时筛边。整词「你好」覆盖受约束的音节，同样要过约束；受约束的
+        // 跨度改用不截断的查询，普通查询里没有的生僻字也能被锁上。
+        std::unordered_map<std::string, std::vector<quanpin::LatticeLexeme>> table;
+        table["ni"] = {{"ni", "你", 4000}, {"ni", "拟", 3000}, {"ni", "泥", 2000}};
+        table["hao"] = {{"hao", "好", 4000}, {"hao", "号", 3000}};
+        table["ni'hao"] = {{"ni'hao", "你好", 9000}};
+        const auto lookup_from = [](const std::unordered_map<std::string, std::vector<quanpin::LatticeLexeme>> &rows) {
+            return [&rows](const quanpin::Segments &span) {
+                std::string key;
+                for (const std::string &syllable : span)
+                {
+                    if (!key.empty())
+                        key.push_back('\'');
+                    key += syllable;
+                }
+                const auto found = rows.find(key);
+                return found == rows.end() ? std::vector<quanpin::LatticeLexeme>{} : found->second;
+            };
+        };
+        auto unbounded = table;
+        unbounded["ni"].push_back({"ni", "尼", 10});
+
+        quanpin::WordLatticeOptions options;
+        options.nbest = 5;
+        options.char_constraints.push_back({0, [](const std::string &hanzi) { return hanzi == "泥"; }});
+        auto paths = quanpin::decode_word_lattice({"ni", "hao"}, lookup_from(table), options);
+        if (paths.empty() || std::any_of(paths.begin(), paths.end(), [](const quanpin::LatticePath &path) {
+                return path.sentence.rfind("泥", 0) != 0;
+            }))
+        {
+            throw std::runtime_error("A lattice path ignored the constrained syllable.");
+        }
+
+        options.char_constraints = {{0, [](const std::string &hanzi) { return hanzi == "尼"; }}};
+        if (!quanpin::decode_word_lattice({"ni", "hao"}, lookup_from(table), options).empty())
+        {
+            throw std::runtime_error("A constraint nothing satisfies still produced a sentence.");
+        }
+        options.constrained_lookup = lookup_from(unbounded);
+        paths = quanpin::decode_word_lattice({"ni", "hao"}, lookup_from(table), options);
+        if (paths.empty() || paths.front().sentence != "尼好")
+        {
+            throw std::runtime_error("The constrained span did not use the unbounded lookup.");
+        }
+    }
+
     const auto unique_suffix = std::to_string(std::chrono::high_resolution_clock::now().time_since_epoch().count());
     const std::filesystem::path data_directory =
         std::filesystem::temp_directory_path() / std::filesystem::u8path("metasequoia-engine-词库-" + unique_suffix);

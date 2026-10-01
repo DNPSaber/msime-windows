@@ -18,6 +18,7 @@
 #define PINYINIME_ANDPY_INCLUDE_MATRIXSEARCH_H__
 
 #include <stdlib.h>
+#include <vector>
 #include "./atomdictbase.h"
 #include "./dicttrie.h"
 #include "./searchutility.h"
@@ -243,6 +244,17 @@ class MatrixSearch {
     LmaPsbItem lpi_items_[kMaxLmaPsbItems];
     size_t lpi_total_;
 
+    // 句中辅助码的字约束：constraint_pys_pos_[k] 是 pys_ 中某个音节的起点，落在这个
+    // 音节上的汉字必须被 constraint_accept_(k, 汉字, constraint_user_) 认可。
+    std::vector<uint16> constraint_pys_pos_;
+    CharConstraintFn constraint_accept_;
+    void* constraint_user_;
+
+    // Drop the items in lpi_items_ that would put a rejected Hanzi on a
+    // constrained syllable. The items all spell the word that starts at fr_row
+    // and ends at pys_decoded_len_; dmi is the node it extends (NULL from root).
+    void filter_lpis_by_constraints(const DictMatchInfo* dmi, uint16 fr_row);
+
     // Assign the pointers with NULL. The caller makes sure that all pointers are
     // not valid before calling it. This function only will be called in the
     // construction function and free_resource().
@@ -377,6 +389,11 @@ class MatrixSearch {
     void set_xi_an_switch(bool xi_an_enabled);
 
     bool get_xi_an_switch();
+
+    // Constrain the Hanzi decoded at given syllable start positions of the
+    // Pinyin string. A change of constraints resets the search, because the
+    // incremental search would otherwise reuse rows decoded under the old ones.
+    void set_char_constraints(const uint16* pys_pos, size_t num, CharConstraintFn accept, void* user);
 
     // Reset the search space. Equivalent to reset_search(0).
     // If inited, always return true;

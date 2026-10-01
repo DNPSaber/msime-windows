@@ -91,6 +91,12 @@ void im_reset_search() {
     matrix_search->reset_search();
 }
 
+void im_set_char_constraints(const uint16* pys_pos, size_t num, CharConstraintFn accept, void* user) {
+    if (NULL == matrix_search) return;
+
+    matrix_search->set_char_constraints(pys_pos, num, accept, user);
+}
+
 // To be removed
 size_t im_add_letter(char ch) { return 0; }
 

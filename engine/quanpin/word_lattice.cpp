@@ -42,6 +42,30 @@ size_t syllable_count_from_key(const std::string &key)
     return n;
 }
 
+// UTF-8 单字切分。词库值都是合法 UTF-8，不做容错。
+std::vector<std::string> split_utf8_chars(const std::string &text)
+{
+    std::vector<std::string> chars;
+    for (size_t i = 0; i < text.size();)
+    {
+        const auto lead = static_cast<unsigned char>(text[i]);
+        const size_t len = lead < 0x80 ? 1 : (lead >> 5) == 0x6 ? 2 : (lead >> 4) == 0xE ? 3 : 4;
+        chars.push_back(text.substr(i, len));
+        i += len;
+    }
+    return chars;
+}
+
+// 词的字数必须等于跨度的音节数，被钉住的那几个字都要被各自的约束认可。
+bool lexeme_satisfies(const std::string &value, size_t syllables,
+                      const std::vector<std::pair<size_t, const LatticeCharConstraint *>> &pins)
+{
+    const auto chars = split_utf8_chars(value);
+    if (chars.size() != syllables)
+        return false;
+    return std::all_of(pins.begin(), pins.end(), [&](const auto &pin) { return pin.second->accept(chars[pin.first]); });
+}
+
 struct LatticeEdge
 {
     size_t end = 0;
@@ -141,12 +165,31 @@ std::vector<std::vector<LatticeEdge>> build_graph(const Segments &syllables, con
             Segments span(syllables.begin() + static_cast<std::ptrdiff_t>(start),
                           syllables.begin() + static_cast<std::ptrdiff_t>(end));
             const std::string span_key = join_span(span);
-            auto cached = span_cache.find(span_key);
-            if (cached == span_cache.end())
+            std::vector<std::pair<size_t, const LatticeCharConstraint *>> pins;
+            for (const auto &constraint : options.char_constraints)
             {
-                cached = span_cache.emplace(span_key, lookup(span)).first;
+                if (constraint.syllable >= start && constraint.syllable < end && constraint.accept)
+                    pins.emplace_back(constraint.syllable - start, &constraint);
             }
-            const auto &rows = cached->second;
+            std::vector<LatticeLexeme> constrained_rows;
+            if (!pins.empty())
+            {
+                // 受约束的跨度按位置筛，结果与起点有关，不进按拼音共享的 span_cache。
+                const auto &source = options.constrained_lookup ? options.constrained_lookup : lookup;
+                for (auto &row : source(span))
+                {
+                    if (lexeme_satisfies(row.value, span.size(), pins))
+                        constrained_rows.push_back(std::move(row));
+                }
+            }
+            auto cached = span_cache.end();
+            if (pins.empty())
+            {
+                cached = span_cache.find(span_key);
+                if (cached == span_cache.end())
+                    cached = span_cache.emplace(span_key, lookup(span)).first;
+            }
+            const auto &rows = pins.empty() ? cached->second : constrained_rows;
             const size_t take = (std::min)(rows.size(), static_cast<size_t>(std::max(0, options.span_limit)));
             // 先验的分母：跨度内实际参与解码的那些行。行数被 span_limit 截断，
             // 截掉的都是权重最低的尾巴，对和的影响可以忽略。

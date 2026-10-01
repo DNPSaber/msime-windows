@@ -144,7 +144,9 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generateSeries( //
     }
     else
     {
-        const std::string effective_cache_key = cache_key.empty() ? pinyin_sequence : cache_key;
+        // 句中辅助码约束改变整句来源的结果，签名必须进键。
+        const std::string effective_cache_key =
+            (cache_key.empty() ? pinyin_sequence : cache_key) + syllable_helpcodes_signature_;
         // 先看一下缓存里有没有
         if (_cached_buffer_series.find(effective_cache_key))
         {
@@ -157,7 +159,7 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generateSeries( //
 
         // 查询当前的拼音严格对应的数据
         vector<ShuangpinDictionary::WordItem> cur_pinyin_cand =
-            generate(pinyin_sequence, pinyin_segmentation, effective_cache_key);
+            generate(pinyin_sequence, pinyin_segmentation, cache_key.empty() ? pinyin_sequence : cache_key);
         if (cur_pinyin_cand.size() > 0)
         {
             candidate_list.insert(candidate_list.end(), cur_pinyin_cand.begin(), cur_pinyin_cand.end());
@@ -170,7 +172,7 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generateSeries( //
                     ShuangpinUtil::convert_seg_shuangpin_to_seg_complete_pinyin(pinyin_segmentation, profile_);
                 // 只有送进解码器的那一份换 ü 写法，quanpin_str 仍是词库那侧的
                 // canonical 拼写，候选要靠它落库。
-                string res = search_sentence_from_ime_engine(quanpin::to_google_spelling(quanpin_str));
+                string res = decode_google_sentence(quanpin_str);
                 if (res.size() > 0)
                 {
                     // 整句 fallback 必须带上 canonical quanpin，否则以它结尾的造词无法落库：
@@ -212,8 +214,7 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generateSeries( //
             quanpin_segmentation.find('\'') != std::string::npos)
         {
             // 同上：解码器认 nue/lue，词库与下面的 canonical 读音认 nve/lve。
-            const std::string google_sentence =
-                search_sentence_from_ime_engine(quanpin::to_google_spelling(quanpin_segmentation));
+            const std::string google_sentence = decode_google_sentence(quanpin_segmentation);
             const bool duplicate = std::any_of(candidate_list.begin(), candidate_list.end(),
                                                [&](const WordItem &item) { return item.word == google_sentence; });
             if (!google_sentence.empty() && !duplicate)
@@ -247,6 +248,20 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generateSeries( //
         lattice_options.include_lattice_best = sentence_association_.word_lattice;
         lattice_options.show_next_on_duplicate = sentence_association_.show_next_on_duplicate;
         lattice_options.language_model = language_model_;
+        // 句中辅助码：词格建图时按约束筛边，受约束的跨度不截断地查词库（生僻字才筛得出来）。
+        // 音节序号与 quanpin_syllables 一一对应：两者都按同一份双拼切分逐段换算。
+        for (const auto &helpcode : syllable_helpcodes_)
+        {
+            lattice_options.char_constraints.push_back({helpcode.syllable, [this, helpcode](const std::string &hanzi) {
+                                                            return accepts_syllable_char(helpcode, hanzi);
+                                                        }});
+        }
+        if (!lattice_options.char_constraints.empty())
+        {
+            constexpr int kConstrainedSpanLimit = 4096;
+            lattice_options.constrained_lookup =
+                quanpin::make_lattice_db_lookup(quanpin_db_, quanpin_statement_cache_, kConstrainedSpanLimit);
+        }
         if (sentence_association_.word_lattice || !neural_rerankers.empty())
         {
             quanpin::merge_lattice_candidates(
@@ -384,14 +399,16 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generate_with_helpcod
 {
     vector<WordItem> candidate_list;
     const bool reversed_single_helpcode = help_codes.size() == 1 && help_codes[0] >= 'A' && help_codes[0] <= 'Z';
+    // 句中辅助码约束同样进键，理由见 generateSeries。
+    const std::string single_cache_key = pinyin_sequence + syllable_helpcodes_signature_;
     // Check cache first
     if (help_codes.size() == 1)
     {
         auto &single_helpcode_cache = reversed_single_helpcode ? _cached_buffer_sgl_reversed : _cached_buffer_sgl;
-        if (single_helpcode_cache.find(pinyin_sequence))
+        if (single_helpcode_cache.find(single_cache_key))
         {
             reset_cache_if_database_changed();
-            if (const auto *refreshed = single_helpcode_cache.find(pinyin_sequence))
+            if (const auto *refreshed = single_helpcode_cache.find(single_cache_key))
             {
                 return *refreshed;
             }
@@ -399,7 +416,7 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generate_with_helpcod
     }
     else if (help_codes.size() == 2)
     {
-        const auto cache_key = double_helpcode_cache_key(pinyin_sequence, help_codes);
+        const auto cache_key = double_helpcode_cache_key(pinyin_sequence, help_codes) + syllable_helpcodes_signature_;
         if (_cached_buffer_dbl.find(cache_key))
         {
             reset_cache_if_database_changed();
@@ -422,7 +439,7 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generate_with_helpcod
             pinyin_sequence          //
         );
         auto &single_helpcode_cache = reversed_single_helpcode ? _cached_buffer_sgl_reversed : _cached_buffer_sgl;
-        single_helpcode_cache.insert(pinyin_sequence, result_list);
+        single_helpcode_cache.insert(single_cache_key, result_list);
     }
     else if (help_codes.size() == 2)
     {
@@ -431,7 +448,8 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generate_with_helpcod
             result_list,              //
             help_codes                //
         );
-        _cached_buffer_dbl.insert(double_helpcode_cache_key(pinyin_sequence, help_codes), result_list);
+        _cached_buffer_dbl.insert(
+            double_helpcode_cache_key(pinyin_sequence, help_codes) + syllable_helpcodes_signature_, result_list);
     }
     return result_list;
 }
@@ -1180,6 +1198,104 @@ void ShuangpinDictionary::set_rescoring_context(const std::string &context)
     }
 }
 
+void ShuangpinDictionary::set_syllable_helpcodes(const SyllableHelpcodes &helpcodes)
+{
+    // 不清缓存：约束签名进了缓存键，换约束等于换键。
+    syllable_helpcodes_ = helpcodes;
+    syllable_helpcodes_signature_ = syllable_helpcodes_signature(helpcodes);
+}
+
+bool ShuangpinDictionary::accepts_syllable_char(const SyllableHelpcode &helpcode, const std::string &hanzi) const
+{
+    const auto &keymap = helpcodes_ ? *helpcodes_ : HelpcodeUtils::helpcode_keymap();
+    const auto found = keymap.find(hanzi);
+    return found != keymap.end() && syllable_helpcode_matches(helpcode, found->second);
+}
+
+bool ShuangpinDictionary::satisfies_syllable_helpcodes(const std::string &word) const
+{
+    if (syllable_helpcodes_.empty())
+    {
+        return true;
+    }
+    std::vector<std::string> chars;
+    for (std::size_t pos = 0; pos < word.size();)
+    {
+        const std::size_t size = ShuangpinUtil::get_first_char_size(word.substr(pos, 4));
+        chars.push_back(word.substr(pos, size));
+        pos += size;
+    }
+    return std::all_of(syllable_helpcodes_.begin(), syllable_helpcodes_.end(), [&](const SyllableHelpcode &helpcode) {
+        return helpcode.syllable >= chars.size() || accepts_syllable_char(helpcode, chars[helpcode.syllable]);
+    });
+}
+
+void ShuangpinDictionary::filter_by_syllable_helpcodes(std::vector<WordItem> &candidates) const
+{
+    if (syllable_helpcodes_.empty())
+    {
+        return;
+    }
+    // 只筛按拼音出的汉字候选；英文、快捷短语之类的不是逐音节对应的，留着。
+    const auto is_pinyin_hanzi = [](const WordItem &item) {
+        switch (item.source)
+        {
+        case CandidateSource::Database:
+        case CandidateSource::UserDatabase:
+        case CandidateSource::Generated:
+        case CandidateSource::Fallback:
+        case CandidateSource::NeuralDesktop:
+        case CandidateSource::NeuralKeyboard:
+        // 云和 AI 拿到的是去掉反引号段的拼音，不知道约束，结果同样要核。
+        case CandidateSource::CloudSuggestion:
+        case CandidateSource::AiSuggestion:
+            return HelpcodeUtils::count_han_chars(item.word) == HelpcodeUtils::count_utf8_chars(item.word);
+        default:
+            return false;
+        }
+    };
+    candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
+                                    [&](const WordItem &item) {
+                                        return is_pinyin_hanzi(item) && !satisfies_syllable_helpcodes(item.word);
+                                    }),
+                     candidates.end());
+}
+
+std::string ShuangpinDictionary::decode_google_sentence(const std::string &quanpin_segmentation)
+{
+    // 只有送进解码器的那一份换 ü 写法，调用方手里的 canonical 拼写不动。按音节整体替换，
+    // 音节数与起点都不变，约束的位置可以直接在替换后的串上算。
+    const std::string google_input = quanpin::to_google_spelling(quanpin_segmentation);
+    if (syllable_helpcodes_.empty())
+    {
+        return search_sentence_from_ime_engine(google_input);
+    }
+
+    std::vector<std::size_t> syllable_starts{0};
+    for (std::size_t i = 0; i < google_input.size(); ++i)
+    {
+        if (google_input[i] == '\'')
+            syllable_starts.push_back(i + 1);
+    }
+    std::vector<metasequoia::DecoderCharConstraint> constraints;
+    for (const auto &helpcode : syllable_helpcodes_)
+    {
+        if (helpcode.syllable >= syllable_starts.size())
+            continue;
+        constraints.push_back({syllable_starts[helpcode.syllable], [this, helpcode](const std::string &hanzi) {
+                                   return accepts_syllable_char(helpcode, hanzi);
+                               }});
+    }
+    std::string sentence = decoder_.sentence(google_input, constraints);
+    // 约束让某一段走不通时解码器可能吐出残句，字数对不上或约束没满足就不出这一句。
+    if (sentence.empty() || HelpcodeUtils::count_utf8_chars(sentence) != syllable_starts.size() ||
+        !satisfies_syllable_helpcodes(sentence))
+    {
+        return {};
+    }
+    return sentence;
+}
+
 void ShuangpinDictionary::reset_cache_if_database_changed()
 {
     if (quanpin_db_ == nullptr)
@@ -1214,7 +1330,9 @@ int ShuangpinDictionary::insert_word_to_cached_buffer_series(const std::string &
         return -1;
     }
 
-    auto list = _cached_buffer_series.get(pinyin).value_or(std::vector<WordItem>{});
+    // 键与 generateSeries 一致：带上当前请求的句中辅助码签名。
+    const std::string cache_key = pinyin + syllable_helpcodes_signature_;
+    auto list = _cached_buffer_series.get(cache_key).value_or(std::vector<WordItem>{});
 
     // Keep at most one cloud/AI suggestion in the series cache for this key.
     if (source == CandidateSource::AiSuggestion || source == CandidateSource::CloudSuggestion)
@@ -1250,7 +1368,7 @@ int ShuangpinDictionary::insert_word_to_cached_buffer_series(const std::string &
         }
     }
 
-    _cached_buffer_series.insert(pinyin, list);
+    _cached_buffer_series.insert(cache_key, list);
     return 0;
 }
 
@@ -1290,10 +1408,14 @@ int ShuangpinDictionary::insert_word_to_active_helpcode_cache(const std::string 
 
     if (!double_helpcodes.empty())
     {
-        return insert_into_cache(_cached_buffer_dbl, double_helpcode_cache_key(pinyin, double_helpcodes)) ? 0 : -1;
+        return insert_into_cache(_cached_buffer_dbl,
+                                 double_helpcode_cache_key(pinyin, double_helpcodes) + syllable_helpcodes_signature_)
+                   ? 0
+                   : -1;
     }
-    const bool updated_single = insert_into_cache(_cached_buffer_sgl, pinyin);
-    const bool updated_reversed_single = insert_into_cache(_cached_buffer_sgl_reversed, pinyin);
+    const bool updated_single = insert_into_cache(_cached_buffer_sgl, pinyin + syllable_helpcodes_signature_);
+    const bool updated_reversed_single =
+        insert_into_cache(_cached_buffer_sgl_reversed, pinyin + syllable_helpcodes_signature_);
     return updated_single || updated_reversed_single ? 0 : -1;
 }
 

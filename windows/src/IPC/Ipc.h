@@ -209,6 +209,9 @@ inline std::atomic_bool SmartPunctuationDirectLetterEnabled{false};
 // Default on until the Server sends the persisted setting.
 inline std::atomic_bool PairedPunctuationEnabled{true};
 inline std::atomic_bool MicrosoftShuangpinEnabled{false};
+// 双拼句中辅助码开着且当前是双拼：组合中的反引号按 engine/contracts/mid_sentence_helpcode.h
+// 的形状规则当编码键吃掉，见 CompositionProcessorEngine_KeyClassify.cpp。
+inline std::atomic_bool MidSentenceHelpcodeEnabled{false};
 inline std::atomic_bool JapaneseInputModeEnabled{false};
 inline std::atomic_bool CapsLockEnabled{false};
 inline std::atomic_bool TsfDiagnosticLogEnabled{false};

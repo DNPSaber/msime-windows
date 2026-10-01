@@ -37,6 +37,8 @@ class ShuangpinEngine
     std::unique_ptr<QuanpinDictionary> fuzzy_dictionary_;
     metasequoia::RuntimePaths paths_;
     HelpcodeUtils::SharedKeymap helpcodes_;
+    // query 的主体；query 在它外面下发请求级选项、按句中辅助码收尾筛选。
+    std::vector<WordItem> query_unfiltered(const QueryRequest &request);
     std::vector<WordItem> append_fuzzy(std::vector<WordItem> exact, const std::string &raw_segmentation,
                                        metasequoia::FuzzyPinyinOptions options, const std::string &helpcodes = "");
 };

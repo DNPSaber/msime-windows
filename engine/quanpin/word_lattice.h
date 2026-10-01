@@ -61,6 +61,17 @@ struct LatticeLexeme
     std::int64_t weight = 0;
 };
 
+// 句中辅助码：第 syllable 个音节（0 起，按 decode 收到的 syllables 计）只能解成 accept
+// 认可的汉字（UTF-8 单字）。约束在建图时筛边，Viterbi、n-best 和神经重排看到的全是
+// 满足约束的路径；一条都走不通就没有整句，不会退回无约束的结果。
+struct LatticeCharConstraint
+{
+    size_t syllable = 0;
+    std::function<bool(const std::string &hanzi)> accept;
+};
+
+using WordLatticeLookup = std::function<std::vector<LatticeLexeme>(const Segments &span)>;
+
 struct LatticePath
 {
     std::string sentence;
@@ -110,9 +121,13 @@ struct WordLatticeOptions
     // while phrase weights are a smaller scale. Never calibrated.
     double unigram_z = 1e6;
     double phrase_length_bonus = 3.0;
+    // 见 LatticeCharConstraint。按音节下标升序，同一音节至多一条。
+    std::vector<LatticeCharConstraint> char_constraints;
+    // 覆盖受约束音节的跨度改用这个查询，筛完约束再按 span_limit 截断。普通查询在 SQL 里
+    // 就截掉了 span_limit 之外的行，ji 这种几百个字的音节，辅助码要找的生僻字早被截没了。
+    // 为空时退回普通 lookup。
+    WordLatticeLookup constrained_lookup;
 };
-
-using WordLatticeLookup = std::function<std::vector<LatticeLexeme>(const Segments &span)>;
 
 // Optional second opinion on the decoded n-best, applied before the paths become candidates.
 // engine/neural supplies one that reorders them by a character-level Transformer; anything else

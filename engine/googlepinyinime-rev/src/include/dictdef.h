@@ -35,6 +35,10 @@ typedef int int32;
 typedef long long int64;
 typedef unsigned long long uint64;
 
+// Whether the Hanzi may sit on the constrained syllable with the given index.
+// See MatrixSearch::set_char_constraints().
+typedef bool (*CharConstraintFn)(size_t constraint_index, char16 hanzi, void* user);
+
 const bool kPrintDebug0 = false;
 const bool kPrintDebug1 = false;
 const bool kPrintDebug2 = false;
