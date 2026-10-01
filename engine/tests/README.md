@@ -1,6 +1,6 @@
 # engine/tests
 
-本目录产出两个独立二进制，共用 `CMakeLists.txt` 里的引擎源列表，互不依赖：
+本目录产出两个独立二进制，都通过 `add_subdirectory` 链接 `engine/CMakeLists.txt` 的正式引擎库 `MetasequoiaIme::Engine`（不另抄源文件清单，编译选项与出货构建一致），互不依赖：
 
 | 目标 | main | 用途 |
 |---|---|---|
@@ -14,7 +14,7 @@ cmake --preset default
 cmake --build build --config Release --target <imetest | eval_quanpin_autocorrect>
 ```
 
-`eval_quanpin_autocorrect` 会把引擎源完整再编一遍（接近翻倍构建时间），日常改代码跑 `imetest` 即可，按需单独构建评测目标。
+两个目标共用同一份引擎库，只多编各自的 main。日常改代码跑 `imetest` 即可，按需单独构建评测目标。
 
 ## eval_quanpin_autocorrect：离线评测工具
 

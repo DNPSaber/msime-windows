@@ -1,7 +1,8 @@
 {
   "dependencies": [
+    "boost-algorithm",
     "fmt",
-    "sqlite3",
-    "spdlog"
+    "spdlog",
+    "sqlite3"
   ]
 }

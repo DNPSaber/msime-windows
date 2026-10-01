@@ -1,7 +1,5 @@
 cmake_minimum_required(VERSION 3.25.0)
 
-cmake_policy(SET CMP0167 OLD)
-
 project(MetasequoiaImeEngineTest VERSION 1.0 LANGUAGES CXX)
 
 # Specify the C++ standard
@@ -10,131 +8,23 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
-add_definitions(
-    /D_UNICODE=1
-    /DUNICODE=1
-    # Windows.h（经 data_path.h）默认定义的 min/max 宏会破坏引擎源里的
-    # std::min/std::max；正式构建（engine/CMakeLists.txt）同样公开定义
-    # NOMINMAX，这里保持一致。
-    /DNOMINMAX
-)
+# 直接链接 engine/CMakeLists.txt 的正式引擎库，不再手抄一份源文件清单。
+# 手抄的清单曾经漏掉新增的 local_modes/local_database.cpp，imetest 因此链接
+# 失败；也没有正式构建给 googlepinyinime 加的 /FI pinyin_file_io.h 和 /utf-8，
+# 测的不是出货的那份引擎。依赖、编译选项和 NOMINMAX/UNICODE 等公开定义都随
+# MetasequoiaIme::Engine 传过来。关掉 BUILD_TESTING，免得把引擎自己的 ctest
+# 目标也一并构建进来。
+set(BUILD_TESTING OFF)
+add_subdirectory(".." "engine")
 
-# For utf8cpp, make it use C++11 and later
-add_compile_options(/Zc:__cplusplus)
-
-# Boost
-# Resolve Boost without pinning one developer's machine: an explicit -DBoost_ROOT wins, then Boost_ROOT/BOOST_ROOT from the environment, and only then the scoop layout this project has historically assumed. Leaving all three unset lets find_package fall back to its own search instead of failing on a path that exists nowhere.
-if(NOT DEFINED Boost_ROOT)
-    if(DEFINED ENV{Boost_ROOT})
-        set(Boost_ROOT "$ENV{Boost_ROOT}")
-    elseif(DEFINED ENV{BOOST_ROOT})
-        set(Boost_ROOT "$ENV{BOOST_ROOT}")
-    elseif(DEFINED ENV{USERPROFILE} AND EXISTS "$ENV{USERPROFILE}/scoop/apps/boost/current")
-        set(Boost_ROOT "$ENV{USERPROFILE}/scoop/apps/boost/current")
-    endif()
-endif()
-set (Boost_USE_STATIC_LIBS ON)
-find_package(Boost REQUIRED COMPONENTS locale)
-include_directories(${Boost_INCLUDE_DIRS})
-
-# fmt, spdlog and sqlite3
-find_package(fmt CONFIG REQUIRED)
-find_package(spdlog CONFIG REQUIRED)
-find_package(unofficial-sqlite3 CONFIG REQUIRED)
-
-include_directories("./includes/")
-include_directories("../")
-include_directories("../include")
-include_directories("../utfcpp/source/")
-
-# 词格打分用的 kenlm 三元模型。这里按源码目录挂进来，与 engine/CMakeLists.txt
-# 共用同一份 ngram/CMakeLists.txt。
-add_subdirectory("../ngram" "ngram")
-
-set(MY_EXECUTABLE_NAME "imetest")
-set(
-    ENGINE_SOURCE_FILES
-    "../core/candidate_queries.cpp"
-    "../core/ime_session.cpp"
-    "../core/input_session.cpp"
-    "../core/input_session_candidates.cpp"
-    "../core/input_session_composition.cpp"
-    "../core/input_session_editing.cpp"
-    "../core/nine_key_session.cpp"
-    "../core/pinyin_decoder.cpp"
-    "../core/punctuation_policy.cpp"
-    "../core/runtime_paths.cpp"
-    "../core/session.cpp"
-    "../local_modes/date_time_query.cpp"
-    "../local_modes/emoji_query.cpp"
-    "../local_modes/jianpin_query.cpp"
-    "../local_modes/kaomoji_query.cpp"
-    "../local_modes/quick_phrase_query.cpp"
-    "../local_modes/unicode_query.cpp"
-    "../neural/sentence_model.cpp"
-    "../neural/neural_decoder.cpp"
-    "../neural/rescore_worker.cpp"
-    "../providers/pinyin_candidate_provider.cpp"
-    "../providers/wubi_candidate_provider.cpp"
-    "../providers/japanese_candidate_provider.cpp"
-    "../providers/provider_registry.cpp"
-    "../schemes/shuangpin_scheme.cpp"
-    "../schemes/quanpin_scheme.cpp"
-    "../schemes/wubi_scheme.cpp"
-    "../schemes/japanese_romaji_scheme.cpp"
-    "../quanpin/engine.cpp"
-    "../quanpin/quanpin_dictionary.cpp"
-    "../quanpin/quanpin_query.cpp"
-    "../quanpin/quanpin_utils.cpp"
-    "../quanpin/lattice_rerank.cpp"
-    "../quanpin/word_lattice.cpp"
-    "../shuangpin/engine.cpp"
-    "../common/helpcode_utils.cpp"
-    "../common/string_utils.cpp"
-    "../shuangpin/shuangpin_dictionary.cpp"
-    "../shuangpin/shuangpin_profile.cpp"
-    "../shuangpin/shuangpin_query.cpp"
-    "../shuangpin/shuangpin_utils.cpp"
-    "../english/english_dictionary.cpp"
-    "../japanese/japanese_matrix_search.cpp"
-    "../japanese/japanese_sentence_decoder.cpp"
-    "../japanese/romaji_converter.cpp"
-    "../user_dictionary/user_dictionary_journal.cpp"
-    "../user_dictionary/personal_dictionary.cpp"
-    "../user_dictionary/dictionary_state.cpp"
-    # Google IME
-    "../googlepinyinime-rev/src/share/dictbuilder.cpp"
-    "../googlepinyinime-rev/src/share/dictlist.cpp"
-    "../googlepinyinime-rev/src/share/dicttrie.cpp"
-    "../googlepinyinime-rev/src/share/lpicache.cpp"
-    "../googlepinyinime-rev/src/share/matrixsearch.cpp"
-    "../googlepinyinime-rev/src/share/mystdlib.cpp"
-    "../googlepinyinime-rev/src/share/ngram.cpp"
-    "../googlepinyinime-rev/src/share/pinyinime.cpp"
-    "../googlepinyinime-rev/src/share/searchutility.cpp"
-    "../googlepinyinime-rev/src/share/spellingtable.cpp"
-    "../googlepinyinime-rev/src/share/spellingtrie.cpp"
-    "../googlepinyinime-rev/src/share/splparser.cpp"
-    "../googlepinyinime-rev/src/share/sync.cpp"
-    "../googlepinyinime-rev/src/share/userdict.cpp"
-    "../googlepinyinime-rev/src/share/utf16char.cpp"
-    "../googlepinyinime-rev/src/share/utf16reader.cpp"
-)
-
-# imetest 的 main 在 test_pinyin.cpp；引擎源单独成变量供 eval 二进制复用。
-set(
-    SOURCE_FILES
-    "./src/test_pinyin.cpp"
-    ${ENGINE_SOURCE_FILES}
-)
-
-add_executable(${MY_EXECUTABLE_NAME} ${SOURCE_FILES} )
-
-target_link_libraries(${MY_EXECUTABLE_NAME} fmt::fmt spdlog::spdlog unofficial::sqlite3::sqlite3 Boost::locale metasequoia_ime_ngram)
+# imetest 的 main 在 test_pinyin.cpp。
+add_executable(imetest "./src/test_pinyin.cpp")
+target_compile_options(imetest PRIVATE /Zc:__cplusplus)
+target_link_libraries(imetest PRIVATE MetasequoiaIme::Engine)
 
 # 全拼纠错评测独立二进制（任务 .trellis/tasks/09-12-quanpin-autocorrect-patent
 # 阶段 0 的基线采集载体）：采样真实 msime.db 注错测召回，只挂自己的 main，
 # 与 imetest 的测试装置互不依赖。
-add_executable(eval_quanpin_autocorrect "./src/eval_quanpin_autocorrect.cpp" ${ENGINE_SOURCE_FILES})
-
-target_link_libraries(eval_quanpin_autocorrect fmt::fmt spdlog::spdlog unofficial::sqlite3::sqlite3 Boost::locale metasequoia_ime_ngram)
+add_executable(eval_quanpin_autocorrect "./src/eval_quanpin_autocorrect.cpp")
+target_compile_options(eval_quanpin_autocorrect PRIVATE /Zc:__cplusplus)
+target_link_libraries(eval_quanpin_autocorrect PRIVATE MetasequoiaIme::Engine)

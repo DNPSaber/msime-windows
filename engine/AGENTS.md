@@ -27,7 +27,8 @@ ctest --test-dir build --output-on-failure --timeout 20
 `tests/CMakeLists.txt` 是独立 CMake 工程，产出 `imetest`（注册源只有 `tests/src/test_pinyin.cpp`）和全拼纠错离线评测工具 `eval_quanpin_autocorrect`，详见 [tests/README.md](tests/README.md)。它**不被根 `CMakeLists.txt` 引入**——根目录只把 `tests/src/*.cpp` 当自己测试目标的源文件，不 add_subdirectory(tests)。所以：
 
 - `imetest` 里的用例**在 CI 中不会执行**；往 `test_pinyin.cpp` 加用例，PR 的绿勾只代表引擎仍能编译，不代表测试跑过
-- 它是 MSVC 专有配置（Windows.h、`/Zc:__cplusplus`）；Boost 解析按显式 `-D` → 环境变量 → scoop 布局回退，不写死本机路径
+- 它反过来 `add_subdirectory` 本目录、链接正式的 `MetasequoiaIme::Engine`，引擎新增源文件只登记在根 `CMakeLists.txt` 一处；`tests/vcpkg.json` 的依赖要和根 `vcpkg.json` 保持一致
+- 它是 MSVC 专有配置（Windows.h、`/Zc:__cplusplus`）
 
 新增测试请加到根 `CMakeLists.txt` 已登记的目标里（`tests/src/test_*_input_session.cpp` 那一批），那些才会被跑到。
 
