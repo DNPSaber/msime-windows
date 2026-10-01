@@ -69,6 +69,14 @@ void ShuangpinScheme::handle_key(ImeKeyCode vk, ImeModifierMask modifiers_down, 
         return;
     }
 
+    // 句中辅助码的反引号。开关与「前面是不是一节完整的偶数键」由调用方判断，这里只负责记下。
+    if (vk == ImeKey::Backquote && wch == u'`')
+    {
+        key_strokes_.push_back(KeyStroke{vk, modifiers_down, wch});
+        raw_input_.push_back(shuangpin::kMidSentenceHelpcodeMarker);
+        return;
+    }
+
     const bool microsoft_ing_key = is_microsoft_ing_key(vk, wch, raw_input_, profile_);
     if (!is_alpha_vk(vk) && !microsoft_ing_key)
     {
@@ -99,8 +107,16 @@ QueryRequest ShuangpinScheme::build_request() const
     QueryRequest request;
     request.scheme = type();
     request.raw_input_with_cases = raw_input_;
-    request.raw_input.reserve(raw_input_.size());
-    for (const char ch : raw_input_)
+    if (shuangpin::has_mid_sentence_helpcode(raw_input_))
+    {
+        // 下游只认 ' 分隔的双拼：反引号段换成分隔符，约束单独带着，原串留给宿主回读。
+        auto parsed = shuangpin::parse_mid_sentence_helpcodes(raw_input_, profile_);
+        request.raw_input_with_cases = std::move(parsed.input);
+        request.raw_input_with_syllable_helpcodes = raw_input_;
+        request.syllable_helpcodes = std::move(parsed.helpcodes);
+    }
+    request.raw_input.reserve(request.raw_input_with_cases.size());
+    for (const char ch : request.raw_input_with_cases)
     {
         request.raw_input.push_back(ch == '\'' ? ch : static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
     }

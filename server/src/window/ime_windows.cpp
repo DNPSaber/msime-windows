@@ -265,6 +265,9 @@ void ApplyConfiguredInputScheme()
     UpdateFtbInputModeState(::webviewFtbWnd, GetConfiguredInputMode() == "japanese" ? 1 : 0);
     BroadcastToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::InputModeChanged,
                                            GetConfiguredInputMode() == "japanese" ? L"1" : L"0");
+    // 句中辅助码只在双拼下有效，换方案或切日语模式都要让 TSF 重新判断反引号。
+    BroadcastToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged,
+                                           FormatMidSentenceHelpcodeWorkerPayload());
 }
 
 void ApplyConfiguredShuangpinSchema()

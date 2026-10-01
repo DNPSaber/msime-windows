@@ -121,7 +121,16 @@ std::vector<WordItem> ShuangpinEngine::query(const QueryRequest &request)
     dictionary_.set_sentence_association(request.sentence_association);
     // 前文同理随请求下发；换了前文，按旧前文重排出来的缓存顺序作废。
     dictionary_.set_rescoring_context(request.rescoring_context);
+    // 句中辅助码约束也随请求下发；开关关着时不筛（串里本就敲不进反引号，这里只是兜底）。
+    dictionary_.set_syllable_helpcodes(request.enable_mid_sentence_helpcode ? request.syllable_helpcodes
+                                                                            : SyllableHelpcodes{});
+    auto candidates = query_unfiltered(request);
+    dictionary_.filter_by_syllable_helpcodes(candidates);
+    return candidates;
+}
 
+std::vector<WordItem> ShuangpinEngine::query_unfiltered(const QueryRequest &request)
+{
     const std::string &raw_input = request.raw_input;
     const std::string &raw_input_with_cases =
         request.raw_input_with_cases.empty() ? request.raw_input : request.raw_input_with_cases;

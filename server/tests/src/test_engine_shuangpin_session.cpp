@@ -1368,3 +1368,61 @@ TEST_CASE(SegmentBoundariesKeepHelpcodeAndJianpinTailAsTheirOwnUnits)
     InputLetters(jianpin, "zheg");
     REQUIRE_EQ(jianpin.segment_raw_boundaries(), std::vector<std::size_t>({0, 3, 4}));
 }
+
+TEST_CASE(EngineShuangpinMidSentenceHelpcodeConstrainsSentenceSources)
+{
+    // 句中辅助码走 Server 的真实路径：整串写回会话再重算。词格和 Google 整句都打开，约束要在
+    // 解码时生效——所有覆盖到第一个音节的汉字候选，首字都得满足那一码。
+    struct ReloadConfigOnExit
+    {
+        ~ReloadConfigOnExit()
+        {
+            InitImeConfig();
+        }
+    } reload;
+    ScopedConfigRoot config_root;
+    InitImeConfig();
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeEnabled(true));
+    REQUIRE(SetConfiguredShuangpinHelpcodeSchema("ziranma"));
+    REQUIRE(SetConfiguredAssocSentenceWordLattice(true));
+    REQUIRE(SetConfiguredAssocSentenceGoogle(true));
+    REQUIRE_EQ(FormatMidSentenceHelpcodeWorkerPayload(),
+               std::wstring(GetConfiguredInputScheme() == SchemeType::Shuangpin ? L"1" : L"0"));
+
+    EngineInputSession session(SchemeType::Shuangpin);
+    const auto first_code = [&session](const std::string &hanzi) {
+        const std::string annotation = session.get_helpcode_annotation(hanzi, false);
+        return annotation.size() > 1 ? static_cast<char>(std::tolower(static_cast<unsigned char>(annotation[1])))
+                                     : '\0';
+    };
+    const char code = first_code("泥");
+    REQUIRE(code != '\0');
+
+    const auto apply = [&session](const std::string &raw) {
+        session.set_pinyin_sequence(raw);
+        session.set_pinyin_sequence_with_cases(raw);
+        session.recompute_candidates();
+    };
+    apply("ni");
+    REQUIRE(session.accepts_mid_sentence_helpcode_marker());
+    apply("n");
+    REQUIRE(!session.accepts_mid_sentence_helpcode_marker());
+
+    const std::string raw = std::string("ni`") + code + "hc";
+    apply(raw);
+    REQUIRE_EQ(session.get_pinyin_sequence_with_cases(), raw);
+    REQUIRE(!session.get_candidates().empty());
+    bool has_sentence = false;
+    for (const auto &item : session.get_candidates())
+    {
+        if (item.source != CandidateSource::Database && item.source != CandidateSource::UserDatabase &&
+            item.source != CandidateSource::Generated && item.source != CandidateSource::Fallback)
+            continue;
+        if (HelpcodeUtils::count_han_chars(item.word) == 0 ||
+            HelpcodeUtils::count_han_chars(item.word) != HelpcodeUtils::count_utf8_chars(item.word))
+            continue;
+        has_sentence = has_sentence || item.sentence_association;
+        REQUIRE_EQ(first_code(HelpcodeUtils::get_first_han_char(item.word)), code);
+    }
+    REQUIRE(has_sentence);
+}

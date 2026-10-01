@@ -25,4 +25,5 @@ inline constexpr ImeKeyCode Space = 0x20;
 inline constexpr ImeKeyCode Semicolon = 0xBA;
 inline constexpr ImeKeyCode Minus = 0xBD;
 inline constexpr ImeKeyCode Apostrophe = 0xDE;
+inline constexpr ImeKeyCode Backquote = 0xC0; // VK_OEM_3
 } // namespace ImeKey

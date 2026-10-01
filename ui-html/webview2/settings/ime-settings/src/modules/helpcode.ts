@@ -58,6 +58,11 @@ export function setupHelpcode(): void {
     updateCandidatePreviewHelpcode({ shuangpin_helpcode: active });
   });
 
+  // 双拼句中辅助码开关
+  setupToggleButton('midSentenceHelpcodeToggleBtn', (active) => {
+    updateConfig('helpcode.shuangpin_mid_sentence_helpcode', active);
+  });
+
   // 全拼辅助码开关
   setupToggleButton('quanpinHelpcodeToggleBtn', (active) => {
     updateConfig('helpcode.quanpin_helpcode', active);

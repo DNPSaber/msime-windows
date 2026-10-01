@@ -753,6 +753,23 @@ void test_runtime_isolation()
             require(decoder_a.sentence(typed[index]) == incremental[index],
                     "Incremental decoder search diverged from a fresh search");
         }
+
+        // 句中辅助码：约束在解码器建格子时生效，被锁住的字带着上下文重新整句解码；约束不能
+        // 漏到之后不带约束的增量搜索里。
+        const std::string plain = decoder_a.sentence("ni'hao");
+        require(plain.size() == 6, "Plain two-syllable decode failed");
+        std::vector<DecoderCharConstraint> constraints;
+        constraints.push_back({0, [](const std::string &hanzi) { return hanzi == "泥"; }});
+        const std::string first_pinned = decoder_a.sentence("ni'hao", constraints);
+        require(first_pinned.size() == 6 && first_pinned.substr(0, 3) == "泥",
+                "Decoder ignored the first-syllable constraint");
+        constraints = {{3, [](const std::string &hanzi) { return hanzi == "号"; }}};
+        const std::string second_pinned = decoder_a.sentence("ni'hao", constraints);
+        require(second_pinned.size() == 6 && second_pinned.substr(3) == "号",
+                "Decoder ignored the second-syllable constraint");
+        require(decoder_a.sentence("ni'hao") == plain, "A decoder constraint leaked into the next search");
+        require(decoder_a.sentence("ni'haoma") == decoder_b.sentence("ni'haoma"),
+                "Incremental search after a constrained one diverged from a fresh search");
     }
 
     // 词格打分用的三元模型：按路径共享一份实例，缺模型时退化成可用的空模型。

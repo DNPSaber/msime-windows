@@ -627,6 +627,7 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
           {"niutrans", {{"enabled", niutrans.enabled}, {"app_id", niutrans.app_id}, {"apikey", niutrans.apikey}}},
           {"helpcode",
            {{"shuangpin_helpcode", GetConfiguredShuangpinHelpcodeEnabled()},
+            {"shuangpin_mid_sentence_helpcode", GetConfiguredShuangpinMidSentenceHelpcodeEnabled()},
             {"shuangpin_helpcode_schema", GetConfiguredShuangpinHelpcodeSchema()},
             {"quanpin_helpcode", GetConfiguredQuanpinHelpcodeEnabled()},
             {"quanpin_helpcode_schema", GetConfiguredQuanpinHelpcodeSchema()},
@@ -973,6 +974,8 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredShowShuangpinHelpcodeInCandidateWindow(json::value_to<bool>(data.at("value")));
     if (path == "helpcode.shuangpin_helpcode")
         return SetConfiguredShuangpinHelpcodeEnabled(json::value_to<bool>(data.at("value")));
+    if (path == "helpcode.shuangpin_mid_sentence_helpcode")
+        return SetConfiguredShuangpinMidSentenceHelpcodeEnabled(json::value_to<bool>(data.at("value")));
     if (path == "helpcode.shuangpin_helpcode_schema")
         return SetConfiguredShuangpinHelpcodeSchema(json::value_to<std::string>(data.at("value")));
     if (path == "helpcode.quanpin_helpcode")

@@ -1,4 +1,5 @@
 #include "../ipc_negotiation.h"
+#include "../mid_sentence_helpcode.h"
 #include "../voice_composition_pipe.h"
 
 #include <algorithm>
@@ -133,7 +134,17 @@ int main()
     CHECK(FanyImeWorkerReplyType::SwitchToEn == FanyImeWorkerReplyType::SwitchToEnglish);
     CHECK(FanyImeWorkerReplyType::CommitCandidate == FanyImeWorkerReplyType::CommitCurCandidate);
     CHECK(FanyImeWorkerReplyType::CommitCandidateAndContinue == 27);
-    CHECK(FanyImeWorkerReplyType::MaxKnown == FanyImeWorkerReplyType::CommitCandidateAndContinue);
+    CHECK(FanyImeWorkerReplyType::MidSentenceHelpcodeChanged == 28);
+    CHECK(FanyImeWorkerReplyType::MaxKnown == FanyImeWorkerReplyType::MidSentenceHelpcodeChanged);
+    // TSF（WCHAR）与引擎（char）共用同一条句中辅助码形状规则。
+    const auto accepts = [](const std::wstring &text) {
+        return FanyImeMidSentenceHelpcode::AcceptsMarker(text.data(), text.size());
+    };
+    CHECK(accepts(L"ulpb") && !accepts(L"ulp") && !accepts(L"") && !accepts(L"ulpb'"));
+    CHECK(!accepts(L"ulpb`") && !accepts(L"ulpb`x") && !accepts(L"ulpb`xY") && !accepts(L"ulpb`xi"));
+    CHECK(accepts(L"ulpb`xih") && !accepts(L"ulpb`xihf") && accepts(L"ulpb`xYih") && accepts(L"ulpb`xihfa"));
+    CHECK(FanyImeMidSentenceHelpcode::AcceptsMarker("ni'hc", 5) &&
+          !FanyImeMidSentenceHelpcode::AcceptsMarker("ni'h", 4));
     const std::wstring voice(1000, L'x');
     const auto frames = FanyImeVoiceCompositionPipe::EncodeSnapshot(voice, 7);
     CHECK(FanyImeVoiceCompositionPipe::AssembleFrames(frames) == voice);

@@ -82,6 +82,45 @@ std::string append_canonical_pinyin(const std::string &prefix, const std::string
     return prefix + "'" + suffix;
 }
 
+// 句中辅助码：选词推进是在去掉反引号段的串上算的，剩下的部分要换回原串，后面音节上的约束才
+// 留得住。[clean_begin, clean_end) 是剩余部分在去段串里的范围；开头的分隔符连同挂在已上屏音节上
+// 的段一起算进已消耗部分，跟普通推进丢掉开头分隔符的做法一致。
+struct MidSentenceRest
+{
+    std::string consumed;
+    std::string rest;
+};
+
+MidSentenceRest RemapMidSentenceRest(const std::string &typed, std::size_t clean_begin, std::size_t clean_end,
+                                     const ShuangpinProfile &profile)
+{
+    const auto parsed = shuangpin::parse_mid_sentence_helpcodes(typed, profile);
+    const std::string &clean = parsed.input;
+    clean_end = (std::min)(clean_end, clean.size());
+    while (clean_begin < clean_end && clean[clean_begin] == '\'')
+    {
+        ++clean_begin;
+    }
+    MidSentenceRest result;
+    if (clean_begin >= clean_end)
+    {
+        result.consumed = typed;
+        return result;
+    }
+    const std::size_t full_begin = parsed.source_index[clean_begin];
+    const std::size_t full_end = clean_end >= clean.size() ? typed.size() : parsed.source_index[clean_end];
+    result.consumed = typed.substr(0, full_begin);
+    result.rest = typed.substr(full_begin, full_end - full_begin);
+    return result;
+}
+
+std::string LowercaseLetters(std::string text)
+{
+    std::transform(text.begin(), text.end(), text.begin(),
+                   [](unsigned char ch) { return static_cast<char>(std::tolower(ch)); });
+    return text;
+}
+
 struct ShuangpinCompositionBase
 {
     std::string raw_input;
@@ -438,6 +477,11 @@ const std::string &InputSession::get_pinyin_sequence() const
 
 const std::string &InputSession::get_pinyin_sequence_with_cases() const
 {
+    // 句中辅助码的反引号段只在原串里，宿主回读的必须是用户敲的原样。
+    if (!request().raw_input_with_syllable_helpcodes.empty())
+    {
+        return request().raw_input_with_syllable_helpcodes;
+    }
     return request().raw_input_with_cases.empty() ? request().raw_input : request().raw_input_with_cases;
 }
 
@@ -461,11 +505,14 @@ std::string InputSession::get_pinyin_segmentation_with_cases() const
     {
         return request().raw_input_with_cases.empty() ? request().raw_input : request().raw_input_with_cases;
     }
+    // 句中辅助码的反引号段在切分串里只是一个 '，显示时按原样接回对应音节后面；
+    // 末尾补 ' 也要看用户敲的原串，否则 ulpb`x 会显示成 ul'pb`x'。
+    const std::string &typed = get_pinyin_sequence_with_cases();
     if (is_shuangpin() && shuangpin_preedit_uses_raw_)
     {
         std::string preedit = request().raw_segmentation.empty() ? request().raw_input : request().raw_segmentation;
-        if (!request().raw_input_with_cases.empty() && request().raw_input_with_cases.back() == '\'' &&
-            (preedit.empty() || preedit.back() != '\''))
+        preedit = shuangpin::decorate_mid_sentence_segmentation(preedit, typed, shuangpin_profile_);
+        if (!typed.empty() && typed.back() == '\'' && (preedit.empty() || preedit.back() != '\''))
         {
             preedit.push_back('\'');
         }
@@ -477,8 +524,11 @@ std::string InputSession::get_pinyin_segmentation_with_cases() const
     }
     std::string preedit =
         request().normalized_segmentation.empty() ? request().segmentation : request().normalized_segmentation;
-    if (!request().raw_input_with_cases.empty() && request().raw_input_with_cases.back() == '\'' &&
-        (preedit.empty() || preedit.back() != '\''))
+    if (is_shuangpin())
+    {
+        preedit = shuangpin::decorate_mid_sentence_segmentation(preedit, typed, shuangpin_profile_);
+    }
+    if (!typed.empty() && typed.back() == '\'' && (preedit.empty() || preedit.back() != '\''))
     {
         preedit.push_back('\'');
     }
@@ -703,6 +753,8 @@ InputSession::SelectionTransition InputSession::advance_composition_after_select
                 : base.effective_raw_input;
 
         size_t consumed_length = remove_delimiters(selected_pinyin).size();
+        // 带句中辅助码时 base 是去掉反引号段的串，推进结果要映射回原串，见 RemapMidSentenceRest。
+        const std::string typed = request().raw_input_with_syllable_helpcodes;
         if (base.helpcode_length > 0)
         {
             const size_t rest_start =
@@ -720,6 +772,13 @@ InputSession::SelectionTransition InputSession::advance_composition_after_select
                 std::string normalized_rest = rest_pinyin_sequence;
                 std::string cased_rest = base.raw_input_with_cases.substr(rest_start, rest_end - rest_start);
                 remove_consumed_leading_separators(normalized_rest, cased_rest);
+                if (!typed.empty())
+                {
+                    auto remapped = RemapMidSentenceRest(typed, rest_start, rest_end, shuangpin_profile_);
+                    transition.consumed_raw_input_with_cases = std::move(remapped.consumed);
+                    cased_rest = std::move(remapped.rest);
+                    normalized_rest = LowercaseLetters(cased_rest);
+                }
                 engine_.replace_shuangpin_raw_input(normalized_rest, cased_rest);
                 online_requests_.invalidate();
                 update_mixed_candidates();
@@ -746,10 +805,24 @@ InputSession::SelectionTransition InputSession::advance_composition_after_select
                 std::string normalized_rest = rest_pinyin_sequence;
                 std::string cased_rest = rest_pinyin_sequence_with_cases;
                 remove_consumed_leading_separators(normalized_rest, cased_rest);
+                if (!typed.empty())
+                {
+                    auto remapped = RemapMidSentenceRest(typed, consumed_raw_length, base.raw_input_with_cases.size(),
+                                                         shuangpin_profile_);
+                    transition.consumed_raw_input_with_cases = std::move(remapped.consumed);
+                    cased_rest = std::move(remapped.rest);
+                    normalized_rest = LowercaseLetters(cased_rest);
+                }
                 engine_.replace_shuangpin_raw_input(normalized_rest, cased_rest);
                 online_requests_.invalidate();
                 update_mixed_candidates();
             }
+        }
+
+        if (!typed.empty() && !transition.continues_composition)
+        {
+            // 整串上屏：撤销时要还原的是用户敲的原串，连同反引号段。
+            transition.consumed_raw_input_with_cases = typed;
         }
 
         transition.current_segmentation = get_pinyin_segmentation();

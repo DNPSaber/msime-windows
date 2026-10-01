@@ -55,6 +55,11 @@ class InputSession
     KeyResult set_candidate_position(std::size_t index, int position);
     void enable_fixed_positions();
     void set_shuangpin_helpcode_enabled(bool enabled);
+    // 句中辅助码（双拼），见 core/syllable_helpcode.h。默认关闭。
+    void set_mid_sentence_helpcode_enabled(bool enabled);
+    // 宿主在决定是否把反引号当作编码键之前问这一句：开关开着、双拼、光标在串尾，且当前这一节
+    // 能接一段句中辅助码。不满足时反引号仍按标点处理。
+    bool accepts_mid_sentence_helpcode_marker() const;
     void set_quanpin_helpcode_enabled(bool enabled);
     static bool is_supported_helpcode_schema(const std::string &schema);
     bool set_helpcode_schema(const std::string &schema);
@@ -309,6 +314,7 @@ class InputSession
     unsigned quanpin_autocorrect_types_ = 0;
     bool quanpin_helpcode_enabled_ = true;
     bool shuangpin_helpcode_enabled_ = true;
+    bool mid_sentence_helpcode_enabled_ = false;
     bool chinese_punctuation_enabled_ = true;
     bool candidate_learning_enabled_ = true;
     PunctuationPolicy punctuation_;

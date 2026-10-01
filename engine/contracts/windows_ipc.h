@@ -408,7 +408,11 @@ constexpr std::uint32_t StatisticsEnabledChanged = 26;
 // applying a remainder the Server computed from a possibly stale view, so letters the
 // user typed past the committed code survive as the next composition.
 constexpr std::uint32_t CommitCandidateAndContinue = 27;
-constexpr std::uint32_t MaxKnown = CommitCandidateAndContinue;
+// Whether '`' can open a shuangpin mid-sentence helpcode block while composing. Payload "0"/"1".
+// TSF still checks the block shape itself (see engine shuangpin::accepts_mid_sentence_helpcode_marker)
+// and the Server makes the final call; this flag only keeps TSF from eating '`' when the feature is off.
+constexpr std::uint32_t MidSentenceHelpcodeChanged = 28;
+constexpr std::uint32_t MaxKnown = MidSentenceHelpcodeChanged;
 // Source compatibility for the Server's historical spellings.
 constexpr std::uint32_t SwitchToEn = SwitchToEnglish;
 constexpr std::uint32_t SwitchToCn = SwitchToChinese;

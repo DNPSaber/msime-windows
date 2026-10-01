@@ -131,6 +131,7 @@ extern std::string g_wubi_z_mode;
 extern std::string g_shuangpin_preedit_mode;
 extern std::string g_tsf_preedit_style;
 extern bool g_shuangpin_helpcode_enabled;
+extern bool g_shuangpin_mid_sentence_helpcode_enabled;
 extern bool g_quanpin_helpcode_enabled;
 extern std::string g_shuangpin_helpcode_schema;
 extern std::string g_quanpin_helpcode_schema;

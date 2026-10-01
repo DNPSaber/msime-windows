@@ -304,6 +304,9 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (typeof data?.helpcode?.shuangpin_helpcode === 'boolean') {
     applyToggleState('shuangpinHelpcodeToggleBtn', data.helpcode.shuangpin_helpcode);
   }
+  if (typeof data?.helpcode?.shuangpin_mid_sentence_helpcode === 'boolean') {
+    applyToggleState('midSentenceHelpcodeToggleBtn', data.helpcode.shuangpin_mid_sentence_helpcode);
+  }
   applyDropdownValue(
     'shuangpinHelpcodeSchemeBtn',
     'shuangpinHelpcodeSchemeMenu',

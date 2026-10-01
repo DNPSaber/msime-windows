@@ -275,6 +275,9 @@ shuangpin_helpcode = true
 shuangpin_helpcode_schema = "ziranma"
 # 是否在候选窗口中显示双拼辅助码
 show_sp_helpcode_in_candidate_window = true
+# 双拼句中辅助码：在完整音节后敲反引号（`），后面的字母筛这个音节上的字。第一码大小写均可，
+# 第二码要用大写才参与筛选（如 ulpb`xY），之后可以接着打。整句候选会带着锁住的字重新打分
+shuangpin_mid_sentence_helpcode = false
 # 全拼辅助码
 quanpin_helpcode = true
 # 全拼辅助码方案，可选："lantian", "ziranma", "shouyou2_0", "shouyouplus", "xiaohe", "jiajia"，

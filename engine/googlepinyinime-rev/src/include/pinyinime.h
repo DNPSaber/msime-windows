@@ -106,6 +106,15 @@ size_t im_delsearch(size_t pos, bool is_pos_in_splid, bool clear_fixed_this_step
 void im_reset_search();
 
 /**
+ * Constrain the Hanzi decoded on some syllables of the next searches. Each
+ * entry of pys_pos is the position in the spelling string where a syllable
+ * starts; a lemma covering that syllable survives only if accept(index, hanzi,
+ * user) returns true for its Hanzi there. Pass num = 0 to clear. Changing the
+ * constraints resets the search.
+ */
+void im_set_char_constraints(const uint16* pys_pos, size_t num, CharConstraintFn accept, void* user);
+
+/**
  * Add a Pinyin letter to the current spelling string kept by decoder. If the
  * decoder fails in adding the letter, it will do nothing. im_get_sps_str()
  * can be used to get the spelling string kept by decoder currently.

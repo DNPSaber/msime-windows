@@ -130,6 +130,15 @@ bool IsMicrosoftShuangpinIngKey(UINT keycode, WCHAR wch, const std::string &raw_
     return (caret - chunk_start) % 2 == 1;
 }
 
+// 句中辅助码的反引号：开关开着、双拼、光标在串尾，且当前这一节能接一段时，它是编码键而不是
+// 标点。TSF 端按同一条形状规则（引擎 shuangpin::accepts_mid_sentence_helpcode_marker）预判吃键。
+bool IsMidSentenceHelpcodeMarkerKey(UINT keycode, WCHAR wch, const std::string &raw_input)
+{
+    return keycode == VK_OEM_3 && wch == L'`' && !g_english_input_mode && g_inputSession != nullptr &&
+           GlobalIme::composition.caret_position >= raw_input.size() &&
+           g_inputSession->accepts_mid_sentence_helpcode_marker();
+}
+
 bool IsSelectionKey(UINT keycode)
 {
     if (keycode == VK_SPACE)
@@ -348,6 +357,10 @@ bool ApplyCompositionEditKey(UINT keycode, WCHAR wch, UINT modifiers_down, bool 
                  g_inputSession->current_scheme_type() == SchemeType::Shuangpin)
         {
             input = ';';
+        }
+        else if (IsMidSentenceHelpcodeMarkerKey(keycode, wch, raw))
+        {
+            input = '`';
         }
         else if (IsJapaneseLongVowelKey(keycode, wch))
         {
@@ -775,6 +788,8 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     const bool is_manual_pinyin_separator = IsManualPinyinSeparatorKey(Global::Keycode, Global::Wch);
     const bool is_microsoft_shuangpin_ing_key =
         IsMicrosoftShuangpinIngKey(Global::Keycode, Global::Wch, input_before_key);
+    const bool is_mid_sentence_helpcode_marker =
+        IsMidSentenceHelpcodeMarkerKey(Global::Keycode, Global::Wch, input_before_key);
     // 日语模式下 '-' 是长音符输入键，既不翻页也不做词转字。
     const bool is_japanese_long_vowel = IsJapaneseLongVowelKey(Global::Keycode, Global::Wch);
     const int word_character_direction =
@@ -783,7 +798,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
                                              GetConfiguredWordToCharacterKeys() == "minus_equal");
     const bool is_commit_with_highlighted_candidate_punctuation =
         word_character_direction != 0 ||
-        (!is_manual_pinyin_separator && !is_microsoft_shuangpin_ing_key &&
+        (!is_manual_pinyin_separator && !is_microsoft_shuangpin_ing_key && !is_mid_sentence_helpcode_marker &&
          IsCommitWithHighlightedCandidatePunctuationInCandidateMode(Global::Keycode, Global::Wch));
     const bool is_selection_key = IsSelectionKey(Global::Keycode);
     const bool is_unicode_shift_digit_selection =
@@ -791,11 +806,11 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     const bool is_unicode_hex_digit = unicode_composition_active && !is_unicode_shift_digit_selection &&
                                       Global::Keycode >= '0' && Global::Keycode <= '9';
     const bool is_unicode_plus = unicode_composition_active && Global::Keycode == VK_OEM_PLUS && Global::Wch == L'+';
-    const bool is_composition_edit_key = Global::Keycode == VK_LEFT || Global::Keycode == VK_RIGHT ||
-                                         Global::Keycode == VK_BACK || Global::Keycode == VK_DELETE ||
-                                         (Global::Keycode >= 'A' && Global::Keycode <= 'Z') ||
-                                         is_manual_pinyin_separator || is_microsoft_shuangpin_ing_key ||
-                                         is_unicode_hex_digit || is_unicode_plus || is_japanese_long_vowel;
+    const bool is_composition_edit_key =
+        Global::Keycode == VK_LEFT || Global::Keycode == VK_RIGHT || Global::Keycode == VK_BACK ||
+        Global::Keycode == VK_DELETE || (Global::Keycode >= 'A' && Global::Keycode <= 'Z') ||
+        is_manual_pinyin_separator || is_microsoft_shuangpin_ing_key || is_mid_sentence_helpcode_marker ||
+        is_unicode_hex_digit || is_unicode_plus || is_japanese_long_vowel;
     const bool should_forward_key_to_session = !is_commit_with_highlighted_candidate_punctuation && !is_selection_key &&
                                                !is_paging_key && !is_composition_edit_key;
 

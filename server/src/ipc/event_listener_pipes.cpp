@@ -839,6 +839,9 @@ void RegisteredPipeMonitorThread(HANDLE clientPipe, UINT pipeRole, uint64_t hand
             SendToTsfWorkerThreadClientViaNamedpipe(
                 hello.client_id, Global::DataFromServerMsgTypeToTsfWorkerThread::MicrosoftShuangpinChanged,
                 IsConfiguredShuangpinSemicolonFinal() ? L"1" : L"0");
+            SendToTsfWorkerThreadClientViaNamedpipe(
+                hello.client_id, Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged,
+                FormatMidSentenceHelpcodeWorkerPayload());
             SendToTsfWorkerThreadClientViaNamedpipe(hello.client_id,
                                                     Global::DataFromServerMsgTypeToTsfWorkerThread::InputModeChanged,
                                                     GetConfiguredInputMode() == "japanese" ? L"1" : L"0");

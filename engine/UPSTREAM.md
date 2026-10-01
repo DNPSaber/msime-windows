@@ -41,6 +41,12 @@ Two of those files, `googlepinyinime-rev/src/{include/userdict.h,share/userdict.
 upstream with CRLF and arrive here with LF. That is this repository's `.gitattributes` (`* text=auto
 eol=lf`) doing what it does to every other file; the content is unchanged.
 
+`googlepinyinime-rev/` is no longer tracked against its upstream and is edited here directly, in its
+original formatting and under its original licence. Local changes so far: a per-syllable Hanzi
+constraint for the shuangpin mid-sentence helpcode — `MatrixSearch::set_char_constraints`,
+`MatrixSearch::filter_lpis_by_constraints` (called from `add_char_qwerty` before
+`extend_mtrx_nd`), `im_set_char_constraints` and the `CharConstraintFn` typedef in `dictdef.h`.
+
 ## Why this file and not `product-lock.json`
 
 The engine used to be pinned by a gitlink, and `product-lock.json` recorded the commit so CI could
