@@ -13,6 +13,7 @@ vi.mock('./shared', () => ({
   applyDropdownValue: vi.fn(),
   applyToggleState: vi.fn(),
   setFuzzyRuleOptionsDisabled: vi.fn(),
+  setMixedCandidateOptionsDisabled: vi.fn(),
   setSmartPunctuationOptionsDisabled: vi.fn()
 }));
 // The snapshot handler hands sections to these modules through fire-and-forget
@@ -26,9 +27,9 @@ vi.mock('./input', () => ({
   applyFrequencyConfig: vi.fn(),
   applyInputConfig: vi.fn(),
   applyNiuTransConfig: vi.fn(),
-  applyTencentTmtConfig: vi.fn(),
-  applyZhEnMixedInputConfig: vi.fn()
+  applyTencentTmtConfig: vi.fn()
 }));
+vi.mock('./tools-settings', () => ({ applyZhEnMixedInputConfig: vi.fn() }));
 vi.mock('./voice', () => ({ applyVoiceConfig: vi.fn() }));
 vi.mock('./ai-settings', () => ({ applyAiConfig: vi.fn() }));
 vi.mock('./floating-toolbar', () => ({
@@ -40,7 +41,7 @@ vi.mock('./floating-toolbar', () => ({
 vi.mock('./stats', () => ({ applyStatisticsEnabled: vi.fn(), applyStatisticsRetention: vi.fn() }));
 vi.mock('./shortcut', () => ({ applyShortcutConfig: vi.fn() }));
 
-import { applyToggleState } from './shared';
+import { applyToggleState, setMixedCandidateOptionsDisabled } from './shared';
 import { setupConfigSync } from './config-sync';
 
 beforeEach(() => {
@@ -85,4 +86,14 @@ it('backfills the focus announcement switch only from a boolean', () => {
   vi.mocked(applyToggleState).mockClear();
   snapshot({ data: { general: {} } });
   expect(applyToggleState).not.toHaveBeenCalledWith('caretStateIndicatorOnFocusToggleBtn', expect.anything());
+});
+
+it('greys out the mixed candidate sub-switches when the master switch is off', () => {
+  const snapshot = handlers.get('configSnapshot')!;
+  snapshot({ data: { utility: { mixed_candidates: false, date_time_candidates: true } } });
+  expect(applyToggleState).toHaveBeenCalledWith('mixedCandidatesToggleBtn', false);
+  expect(setMixedCandidateOptionsDisabled).toHaveBeenCalledWith(true);
+  expect(applyToggleState).toHaveBeenCalledWith('dateTimeCandidatesToggleBtn', true);
+  snapshot({ data: { utility: { mixed_candidates: true } } });
+  expect(setMixedCandidateOptionsDisabled).toHaveBeenLastCalledWith(false);
 });

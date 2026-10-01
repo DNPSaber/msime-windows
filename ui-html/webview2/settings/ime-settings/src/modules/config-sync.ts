@@ -1,6 +1,6 @@
 import { onHostMessage } from '../utils/host-messages';
 import { serializeHostMessage } from '../../../../shared/messages';
-import { applyCandidateArrange, applyDropdownValue as applyDropdown, applyToggleState as applyToggle, setFuzzyRuleOptionsDisabled, setSmartPunctuationOptionsDisabled } from './shared';
+import { applyCandidateArrange, applyDropdownValue as applyDropdown, applyToggleState as applyToggle, setFuzzyRuleOptionsDisabled, setMixedCandidateOptionsDisabled, setSmartPunctuationOptionsDisabled } from './shared';
 
 let lastSnapshot: Record<string, any> | null = null;
 const readyModules = new Set<string>();
@@ -224,6 +224,14 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (typeof data?.utility?.quick_phrase_frequency === 'boolean') {
     applyToggleState('quickPhraseFrequencyToggleBtn', data.utility.quick_phrase_frequency);
   }
+  // 候选混输：总开关关闭时子开关置灰禁用，勾选状态仍按已存值展示。
+  if (typeof data?.utility?.mixed_candidates === 'boolean' && findElement('mixedCandidatesToggleBtn')) {
+    applyToggleState('mixedCandidatesToggleBtn', data.utility.mixed_candidates);
+    setMixedCandidateOptionsDisabled(!data.utility.mixed_candidates);
+  }
+  if (typeof data?.utility?.date_time_candidates === 'boolean') {
+    applyToggleState('dateTimeCandidatesToggleBtn', data.utility.date_time_candidates);
+  }
   if (typeof data?.utility?.date_time_mode === 'boolean') {
     applyToggleState('dateTimeModeToggleBtn', data.utility.date_time_mode);
   }
@@ -367,13 +375,18 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
         data?.input?.japanese_schema
       );
       module.applyFrequencyConfig(data?.frequency_adjustment);
+      module.applyTencentTmtConfig(data?.tencent_tmt);
+      module.applyNiuTransConfig(data?.niutrans);
+      module.applyCustomTranslationConfig(data?.custom_translation);
+    });
+  }
+  if (applies('tools-settings')) {
+    void import('./tools-settings').then((module) => {
+      if (data !== lastSnapshot) return;
       module.applyZhEnMixedInputConfig(
         data?.general?.cn_en_mixed_input,
         data?.general?.cn_en_mixed_input_min_chars
       );
-      module.applyTencentTmtConfig(data?.tencent_tmt);
-      module.applyNiuTransConfig(data?.niutrans);
-      module.applyCustomTranslationConfig(data?.custom_translation);
     });
   }
   if (applies('voice') && data?.voice_input && typeof data.voice_input === 'object') {

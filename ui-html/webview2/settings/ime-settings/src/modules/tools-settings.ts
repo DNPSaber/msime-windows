@@ -5,7 +5,7 @@ import { hoistOverlay } from '../utils/overlay-host';
 import type { SettingsMessage } from '../../../../shared/messages';
 type DictionaryRequest = Extract<SettingsMessage, { type: 'dictionaryRequest' }>['data'];
 import { serializeHostMessage } from '../../../../shared/messages';
-import { setupToggleButton } from './shared';
+import { applyDropdownValue, applyToggleState, setMixedCandidateOptionsDisabled, setupDropdownMenu, setupToggleButton } from './shared';
 import { updateConfig } from './config-sync';
 
 type QuickPhraseRow = { code: string; word: string; weight: number };
@@ -101,6 +101,63 @@ function downloadExport(content: string, filename: string): void {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+function syncZhEnMixedInputOptionsEnabled(enabled: boolean): void {
+  document.getElementById('zhEnMixedInputOptions')?.classList.toggle('is-disabled', !enabled);
+}
+
+export function applyZhEnMixedInputConfig(enabled?: boolean, minChars?: number): void {
+  if (typeof enabled === 'boolean') {
+    applyToggleState('zhEnToggleBtn', enabled);
+    syncZhEnMixedInputOptionsEnabled(enabled);
+  }
+  if (typeof minChars === 'number' && Number.isFinite(minChars)) {
+    applyDropdownValue('zhEnTriggerLengthBtn', 'zhEnTriggerLengthMenu', String(minChars));
+  }
+}
+
+// 候选混输分区：折叠头 + 总开关 + 各项混输子开关。折叠交互与输入页的智能标点一致，默认收起。
+// 中英混输、emoji、颜文字的配置键仍在 [general]，快捷短语与日期时间在 [utility]。
+function setupMixedCandidatesSection(): void {
+  setupToggleButton('mixedCandidatesToggleBtn', (active) => {
+    updateConfig('utility.mixed_candidates', active);
+    setMixedCandidateOptionsDisabled(!active);
+  });
+  setupToggleButton('zhEnToggleBtn', (active) => {
+    syncZhEnMixedInputOptionsEnabled(active);
+    updateConfig('general.cn_en_mixed_input', active);
+  });
+  setupDropdownMenu(
+    'zhEnTriggerLengthBtn',
+    'zhEnTriggerLengthMenu',
+    '',
+    true,
+    'general.cn_en_mixed_input_min_chars',
+    Number
+  );
+  setupToggleButton('emojiMixedInputToggleBtn', (active) => {
+    updateConfig('general.emoji_mixed_input', active);
+  });
+  setupToggleButton('kaomojiMixedInputToggleBtn', (active) => {
+    updateConfig('general.kaomoji_mixed_input', active);
+  });
+  setupToggleButton('quickPhraseCandidatesToggleBtn', (active) => {
+    updateConfig('utility.quick_phrase_candidates', active);
+  });
+  setupToggleButton('quickPhraseFrequencyToggleBtn', (active) => {
+    updateConfig('utility.quick_phrase_frequency', active);
+  });
+  setupToggleButton('dateTimeCandidatesToggleBtn', (active) => {
+    updateConfig('utility.date_time_candidates', active);
+  });
+  const expand = document.getElementById('mixedCandidatesExpand');
+  const details = document.getElementById('mixedCandidatesDetails');
+  expand?.addEventListener('click', () => {
+    const expanded = expand.getAttribute('aria-expanded') !== 'true';
+    expand.setAttribute('aria-expanded', String(expanded));
+    details?.classList.toggle('open', expanded);
+  });
+}
+
 export function setupToolsSettings(): void {
   hoistOverlay(document.getElementById('quickPhraseToast'));
   hoistOverlay(document.getElementById('quickPhraseModal'));
@@ -109,14 +166,9 @@ export function setupToolsSettings(): void {
   setupToggleButton('clipboardHistoryToggleBtn', (active) => {
     updateConfig('utility.clipboard_history', active);
   });
+  setupMixedCandidatesSection();
   setupToggleButton('quickPhraseToggleBtn', (active) => {
     updateConfig('utility.quick_phrase', active);
-  });
-  setupToggleButton('quickPhraseCandidatesToggleBtn', (active) => {
-    updateConfig('utility.quick_phrase_candidates', active);
-  });
-  setupToggleButton('quickPhraseFrequencyToggleBtn', (active) => {
-    updateConfig('utility.quick_phrase_frequency', active);
   });
   setupToggleButton('unicodeModeToggleBtn', (active) => {
     updateConfig('utility.unicode_mode', active);
