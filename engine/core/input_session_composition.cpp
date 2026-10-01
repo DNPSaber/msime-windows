@@ -285,7 +285,13 @@ std::string BuildQuanpinAutocorrectDisplay(const QueryRequest &request)
     // bit rides along with the legacy switches.
     if (quanpin::looks_like_syllable_with_jianpin_tail(request.raw_input))
     {
-        return base;
+        // The typed spelling is legal, but the scheme alias table may still
+        // have re-segmented it into a reading with copied letters (dongua ->
+        // dong'gua, haoyonga -> hao'yong'ga). The dictionary ranks those
+        // readings against the exact one by frequency, yet the preedit must
+        // show the typed letters (PRD R5), so a rewritten base may never
+        // reach it verbatim.
+        return letters_rewritten ? QuanpinLettersWithoutDelimiters(cased) : base;
     }
 
     const auto cut = quanpin::autocorrect_cut_detail(folded_input, types);
