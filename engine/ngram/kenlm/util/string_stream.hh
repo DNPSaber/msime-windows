@@ -34,9 +34,12 @@ class StringStream : public FakeOStream<StringStream> {
     }
 
     void AdvanceTo(char *to) {
-      assert(to <= &*out_.end());
-      assert(to >= &*out_.begin());
-      out_.resize(to - &*out_.begin());
+      // Local patch (MSVC compatibility): &*end() dereferences the end
+      // iterator, which the MSVC checked iterators reject even in asserts;
+      // data() + size() is the same past-the-end pointer without UB.
+      assert(to <= out_.data() + out_.size());
+      assert(to >= out_.data());
+      out_.resize(to - out_.data());
     }
 
   private:
