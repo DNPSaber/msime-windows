@@ -379,7 +379,14 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                     else if (type == "collocationModelDownload")
                     {
                         // 后台线程下载，进度随下一次配置快照回给页面；页面在下载态轮询 configRequest。
-                        collocation::StartDownload();
+                        // 忙碌（其他模型在下载）时 StartDownload 拒绝，页面在下载态禁用其余下载按钮。
+                        collocation::StartDownload(json::value_to<std::string>(val.at("data").at("modelId")));
+                        PostSettingsConfig();
+                    }
+                    else if (type == "collocationModelDelete")
+                    {
+                        // 下载中与当前生效解析的 id 在 DeleteModel 里拒绝；无论成败都回快照刷新列表。
+                        collocation::DeleteModel(json::value_to<std::string>(val.at("data").at("modelId")));
                         PostSettingsConfig();
                     }
                     else if (type == "collocationModelStatusRequest")
@@ -1071,6 +1078,14 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                                     PostSettingsConfig();
                                 }
                             }
+                            else if (path == "association.sentence_collocation_model")
+                            {
+                                const std::string model_id = json::value_to<std::string>(data.at("value"));
+                                if (SetConfiguredAssocSentenceCollocationModel(model_id))
+                                {
+                                    PostSettingsConfig();
+                                }
+                            }
                             else if (path == "utility.unicode_mode")
                             {
                                 const bool value = json::value_to<bool>(data.at("value"));
@@ -1497,8 +1512,27 @@ void PostSettingsConfig()
             {"sentence_collocation_enabled", GetConfiguredAssocSentenceCollocationEnabled()},
             {"sentence_collocation_model_status",
              [] {
-                 const auto status = collocation::GetModelStatus();
-                 return nlohmann::json{{"state", status.state}, {"progress", status.progress}, {"error", status.error}};
+                 nlohmann::json statuses = nlohmann::json::object();
+                 for (const auto &[model_id, status] : collocation::GetModelStatuses())
+                 {
+                     statuses[model_id] = nlohmann::json{
+                         {"state", status.state}, {"progress", status.progress}, {"error", status.error}};
+                 }
+                 return statuses;
+             }()},
+            {"sentence_collocation_model", GetConfiguredAssocSentenceCollocationModel()},
+            {"sentence_collocation_catalog",
+             [] {
+                 // 页面不自持目录副本：id 与下载 URL 留在 Server 侧，只下发展示字段。
+                 nlohmann::json catalog = nlohmann::json::array();
+                 for (const auto &entry : collocation::Catalog())
+                 {
+                     catalog.push_back(nlohmann::json{{"id", entry.id},
+                                                      {"displayName", entry.display_name},
+                                                      {"sizeHint", entry.size_hint},
+                                                      {"license", entry.license}});
+                 }
+                 return catalog;
              }()}}},
           {"keybindings",
            {{"switch_language_shift", GetConfiguredSwitchLanguageShiftEnabled()},

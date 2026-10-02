@@ -367,6 +367,7 @@ bool GetConfiguredAssocSentenceCollocationEnabled();
 bool SetConfiguredAssocSentenceCollocationEnabled(bool enabled);
 bool GetConfiguredAssocSentenceCollocationRerankWeight();
 std::string GetConfiguredAssocSentenceCollocationModel();
+bool SetConfiguredAssocSentenceCollocationModel(const std::string &model_id);
 double GetConfiguredAssocSentenceCollocationWeight();
 bool GetConfiguredUnicodeModeEnabled();
 bool SetConfiguredUnicodeModeEnabled(bool enabled);

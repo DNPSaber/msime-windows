@@ -346,6 +346,38 @@
   pointer-events: none;
 }
 
+/* octagram 模型列表：一行一个目录条目（名称/大小/许可 + 状态 + 激活单选/下载/删除） */
+.collocation-model-list {
+  margin-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.collocation-model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.collocation-model-name {
+  font-size: 13px;
+}
+
+.collocation-model-meta {
+  margin-left: 8px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.collocation-model-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
 .toggle-section-disabled-hint {
   margin-top: 8px;
   color: var(--text-muted);

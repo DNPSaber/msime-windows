@@ -1,30 +1,48 @@
 #pragma once
 
-// octagram 语法模型（八股文，.gram）的按需下载与状态查询。下载器只精选了内置
-// 推荐包（万象），机制本身按模型包 id 通用：其他 octagram 模型手动放置后即可用。
+// octagram 语法模型（八股文，.gram）的按需下载与状态查询。内置目录（Catalog）随签名安装包
+// 走：收录社区模型包需要改代码发版，不引入动态目录源。下载按目录条目的 host/path 直链进行，
+// 落到 <DataDir>/models/<id>/<id>.gram——确定性布局让引擎侧解析与安装器「models/ 整目录升级
+// 保留、卸载删除」对新 id 自动成立。
 //
-// 390MB 的模型不进安装包：设置页提供下载按钮，落到
-// <DataDir>/models/wanxiang-lts-zh-hans/wanxiang-lts-zh-hans.gram。
+// 完整性靠格式，不靠摘要。上游会原地重传（tag 不变、字节变）且没有不可变的资产 URL，把摘要
+// 钉死就意味着每次重训都要改代码、发一个签名安装包，否则所有用户的下载一起失败——这个成本
+// 消不掉。而重训只换权重，「Rime::Grammar/」魔数与双数组布局不变，所以这里只要求字节能被
+// 引擎读取端打开（魔数 + 边界检查，engine/ngram/octagram/octagram_gram.cpp 的 GramDb::open）；
+// 读取端不按文件自带的长度做堆分配，未知权重的字节是安全输入。传输完整性交给 HTTPS 加
+// Content-Length 比对。
 //
-// 完整性靠格式，不靠摘要。上游 LTS 会被原地重传（tag 不变、字节变）且没有不可变的
-// 资产 URL，把摘要钉死就意味着每次重训都要改代码、发一个签名安装包，否则所有用户的
-// 下载一起失败——这个成本消不掉。而重训只换权重，「Rime::Grammar/」魔数与双数组布局
-// 不变，所以这里只要求字节能被引擎读取端打开（魔数 + 边界检查，
-// engine/ngram/octagram/octagram_gram.cpp 的 GramDb::open）；读取端不按文件自带的长度
-// 做堆分配，未知权重的字节是安全输入。传输完整性交给 HTTPS 加 Content-Length 比对。
-//
-// 状态以磁盘为准（模型文件存在 = ready，落位发生在格式校验之后），下载态是各进程
-// 内存里的 runtime 状态：独立设置进程与 Server 各自能看到自己的下载进度。
+// 状态以磁盘为准（模型文件存在 = ready，落位发生在格式校验之后），下载态是各进程内存里的
+// runtime 状态：独立设置进程与 Server 各自能看到自己的下载进度。同一时刻至多一个下载在飞
+// （单网络槽），忙碌时对新 id 的下载请求直接拒绝，页面在下载态禁用其余下载按钮。
 
+#include <map>
 #include <string>
+#include <vector>
 
 namespace collocation
 {
 
-// 内置推荐包（万象）的 id，也是下载器的落位目录名。解析侧在配置未指定 id 时回退到它，
-// 所以这个键可以一直留空：模型下载到位后自然生效，不依赖谁去写回配置。
-// 候选徽章也按这个 id 的 wanxiang 前缀区分〔万象〕与其他 octagram 模型（〔八股〕）。
+// 内置推荐包（万象）的 id，也是激活值留空时的回退目标（引擎解析侧与删除守卫同样回退到
+// 它），所以激活键可以一直留空：模型下载到位后自然生效，不依赖谁去写回配置。
+// 候选徽章也按模型 id 的 wanxiang 前缀区分〔万象〕与其他 octagram 模型（〔八股〕）。
 inline constexpr char kDefaultModelId[] = "wanxiang-lts-zh-hans";
+
+// 内置目录的一个条目。host/path 是 HTTPS 直链（release 资产与 raw 文件都经 302 跳 CDN，
+// 下载器显式放开重定向）；size_hint/license/license_note 进设置页展示与 NOTICE.md 署名。
+struct CatalogEntry
+{
+    const char *id;
+    const char *display_name;
+    const wchar_t *host;
+    const wchar_t *path;
+    const char *size_hint;
+    const char *license;
+    const char *license_note; // 可为空串：无补充说明
+};
+
+// 编译期内置目录，首条目是内置推荐包。
+const std::vector<CatalogEntry> &Catalog();
 
 struct ModelStatus
 {
@@ -33,11 +51,17 @@ struct ModelStatus
     std::string error; // state == "error" 时的人类可读原因
 };
 
-// 磁盘现状 + 本进程下载态。轻量，可随配置快照频繁调用。
-ModelStatus GetModelStatus();
+// 磁盘现状 + 本进程下载态，按目录条目逐 id 给出。轻量，可随配置快照频繁调用。
+std::map<std::string, ModelStatus> GetModelStatuses();
 
-// 幂等启动后台下载：已在下载或已就绪时返回 true 不重复启动；磁盘空间不足、
-// 无法创建目录等同步失败返回 false 并把原因记入状态。完成/失败经状态查询可见。
-bool StartDownload();
+// 幂等启动指定模型的下载：该 id 已在下载或已就绪时返回 true 不重复启动；同一时刻至多一个
+// 下载在飞，其他 id 忙碌时返回 false。目录里没有的 id、无法创建目录等同步失败也返回
+// false，原因记入该 id 的状态。完成/失败经状态查询可见。
+bool StartDownload(const std::string &model_id);
+
+// 删除已下载的模型目录（.gram 与 NOTICE.md 一并）。守卫：该 id 下载中拒绝；id 为当前生效
+// 解析（激活值留空时回退内置推荐包）拒绝——删掉正在用的包会让整句加成静默失效。目录里
+// 没有的 id 返回 false。
+bool DeleteModel(const std::string &model_id);
 
 } // namespace collocation

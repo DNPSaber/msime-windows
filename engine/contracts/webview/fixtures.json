@@ -740,5 +740,51 @@
     "direction": "server",
     "surface": "settings",
     "valid": true
+  },
+  {
+    "name": "collocation model download with model id",
+    "message": {
+      "type": "collocationModelDownload",
+      "data": {
+        "modelId": "zh-moqi"
+      }
+    },
+    "direction": "client",
+    "surface": "settings",
+    "valid": true
+  },
+  {
+    "name": "collocation model download without model id",
+    "message": {
+      "type": "collocationModelDownload"
+    },
+    "direction": "client",
+    "surface": "settings",
+    "valid": false
+  },
+  {
+    "name": "collocation model delete with model id",
+    "message": {
+      "type": "collocationModelDelete",
+      "data": {
+        "modelId": "zh-moqi"
+      }
+    },
+    "direction": "client",
+    "surface": "settings",
+    "valid": true
+  },
+  {
+    "name": "collocation model delete rejects unknown fields",
+    "message": {
+      "type": "collocationModelDelete",
+      "data": {
+        "modelId": "zh-moqi",
+        "force": true
+      }
+    },
+    "direction": "client",
+    "surface": "settings",
+    "valid": false
   }
 ]

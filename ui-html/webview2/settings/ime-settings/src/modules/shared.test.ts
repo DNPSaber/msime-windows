@@ -151,13 +151,29 @@ it('allows the item after the host clears its disabled state', () => {
 
 describe('collocation model status gating', () => {
   const TOGGLE_IDS = ['sentenceCollocationToggleBtn'];
+  const BUILT_IN_ID = 'wanxiang-lts-zh-hans';
+  const CATALOG = [
+    { id: BUILT_IN_ID, displayName: '万象 LTS（推荐）', sizeHint: '约 390 MB', license: 'CC-BY-4.0' },
+    { id: 'zh-moqi', displayName: '白霜（实验）', sizeHint: '约 7 MB', license: 'GPL-3.0' }
+  ];
 
-  // 只实现 shared.ts 实际用到的那几个成员，避免继承 MenuElement 时和它的
-  // classList mock 打架。
-  class RowElement {
-    classes = new Set<string>();
+  // 只实现 shared.ts 实际用到的那几个成员：目录行是动态种子的，测试里用这份假 DOM
+  // 复刻 querySelector/dataset 的最小行为。
+  class FakeElement {
+    tagName: string;
+    children: FakeElement[] = [];
+    dataset: Record<string, string> = {};
+    className = '';
+    textContent = '';
+    type = '';
+    value = '';
+    disabled = false;
+    hidden = false;
+    checked = false;
     tabIndex = 0;
     attributes = new Map<string, string>();
+    handlers = new Map<string, () => void>();
+    classes = new Set<string>();
     classList = {
       toggle: (name: string, on: boolean): boolean => {
         if (on) {
@@ -168,80 +184,173 @@ describe('collocation model status gating', () => {
         return on;
       }
     };
+
+    constructor(tagName = 'div') {
+      this.tagName = tagName;
+    }
+
+    appendChild(child: FakeElement): FakeElement {
+      this.children.push(child);
+      return child;
+    }
+    addEventListener(type: string, handler: () => void): void {
+      this.handlers.set(type, handler);
+    }
     setAttribute(name: string, value: string) {
       this.attributes.set(name, value);
     }
     getAttribute(name: string) {
       return this.attributes.get(name) ?? null;
     }
+    querySelector(selector: string): FakeElement | null {
+      const matches = (el: FakeElement): boolean => {
+        // createElement 的传参在假 DOM 里保持原样（小写 'input'），真实 DOM 的 tagName
+        // 是大写，这里两边通吃。
+        if (selector === 'input[type="radio"]') return el.tagName.toUpperCase() === 'INPUT' && el.type === 'radio';
+        if (selector.startsWith('.')) return el.className.split(' ').includes(selector.slice(1));
+        return false;
+      };
+      for (const child of this.children) {
+        if (matches(child)) return child;
+        const nested = child.querySelector(selector);
+        if (nested) return nested;
+      }
+      return null;
+    }
   }
 
-  let toggles: Record<string, RowElement>;
-  let rows: RowElement[];
-  let downloadButton: { disabled: boolean };
-  let statusText: { textContent: string };
+  let toggles: Record<string, FakeElement>;
+  let toggleRows: FakeElement[];
+  let modelList: FakeElement;
+  let postMessage: ReturnType<typeof vi.fn>;
+
+  const rows = (): FakeElement[] => modelList.children;
+  const rowById = (id: string): FakeElement => rows().find((row) => row.dataset.modelId === id)!;
+  const radioOf = (row: FakeElement): FakeElement => row.querySelector('input[type="radio"]')!;
+  const downloadOf = (row: FakeElement): FakeElement => row.querySelector('.collocation-model-download')!;
+  const removeOf = (row: FakeElement): FakeElement => row.querySelector('.collocation-model-delete')!;
+  const statusOf = (row: FakeElement): FakeElement => row.querySelector('.collocation-model-status')!;
 
   beforeEach(() => {
-    toggles = Object.fromEntries(TOGGLE_IDS.map((id) => [id, new RowElement()]));
-    rows = [new RowElement(), new RowElement()];
-    downloadButton = { disabled: false };
-    statusText = { textContent: '' };
+    toggles = Object.fromEntries(TOGGLE_IDS.map((id) => [id, new FakeElement()]));
+    toggleRows = [new FakeElement()];
+    modelList = new FakeElement();
+    postMessage = vi.fn();
     vi.stubGlobal('document', {
-      getElementById: (id: string) => {
-        if (id === 'collocationModelDownloadBtn') return downloadButton;
-        if (id === 'collocationModelStatusText') return statusText;
-        return toggles[id] ?? null;
-      },
-      querySelectorAll: (selector: string) => (selector === '.collocation-toggle-row' ? rows : [])
+      createElement: (tag: string) => new FakeElement(tag),
+      getElementById: (id: string) => (id === 'collocationModelList' ? modelList : toggles[id] ?? null),
+      querySelectorAll: (selector: string) => {
+        if (selector === '.collocation-toggle-row') return toggleRows;
+        if (selector === '.collocation-model-row') return rows();
+        return [];
+      }
     });
-    vi.stubGlobal('window', { chrome: { webview: { postMessage: vi.fn() } } });
+    vi.stubGlobal('window', { chrome: { webview: { postMessage } } });
   });
 
-  it('grays out both toggles until the model is ready', () => {
-    applyCollocationModelStatus({ state: 'absent' });
+  it('seeds one row per catalog entry and leaves the built-in package activatable while absent', () => {
+    applyCollocationModelStatus({ [BUILT_IN_ID]: { state: 'absent' }, 'zh-moqi': { state: 'absent' } }, CATALOG, '');
+    expect(rows()).toHaveLength(2);
+    // 激活留空 = 内置推荐包：对应单选选中且可点（未下载也可用，引擎静默降级）。
+    expect(radioOf(rowById(BUILT_IN_ID)).value).toBe('');
+    expect(radioOf(rowById(BUILT_IN_ID)).disabled).toBe(false);
+    expect(radioOf(rowById(BUILT_IN_ID)).checked).toBe(true);
+    // 未就绪的社区包不可激活。
+    expect(radioOf(rowById('zh-moqi')).disabled).toBe(true);
+    expect(radioOf(rowById('zh-moqi')).checked).toBe(false);
+    // 生效解析（留空 = 内置推荐）未就绪 → 整句开关置灰。
     for (const id of TOGGLE_IDS) {
       expect(toggles[id].getAttribute('aria-disabled')).toBe('true');
       expect(toggles[id].tabIndex).toBe(-1);
     }
-    expect(rows.every((row) => row.classes.has('is-disabled'))).toBe(true);
-    expect(downloadButton.disabled).toBe(false);
+    expect(toggleRows.every((row) => row.classes.has('is-disabled'))).toBe(true);
+  });
 
-    applyCollocationModelStatus({ state: 'ready' });
+  it('does not duplicate rows across snapshots', () => {
+    applyCollocationModelStatus({ 'zh-moqi': { state: 'absent' } }, CATALOG, '');
+    applyCollocationModelStatus({ 'zh-moqi': { state: 'ready' } }, CATALOG, 'zh-moqi');
+    expect(rows()).toHaveLength(2);
+  });
+
+  it('replays per-model status text and download/delete visibility', () => {
+    applyCollocationModelStatus(
+      { [BUILT_IN_ID]: { state: 'ready' }, 'zh-moqi': { state: 'downloading', progress: 40 } },
+      CATALOG,
+      ''
+    );
+    const builtIn = rowById(BUILT_IN_ID);
+    const moqi = rowById('zh-moqi');
+    expect(statusOf(builtIn).textContent).toBe('模型已就绪');
+    expect(downloadOf(builtIn).disabled).toBe(true);
+    // 当前生效解析（留空 = 内置推荐）的包不可删。
+    expect(removeOf(builtIn).hidden).toBe(true);
+    expect(statusOf(moqi).textContent).toBe('下载中 40%');
+    expect(downloadOf(moqi).disabled).toBe(true);
+    expect(removeOf(moqi).hidden).toBe(true);
+  });
+
+  it('activates a ready model, unguards the toggles, and offers deletion only for inactive rows', () => {
+    applyCollocationModelStatus({ [BUILT_IN_ID]: { state: 'ready' }, 'zh-moqi': { state: 'ready' } }, CATALOG, 'zh-moqi');
+    expect(radioOf(rowById('zh-moqi')).disabled).toBe(false);
+    expect(radioOf(rowById('zh-moqi')).checked).toBe(true);
+    expect(removeOf(rowById('zh-moqi')).hidden).toBe(true);
+    expect(removeOf(rowById(BUILT_IN_ID)).hidden).toBe(false);
+    // 生效解析 = zh-moqi 已就绪 → 整句开关解禁。
     for (const id of TOGGLE_IDS) {
       expect(toggles[id].getAttribute('aria-disabled')).toBe('false');
       expect(toggles[id].tabIndex).toBe(0);
     }
-    expect(rows.every((row) => row.classes.has('is-disabled'))).toBe(false);
+    expect(toggleRows.every((row) => row.classes.has('is-disabled'))).toBe(false);
   });
 
-  it('keeps the toggles disabled while downloading and after a failure', () => {
-    applyCollocationModelStatus({ state: 'downloading', progress: 40 });
-    expect(downloadButton.disabled).toBe(true);
+  it('keeps the toggles disabled while the active model is downloading or failed', () => {
+    applyCollocationModelStatus({ 'zh-moqi': { state: 'downloading', progress: 10 } }, CATALOG, 'zh-moqi');
     for (const id of TOGGLE_IDS) {
       expect(toggles[id].getAttribute('aria-disabled')).toBe('true');
     }
-
-    applyCollocationModelStatus({ state: 'error', error: '校验失败' });
-    expect(statusText.textContent).toBe('下载失败：校验失败');
-    expect(downloadButton.disabled).toBe(false);
+    applyCollocationModelStatus({ 'zh-moqi': { state: 'error', error: '校验失败' } }, CATALOG, 'zh-moqi');
+    expect(statusOf(rowById('zh-moqi')).textContent).toBe('下载失败：校验失败');
     for (const id of TOGGLE_IDS) {
       expect(toggles[id].getAttribute('aria-disabled')).toBe('true');
     }
+    // 失败后下载按钮放行，允许重试。
+    expect(downloadOf(rowById('zh-moqi')).disabled).toBe(false);
   });
 
-  it('treats a missing status as not downloaded', () => {
-    applyCollocationModelStatus(undefined);
-    expect(statusText.textContent).toBe('未下载');
-    for (const id of TOGGLE_IDS) {
-      expect(toggles[id].getAttribute('aria-disabled')).toBe('true');
-    }
+  it('disables the other rows download buttons while any download is in flight', () => {
+    applyCollocationModelStatus(
+      { [BUILT_IN_ID]: { state: 'absent' }, 'zh-moqi': { state: 'downloading', progress: 10 } },
+      CATALOG,
+      ''
+    );
+    expect(downloadOf(rowById('zh-moqi')).disabled).toBe(true);
+    // 单网络槽：未下载的行也一并禁用，忙碌语义在界面上可见（服务端拒绝是兜底）。
+    expect(downloadOf(rowById(BUILT_IN_ID)).disabled).toBe(true);
   });
 
-  it('marks a ready model as ready', () => {
-    applyCollocationModelStatus({ state: 'ready' });
-    expect(statusText.textContent).toBe('模型已就绪');
-    for (const id of TOGGLE_IDS) {
-      expect(toggles[id].getAttribute('aria-disabled')).toBe('false');
-    }
+  it('sends the activation update with an empty value for the built-in row', () => {
+    applyCollocationModelStatus({ 'zh-moqi': { state: 'ready' } }, CATALOG, '');
+    radioOf(rowById(BUILT_IN_ID)).handlers.get('change')?.();
+    const message = JSON.parse(postMessage.mock.calls[0]?.[0] as string);
+    expect(message).toMatchObject({
+      type: 'configUpdate',
+      data: { path: 'association.sentence_collocation_model', value: '' }
+    });
+  });
+
+  it('sends download and delete requests with the row model id', () => {
+    applyCollocationModelStatus({ 'zh-moqi': { state: 'absent' } }, CATALOG, '');
+    downloadOf(rowById('zh-moqi')).handlers.get('click')?.();
+    expect(JSON.parse(postMessage.mock.calls[0]?.[0] as string)).toMatchObject({
+      type: 'collocationModelDownload',
+      data: { modelId: 'zh-moqi' }
+    });
+
+    applyCollocationModelStatus({ 'zh-moqi': { state: 'ready' } }, CATALOG, '');
+    removeOf(rowById('zh-moqi')).handlers.get('click')?.();
+    expect(JSON.parse(postMessage.mock.calls[1]?.[0] as string)).toMatchObject({
+      type: 'collocationModelDelete',
+      data: { modelId: 'zh-moqi' }
+    });
   });
 });

@@ -447,12 +447,9 @@ export function setupInput(): void {
   setupToggleButton('sentenceCollocationToggleBtn', (active) => {
     updateConfig('association.sentence_collocation_enabled', active);
   });
-  // 万象包下载（内置推荐模型，设置页唯一的精选来源）：点击后发 host 消息。状态文本、按钮态与轮询由
-  // shared.applyCollocationModelStatus 随配置快照驱动（config-sync 调用）。
-  const downloadButton = document.getElementById('collocationModelDownloadBtn') as HTMLButtonElement | null;
-  downloadButton?.addEventListener('click', () => {
-    window.chrome?.webview?.postMessage(serializeHostMessage({ type: 'collocationModelDownload' }));
-  });
+  // 模型列表行（激活单选/下载/删除）由 shared.seedCollocationRows 按 catalog 播种并在行构建时
+  // 接线；状态文本、控件可用态与轮询由 shared.applyCollocationModelStatus 随配置快照驱动
+  // （config-sync 调用）。
 }
 
 function setupFrequencyOptions(): void {

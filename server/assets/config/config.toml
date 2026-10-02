@@ -83,13 +83,14 @@ sentence_neural_keyboard = true
 sentence_show_next_on_duplicate = false
 # 在候选窗的整句候选后显示来源标签（〔Trigram〕〔Unigram〕〔神经D〕〔神经K〕〔万象〕〔八股〕）
 sentence_source_badge = false
-# octagram 语法模型（八股文，.gram 格式，约 390MB，设置页下载）：字级搭配强度表，与词表
-# 零耦合。总开关，一并接入该模型的全部能力：解码期逐边叠加搭配分，且在 n-best 上按整句
-# 搭配分重排。全部能力共用一份模型包（models/<id>/<id>.gram）；模型未下载时开关不生效，
-# 词格静默降级。整句来源行：内置推荐包（万象）显示〔万象〕，其他 octagram 模型显示〔八股〕。
+# octagram 语法模型（八股文，.gram 格式）：字级搭配强度表，与词表零耦合。总开关，一并接入
+# 激活模型的全部能力：解码期逐边叠加搭配分，且在 n-best 上按整句搭配分重排。模型包从设置页
+# 内置目录按需下载（万象 LTS 约 390MB、八股文词级约 197/39MB、白霜约 7MB），布局
+# models/<id>/<id>.gram；模型未下载时开关不生效，词格静默降级。整句来源行：内置推荐包
+# （万象）显示〔万象〕，其他 octagram 模型显示〔八股〕。
 sentence_collocation_enabled = false
-# 模型包 id。留空即用内置推荐包 wanxiang-lts-zh-hans（万象）；也可手动放置别的 octagram
-# 模型后填 id（布局 models/<id>/<id>.gram）。没有别的生产者会写这个键，别指望下载器回写。
+# 激活的模型包 id（单选）。留空即用内置推荐包 wanxiang-lts-zh-hans（万象）；设置页激活其他
+# 已下载模型时写入该模型 id，切回内置推荐写空串。也可手动放置模型后直接填 id。
 sentence_collocation_model = ""
 # 搭配项的线性权重（log10 域），越大越信任搭配表。不进设置页，供配置文件高级调参
 sentence_collocation_weight = 0.1

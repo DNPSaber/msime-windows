@@ -1,5 +1,6 @@
 #include "collocation_model.h"
 
+#include "config/ime_config.h"
 #include "engine/core/data_path.h"
 #include "engine/ngram/octagram/octagram_gram.h"
 
@@ -17,27 +18,68 @@
 
 namespace collocation
 {
+
+// 编译期内置目录，首条目是内置推荐包。收录新模型 = 改这里发版，条目随签名安装包走；
+// 不引入动态目录源，避免免签分发渠道。zh-moqi 的构建链未声明许可，license_note 如实
+// 说明并标实验。
+const std::vector<CatalogEntry> &Catalog()
+{
+    static const std::vector<CatalogEntry> kCatalog = {
+        {kDefaultModelId, "万象 LTS（推荐）", L"github.com",
+         L"/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hans.gram", "约 390 MB", "CC-BY-4.0",
+         "© amzxyz / RIME-LMDG 项目"},
+        {"zh-hans-t-essay-bgw", "八股文·词级", L"github.com",
+         L"/lotem/rime-octagram-data/releases/download/20260712/zh-hans-t-essay-bgw.gram", "约 197 MB", "LGPL", ""},
+        {"zh-hans-t-essay-bgw-compact", "八股文·词级紧凑", L"github.com",
+         L"/lotem/rime-octagram-data/releases/download/20260712/zh-hans-t-essay-bgw-compact.gram", "约 39 MB", "LGPL",
+         ""},
+        {"zh-moqi", "白霜（实验）", L"raw.githubusercontent.com", L"/gaboolic/rime-frost/master/zh-moqi.gram",
+         "约 7 MB", "GPL-3.0", "随 GPL-3.0 仓库（gaboolic/rime-frost）分发，构建链未声明许可，实验性收录"},
+    };
+    return kCatalog;
+}
+
 namespace
 {
 
-constexpr const wchar_t *kModelHost = L"github.com";
-constexpr const wchar_t *kModelPath = L"/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hans.gram";
-constexpr const char *kModelId = collocation::kDefaultModelId;
-
-std::filesystem::path ModelDirectory()
+const CatalogEntry *FindEntry(const std::string &model_id)
 {
-    return metasequoia::data_directory() / "models" / kModelId;
+    for (const auto &entry : Catalog())
+    {
+        if (model_id == entry.id)
+            return &entry;
+    }
+    return nullptr;
 }
 
-std::filesystem::path ModelFile()
+std::filesystem::path ModelDirectory(const std::string &model_id)
 {
-    return ModelDirectory() / (std::string(kModelId) + ".gram");
+    return metasequoia::data_directory() / "models" / model_id;
 }
 
-std::filesystem::path PartFile()
+std::filesystem::path ModelFile(const std::string &model_id)
 {
-    // 同一卷上的临时名，下载完成后原子 rename 到位。
-    return metasequoia::data_directory() / "models" / (std::string(kModelId) + ".gram.part");
+    return ModelDirectory(model_id) / (model_id + ".gram");
+}
+
+std::filesystem::path PartFile(const std::string &model_id)
+{
+    // 同一卷上的临时名，下载完成后原子 rename 到位；放进模型自己的目录，多个模型的
+    // 下载互不碰撞。
+    return ModelDirectory(model_id) / (model_id + ".gram.part");
+}
+
+// 目录条目的 host/path 都是 ASCII（域名与仓库路径），NOTICE.md 是 UTF-8 文本，写之前把
+// 宽字符转回来；走 CP_UTF8 而不是逐字节截断，将来条目里出现非 ASCII 也不会产出坏字节。
+std::string Utf8FromWide(const wchar_t *wide)
+{
+    if (wide == nullptr)
+        return {};
+    const int bytes = WideCharToMultiByte(CP_UTF8, 0, wide, -1, nullptr, 0, nullptr, nullptr);
+    std::string narrow(bytes > 0 ? static_cast<size_t>(bytes) - 1 : 0, '\0');
+    if (bytes > 1)
+        WideCharToMultiByte(CP_UTF8, 0, wide, -1, narrow.data(), bytes, nullptr, nullptr);
+    return narrow;
 }
 
 // 格式锁：唯一真正拦下坏模型的检查。让引擎读取端自己开一次，Magic 与双数组边界
@@ -62,31 +104,49 @@ enum class DownloadState
     Error,
 };
 
-std::mutex g_mutex;
-DownloadState g_state = DownloadState::Idle;
-int g_progress = 0;
-std::string g_error;
+struct RuntimeState
+{
+    DownloadState state = DownloadState::Idle;
+    int progress = 0;
+    std::string error;
+};
 
-void SetState(DownloadState state, int progress, std::string error)
+std::mutex g_mutex;
+// 按 id 的下载态，map 大小就是目录条目数。成功后该 id 留下一个 Idle 条目，无碍：
+// 查询侧以磁盘为准，runtime 态只在文件缺席时补充 downloading/error。
+std::map<std::string, RuntimeState> g_states;
+
+void SetState(const std::string &model_id, DownloadState state, int progress, std::string error)
 {
     std::lock_guard lock(g_mutex);
-    g_state = state;
-    g_progress = progress;
-    g_error = std::move(error);
+    RuntimeState &runtime = g_states[model_id];
+    runtime.state = state;
+    runtime.progress = progress;
+    runtime.error = std::move(error);
+}
+
+// 当前生效解析的模型 id：激活值留空即回退内置推荐包（与引擎解析侧同一语义）。删除
+// 守卫按解析后的 id 判定，否则会删掉空激活实际正在使用的内置包。
+std::string ResolvedActiveModelId()
+{
+    const std::string configured = GetConfiguredAssocSentenceCollocationModel();
+    return configured.empty() ? std::string(kDefaultModelId) : configured;
 }
 
 // 后台线程：下载 -> 校验 -> 原子落位。全程只碰 PartFile，失败时不留半个模型
-// 在正式位置上。GitHub 的 release 资产经 302 跳转到 CDN，显式放开自动重定向。
-void DownloadThread()
+// 在正式位置上。条目按值收进线程：detached 线程的生命周期长于调用栈，host/path/id
+// 必须自持。release 资产与 raw 文件都经 302 跳转到 CDN，显式放开自动重定向。
+void DownloadThread(CatalogEntry entry)
 {
-    SetState(DownloadState::Downloading, 0, {});
+    const std::string model_id = entry.id;
+    SetState(model_id, DownloadState::Downloading, 0, {});
 
     std::error_code fs_error;
-    const std::filesystem::path directory = ModelDirectory();
+    const std::filesystem::path directory = ModelDirectory(model_id);
     std::filesystem::create_directories(directory, fs_error);
     if (fs_error)
     {
-        SetState(DownloadState::Error, 0, "无法创建模型目录");
+        SetState(model_id, DownloadState::Error, 0, "无法创建模型目录");
         return;
     }
 
@@ -94,16 +154,16 @@ void DownloadThread()
                                     WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
     if (session == nullptr)
     {
-        SetState(DownloadState::Error, 0, "无法初始化网络");
+        SetState(model_id, DownloadState::Error, 0, "无法初始化网络");
         return;
     }
     // 400MB 不是快操作：连接阶段给足超时，收发阶段不设上限靠进度与失败兜底。
     WinHttpSetTimeouts(session, 30000, 30000, 30000, 0);
-    HINTERNET connection = WinHttpConnect(session, kModelHost, INTERNET_DEFAULT_HTTPS_PORT, 0);
+    HINTERNET connection = WinHttpConnect(session, entry.host, INTERNET_DEFAULT_HTTPS_PORT, 0);
     HINTERNET request = nullptr;
     if (connection != nullptr)
     {
-        request = WinHttpOpenRequest(connection, L"GET", kModelPath, nullptr, WINHTTP_NO_REFERER,
+        request = WinHttpOpenRequest(connection, L"GET", entry.path, nullptr, WINHTTP_NO_REFERER,
                                      WINHTTP_DEFAULT_ACCEPT_TYPES, WINHTTP_FLAG_SECURE);
         if (request != nullptr)
         {
@@ -140,7 +200,7 @@ void DownloadThread()
     std::ofstream out;
     if (ok)
     {
-        out.open(PartFile(), std::ios::binary | std::ios::trunc);
+        out.open(PartFile(model_id), std::ios::binary | std::ios::trunc);
         ok = static_cast<bool>(out);
     }
 
@@ -172,7 +232,7 @@ void DownloadThread()
         if (expected > 0)
         {
             const int progress = static_cast<int>((std::min)(100LL, received * 100LL / expected));
-            SetState(DownloadState::Downloading, progress, {});
+            SetState(model_id, DownloadState::Downloading, progress, {});
         }
     }
     if (request != nullptr)
@@ -184,9 +244,10 @@ void DownloadThread()
 
     if (!ok)
     {
-        SetState(DownloadState::Error, 0, status != 0 && status != HTTP_STATUS_OK ? "下载响应异常" : "下载中断");
+        SetState(model_id, DownloadState::Error, 0,
+                 status != 0 && status != HTTP_STATUS_OK ? "下载响应异常" : "下载中断");
         std::error_code cleanup;
-        std::filesystem::remove(PartFile(), cleanup);
+        std::filesystem::remove(PartFile(model_id), cleanup);
         return;
     }
 
@@ -194,82 +255,123 @@ void DownloadThread()
     // 交给下面的格式校验兜底。
     if (expected > 0 && received != expected)
     {
-        SetState(DownloadState::Error, 0, "下载字节数与响应声明不符");
+        SetState(model_id, DownloadState::Error, 0, "下载字节数与响应声明不符");
         std::error_code cleanup;
-        std::filesystem::remove(PartFile(), cleanup);
+        std::filesystem::remove(PartFile(model_id), cleanup);
         return;
     }
 
     // 格式锁：唯一真正拦下坏模型的检查，也是「已下载」的定义——能被引擎读取端
     // 打开（魔数与双数组边界合法）就放行落位，打开不了的一律按损坏拒绝。
     std::string format_error;
-    if (!ValidateFormat(PartFile(), format_error))
+    if (!ValidateFormat(PartFile(model_id), format_error))
     {
-        SetState(DownloadState::Error, 0, "模型格式校验失败（上游可能改了格式）：" + format_error);
+        SetState(model_id, DownloadState::Error, 0, "模型格式校验失败（上游可能改了格式）：" + format_error);
         std::error_code cleanup;
-        std::filesystem::remove(PartFile(), cleanup);
+        std::filesystem::remove(PartFile(model_id), cleanup);
         return;
     }
 
     // ValidateFormat 的局部 GramDb 已析构、映射已解除，否则下面的 rename 会被
     // 以 FILE_SHARE_READ 打开的旧句柄拒绝。
     std::error_code rename_error;
-    std::filesystem::rename(PartFile(), ModelFile(), rename_error);
+    std::filesystem::rename(PartFile(model_id), ModelFile(model_id), rename_error);
     if (rename_error)
     {
-        SetState(DownloadState::Error, 0, "模型落位失败");
+        SetState(model_id, DownloadState::Error, 0, "模型落位失败");
         return;
     }
 
-    // CC-BY-4.0 的署名义务随模型走：NOTICE 与模型同目录，注明来源与许可。
+    // 署名义务随模型走：NOTICE 与模型同目录，注明来源与许可；各条目许可不同，
+    // zh-moqi 的许可状态在 license_note 里如实说明。
     std::error_code size_error;
-    const long long model_bytes = static_cast<long long>(std::filesystem::file_size(ModelFile(), size_error));
-    std::ofstream notice(ModelDirectory() / "NOTICE.md", std::ios::binary | std::ios::trunc);
+    const long long model_bytes = static_cast<long long>(std::filesystem::file_size(ModelFile(model_id), size_error));
+    std::ofstream notice(ModelDirectory(model_id) / "NOTICE.md", std::ios::binary | std::ios::trunc);
     if (notice)
     {
-        notice << "# 万象语法模型（" << kModelId << "）\n\n"
-               << "- 来源：https://github.com/amzxyz/RIME-LMDG/releases/tag/LTS\n"
-               << "- 许可：CC-BY-4.0（© amzxyz / RIME-LMDG 项目）\n"
-               << "- 文件：" << kModelId << ".gram（" << model_bytes << " 字节）\n";
+        const std::string note = entry.license_note == nullptr ? std::string() : std::string(entry.license_note);
+        notice << "# " << entry.display_name << "（" << model_id << "）\n\n"
+               << "- 来源：https://" << Utf8FromWide(entry.host) << Utf8FromWide(entry.path) << "\n"
+               << "- 许可：" << entry.license << (note.empty() ? "" : "（" + note + "）") << "\n"
+               << "- 文件：" << model_id << ".gram（" << model_bytes << " 字节）\n";
     }
-    SetState(DownloadState::Idle, 100, {});
+    SetState(model_id, DownloadState::Idle, 100, {});
 }
 
 } // namespace
 
-ModelStatus GetModelStatus()
+std::map<std::string, ModelStatus> GetModelStatuses()
 {
-    std::error_code fs_error;
-    // 落位发生在格式校验之后，所以「文件存在」即代表曾经通过校验。这里不再比对
-    // 字节数：钉死它就等于钉死上游的每次重训。
-    if (std::filesystem::exists(ModelFile(), fs_error) && !fs_error)
+    std::map<std::string, ModelStatus> statuses;
+    for (const auto &entry : Catalog())
     {
-        return {"ready", 100, {}};
+        // 落位发生在格式校验之后，所以「文件存在」即代表曾经通过校验。这里不再比对
+        // 字节数：钉死它就等于钉死上游的每次重训。
+        std::error_code fs_error;
+        if (std::filesystem::exists(ModelFile(entry.id), fs_error) && !fs_error)
+        {
+            statuses[entry.id] = {"ready", 100, {}};
+            continue;
+        }
+        std::lock_guard lock(g_mutex);
+        const auto it = g_states.find(entry.id);
+        if (it == g_states.end() || it->second.state == DownloadState::Idle)
+            statuses[entry.id] = {"absent", 0, {}};
+        else if (it->second.state == DownloadState::Downloading)
+            statuses[entry.id] = {"downloading", it->second.progress, {}};
+        else
+            statuses[entry.id] = {"error", 0, it->second.error};
     }
-    std::lock_guard lock(g_mutex);
-    switch (g_state)
-    {
-    case DownloadState::Downloading:
-        return {"downloading", g_progress, {}};
-    case DownloadState::Error:
-        return {"error", 0, g_error};
-    default:
-        return {"absent", 0, {}};
-    }
+    return statuses;
 }
 
-bool StartDownload()
+bool StartDownload(const std::string &model_id)
 {
+    const CatalogEntry *entry = FindEntry(model_id);
+    if (entry == nullptr)
+        return false;
+    // 已存在且通过格式校验的包不重下：落位只在格式校验之后发生，文件存在即曾通过校验，
+    // 重下只会白白覆盖一份好包。
+    std::error_code fs_error;
+    if (std::filesystem::exists(ModelFile(model_id), fs_error) && !fs_error)
+        return true;
     {
         std::lock_guard lock(g_mutex);
-        if (g_state == DownloadState::Downloading)
-            return true;
-        g_state = DownloadState::Downloading;
-        g_progress = 0;
-        g_error.clear();
+        // 单网络槽：同一时刻至多一个下载，不做并发队列。同 id 重复请求幂等；其他 id
+        // 忙碌时拒绝，页面在下载态禁用其余下载按钮。
+        for (const auto &[id, runtime] : g_states)
+        {
+            if (runtime.state == DownloadState::Downloading)
+                return id == model_id;
+        }
+        RuntimeState &runtime = g_states[model_id];
+        runtime.state = DownloadState::Downloading;
+        runtime.progress = 0;
+        runtime.error.clear();
     }
-    std::thread(DownloadThread).detach();
+    std::thread(DownloadThread, *entry).detach();
     return true;
+}
+
+bool DeleteModel(const std::string &model_id)
+{
+    if (FindEntry(model_id) == nullptr)
+        return false;
+    {
+        std::lock_guard lock(g_mutex);
+        const auto it = g_states.find(model_id);
+        if (it != g_states.end() && it->second.state == DownloadState::Downloading)
+            return false;
+    }
+    // 当前生效解析的 id 不许删：配置激活值留空时解析为内置推荐包，删掉正在使用的包
+    // 会让整句加成静默失效，输入侧看不到任何报错。
+    if (model_id == ResolvedActiveModelId())
+        return false;
+    std::error_code error;
+    // .gram 与 NOTICE.md 都在这个目录里，整目录删除即卸载；目录不存在时 remove_all
+    // 无错返回，删除因此是幂等的。
+    std::filesystem::remove_all(ModelDirectory(model_id), error);
+    return !error;
 }
 
 } // namespace collocation

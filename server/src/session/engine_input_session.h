@@ -4,6 +4,11 @@
 #include "engine/common/helpcode_utils.h"
 #include "engine/core/input_session.h"
 
+// 模型包的确定性布局解析：<resources>/models/<id>/<id>.gram。配置 id 留空回退内置
+// 推荐包（collocation::kDefaultModelId）；文件缺席返回空串，调用方按整句加成全关处理。
+// 定义在 engine_input_session.cpp，声明在此供测试钉住「空激活回退内置万象」的语义。
+std::string ResolveCollocationModelPath(const std::string &model_id);
+
 class EngineInputSession : public IInputSession
 {
   public:

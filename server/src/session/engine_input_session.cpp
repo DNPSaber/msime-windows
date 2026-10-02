@@ -2,24 +2,24 @@
 #include "config/ime_config.h"
 #include "settings/collocation_model.h"
 #include "engine/common/helpcode_utils.h"
+#include "engine/core/data_path.h"
 #include "engine/core/sentence_association_options.h"
 #include "engine/quanpin/quanpin_utils.h"
 
 #include <filesystem>
 
-namespace
-{
 // 模型包的确定性布局：<resources>/models/<id>/<id>.gram。下载器与手动放置都
-// 遵守它，解析因此只是一次 stat，不需要目录扫描，也不需要 model.toml。
+// 遵守它，解析因此只是一次 stat，不需要目录扫描，也不需要 model.toml。声明在
+// 头文件供测试钉住「空激活回退内置推荐包」的解析语义。
 std::string ResolveCollocationModelPath(const std::string &model_id)
 {
-    // 配置键留空即用内置的 LTS 包。这个键没有别的生产者——设置页不写、也没有第二
-    // 个模型包可选——所以「空 = 未选」会让下载器必须去写回配置才能生效，而下载按钮
-    // 在模型就绪后是禁用的，已经下好的用户反而再也触发不了那次写回。回退到内置 id
-    // 之后，下载到位自然生效，配置全程不用动。
+    // 配置键留空即用内置推荐包，设置页「切回内置」也写空串：用户不需要任何一次显式
+    // 写回，包落位自然生效，留空始终是合法稳态。
     const std::string id = model_id.empty() ? collocation::kDefaultModelId : model_id;
-    // 会话持有的是 legacy() 布局：资源根就是数据根，模型包随安装数据走。
-    const std::filesystem::path file = metasequoia::RuntimePaths::legacy().resources / "models" / id / (id + ".gram");
+    // 与下载器、状态查询、删除守卫共用同一条基准（data_directory() 每次读环境变量）。
+    // 会话其余资源仍走 legacy() 快照；模型路径不能跟着走——legacy() 在进程启动时捕获，
+    // 生产环境两者相同，但注入环境变量的测试里会分叉。
+    const std::filesystem::path file = metasequoia::data_directory() / "models" / id / (id + ".gram");
     std::error_code error;
     if (!std::filesystem::is_regular_file(file, error) || error)
     {
@@ -27,7 +27,6 @@ std::string ResolveCollocationModelPath(const std::string &model_id)
     }
     return file.u8string();
 }
-} // namespace
 
 EngineInputSession::EngineInputSession(SchemeType scheme, const ShuangpinProfile &profile)
     : paths_(metasequoia::RuntimePaths::legacy()), session_(scheme, profile, paths_)

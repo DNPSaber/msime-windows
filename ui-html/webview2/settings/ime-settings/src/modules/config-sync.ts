@@ -217,7 +217,11 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (typeof data?.association?.sentence_source_badge === 'boolean') {
     applyToggleState('sentenceSourceBadgeToggleBtn', data.association.sentence_source_badge);
   }
-  applyCollocationModelStatus(data?.association?.sentence_collocation_model_status);
+  applyCollocationModelStatus(
+    data?.association?.sentence_collocation_model_status,
+    data?.association?.sentence_collocation_catalog,
+    data?.association?.sentence_collocation_model
+  );
   if (typeof data?.association?.sentence_collocation_enabled === 'boolean') {
     applyToggleState('sentenceCollocationToggleBtn', data.association.sentence_collocation_enabled);
   }

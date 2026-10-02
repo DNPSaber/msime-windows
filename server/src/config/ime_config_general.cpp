@@ -235,6 +235,19 @@ std::string GetConfiguredAssocSentenceCollocationModel()
     return g_assoc_sentence_collocation_model;
 }
 
+// 激活某个 octagram 模型包（单选）。空串 = 回退内置推荐包（万象），这也是设置页「切回
+// 内置」的写法。写入经配置三重传导到 Server，下一次击键 ApplyConfiguration 即生效，
+// 无需重启；引擎侧路径解析对同一语义（留空回退）再兜一层。
+bool SetConfiguredAssocSentenceCollocationModel(const std::string &model_id)
+{
+    if (!WriteConfiguredValue("association", "sentence_collocation_model", EscapeTomlBasicString(model_id)))
+    {
+        return false;
+    }
+    g_assoc_sentence_collocation_model = model_id;
+    return true;
+}
+
 double GetConfiguredAssocSentenceCollocationWeight()
 {
     return g_assoc_sentence_collocation_weight;
