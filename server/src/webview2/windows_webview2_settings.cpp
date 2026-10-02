@@ -96,14 +96,989 @@ static void ApplySmartPunctuationSubkey(const std::string &path, bool value)
     }
 }
 
-/**
- * @brief Handle settings window webview2 controller creation
- *
- * @param hwnd
- * @param result
- * @param controller
- * @return HRESULT
- */
+// 下面这组 Apply<段名>Subkey 是 configUpdate 消息的分发实现，按 config.toml 的段名分组，
+// 一个段一个函数。分组的原因是链的长度而非可读性：合在一起是一条 109 个分支的
+// else-if 链，MSVC 会以 C1061（块嵌套太深）拒绝编译——上限约 127 层，单条链加几个
+// 配置项就会顶穿。拆开后每段最长 27 个分支，离上限足够远。
+//
+// 这里是纯机械分组，各段名互不重叠，所以调用点可以依次调用全部函数：至多一个会命中。
+// 唯一例外是段内还有 rfind 前缀分支的地方，那里必须保持 else-if，见各函数内的说明。
+
+// [input] 段：输入模式、输入方案、标点行为等
+static void ApplyInputSubkey(const std::string &path, const json::object &data)
+{
+    if (path == "input.mode")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredInputMode(value))
+        {
+            ApplyConfiguredInputScheme();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.schema")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredInputScheme(value))
+        {
+            ApplyConfiguredInputScheme();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.character_set")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredCharacterSet(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.default_ime_mode")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredDefaultImeMode(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.ime_mode_scope")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredImeModeScope(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.shuangpin_schema")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredShuangpinSchema(value))
+        {
+            ApplyConfiguredShuangpinSchema();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.wubi_schema")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredWubiSchema(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.wubi_mixed_pinyin")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredWubiMixedPinyin(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.escape_keeps_selected_word")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredEscapeKeepsSelectedWord(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.enter_learns_english_word")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredEnterLearnsEnglishWord(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.wubi_z_mode")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredWubiZMode(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.word_to_character")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        SetConfiguredWordToCharacterEnabled(value);
+        PostSettingsConfig();
+    }
+    if (path == "input.word_to_character_keys")
+    {
+        SetConfiguredWordToCharacterKeys(json::value_to<std::string>(data.at("value")));
+        PostSettingsConfig();
+    }
+    if (path == "input.smart_punctuation")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredSmartPunctuationEnabled(value))
+        {
+            BroadcastToTsfWorkerThreadViaNamedpipe(
+                Global::DataFromServerMsgTypeToTsfWorkerThread::SmartPunctuationChanged, value ? L"1" : L"0");
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.smart_punctuation_space_convert")
+    {
+        ApplySmartPunctuationSubkey(path, json::value_to<bool>(data.at("value")));
+    }
+    if (path == "input.smart_punctuation_direct_digit")
+    {
+        ApplySmartPunctuationSubkey(path, json::value_to<bool>(data.at("value")));
+    }
+    if (path == "input.smart_punctuation_direct_letter")
+    {
+        ApplySmartPunctuationSubkey(path, json::value_to<bool>(data.at("value")));
+    }
+    if (path == "input.smart_punctuation_repeat_to_chinese")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredSmartPunctuationRepeatToChineseEnabled(value))
+        {
+            BroadcastToTsfWorkerThreadViaNamedpipe(
+                Global::DataFromServerMsgTypeToTsfWorkerThread::SmartPunctuationRepeatToChineseChanged,
+                value ? L"1" : L"0");
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.paired_punctuation")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredPairedPunctuationEnabled(value))
+        {
+            BroadcastToTsfWorkerThreadViaNamedpipe(
+                Global::DataFromServerMsgTypeToTsfWorkerThread::PairedPunctuationChanged, value ? L"1" : L"0");
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.punctuation_lock")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredPunctuationLock(value))
+        {
+            BroadcastToTsfWorkerThreadViaNamedpipe(
+                Global::DataFromServerMsgTypeToTsfWorkerThread::PunctuationLockChanged,
+                FormatPunctuationLockWorkerPayload());
+            if (value == "chinese")
+            {
+                UpdateFtbPuncState(::webviewFtbWnd, 1);
+            }
+            else if (value == "english")
+            {
+                UpdateFtbPuncState(::webviewFtbWnd, 0);
+            }
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.japanese_schema")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredJapaneseSchema(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+}
+
+// [appearance] 段：候选窗外观、颜色、字体、徽章等
+static void ApplyAppearanceSubkey(const std::string &path, const json::object &data)
+{
+    if (path == "appearance.tsf_preedit_style")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredTsfPreeditStyle(value))
+        {
+            BroadcastToTsfWorkerThreadViaNamedpipe(
+                Global::DataFromServerMsgTypeToTsfWorkerThread::PagingCommaPeriodChanged,
+                FormatPagingCommaPeriodWorkerPayload());
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.tsf_preedit_shuangpin_quanpin")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredTsfPreeditShuangpinQuanpin(value))
+        {
+            BroadcastToTsfWorkerThreadViaNamedpipe(
+                Global::DataFromServerMsgTypeToTsfWorkerThread::PagingCommaPeriodChanged,
+                FormatPagingCommaPeriodWorkerPayload());
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.ui_backend")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredUiBackend(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.settings_window_linger")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredSettingsWindowLinger(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.candidate_window_layout")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredCandidateWindowLayout(value))
+        {
+            ApplyConfiguredCandidateWindowLayout();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.candidate_window_follow_cursor")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredCandidateWindowFollowCursor(value))
+        {
+            CAND_WEBVIEW_TRACE_LOGF(L"candidate-position config-update follow_cursor={}", value);
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.candidate_skin")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredCandidateSkin(value))
+        {
+            ApplyConfiguredUiThemes();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.candidate_window_preedit_style")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredCandidateWindowPreeditStyle(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.candidate_window_preedit_shuangpin_quanpin")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredCandidateWindowPreeditShuangpinQuanpin(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.candidate_fixed_badge")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredCandidateFixedBadge(value))
+        {
+            // 徽标在组页时拼进词条，不刷新的话要等下次上屏才看得见改动
+            FanyNamedPipe::EnqueueRefreshCandidatePageTask();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.candidate_fixed_badge_style")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredCandidateFixedBadgeStyle(value))
+        {
+            FanyNamedPipe::EnqueueRefreshCandidatePageTask();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.page_size")
+    {
+        const int value = static_cast<int>(data.at("value").as_int64());
+        if (SetConfiguredCandidatePageSize(value))
+        {
+            FanyNamedPipe::EnqueueApplyCandidatePageSizeTask();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.font")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredCandidateFont(value))
+        {
+            ApplyConfiguredCandidateAppearance();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.fallback_fonts")
+    {
+        // configUpdate accepts scalar values; structured settings use a JSON string.
+        const auto fonts =
+            nlohmann::json::parse(json::value_to<std::string>(data.at("value"))).get<std::vector<std::string>>();
+        if (SetConfiguredCandidateFallbackFonts(fonts))
+        {
+            ApplyConfiguredCandidateAppearance();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.english_font")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredCandidateEnglishFont(value))
+        {
+            ApplyConfiguredCandidateAppearance();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.font_size")
+    {
+        const int value = static_cast<int>(data.at("value").as_int64());
+        if (SetConfiguredCandidateFontSize(value))
+        {
+            ApplyConfiguredCandidateAppearance();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.candidate_window_preedit_font_size")
+    {
+        const int value = static_cast<int>(data.at("value").as_int64());
+        if (SetConfiguredCandidateWindowPreeditFontSize(value))
+        {
+            ApplyConfiguredCandidateAppearance();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.cand_text_color")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredCandidateTextColor(value))
+        {
+            ApplyConfiguredCandidateAppearance();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.theme_mode")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredThemeMode(value))
+        {
+            ApplyConfiguredUiThemes();
+            if (webviewController2SettingsWnd)
+            {
+                const bool settingsLight = ResolveConfiguredTheme(GetConfiguredThemeSettings()) == "light";
+                COREWEBVIEW2_COLOR backgroundColor =
+                    settingsLight ? COREWEBVIEW2_COLOR{255, 243, 243, 243} : COREWEBVIEW2_COLOR{255, 32, 32, 32};
+                webviewController2SettingsWnd->put_DefaultBackgroundColor(backgroundColor);
+            }
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.theme_settings")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredThemeSettings(value))
+        {
+            if (webviewController2SettingsWnd)
+            {
+                const bool settingsLight = ResolveConfiguredTheme(GetConfiguredThemeSettings()) == "light";
+                COREWEBVIEW2_COLOR backgroundColor =
+                    settingsLight ? COREWEBVIEW2_COLOR{255, 243, 243, 243} : COREWEBVIEW2_COLOR{255, 32, 32, 32};
+                webviewController2SettingsWnd->put_DefaultBackgroundColor(backgroundColor);
+            }
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.theme_cand")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredThemeCand(value))
+        {
+            ApplyConfiguredUiThemes();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.theme_ftb")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredThemeFtb(value))
+        {
+            ApplyConfiguredUiThemes();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.theme_menu")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredThemeMenu(value))
+        {
+            ApplyConfiguredUiThemes();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "appearance.theme_emoji")
+    {
+        if (SetConfiguredThemeEmoji(json::value_to<std::string>(data.at("value"))))
+            PostSettingsConfig();
+    }
+    if (path == "appearance.theme_screen_keyboard")
+    {
+        if (SetConfiguredThemeScreenKeyboard(json::value_to<std::string>(data.at("value"))))
+            PostSettingsConfig();
+    }
+    if (path == "appearance.theme_handwriting")
+    {
+        if (SetConfiguredThemeHandwriting(json::value_to<std::string>(data.at("value"))))
+            PostSettingsConfig();
+    }
+    if (path == "appearance.theme_voice")
+    {
+        if (SetConfiguredThemeVoice(json::value_to<std::string>(data.at("value"))))
+            PostSettingsConfig();
+    }
+}
+
+// [general] 段：通用设置，含悬浮工具栏
+static void ApplyGeneralSubkey(const std::string &path, const json::object &data)
+{
+    if (path == "general.floating_toolbar")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredFloatingToolbarEnabled(value))
+        {
+            RestartFloatingToolbarAutoHide(L"settings-toggle");
+            SyncMenuFloatingToolbarToggle();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.caret_state_indicator")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredCaretStateIndicatorEnabled(value))
+        {
+            if (!value && ::global_hwnd_caret_state)
+                PostMessage(::global_hwnd_caret_state, WM_HIDE_CARET_STATE, 0, 0);
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.caret_state_indicator_on_focus")
+    {
+        if (SetConfiguredCaretStateIndicatorOnFocus(json::value_to<bool>(data.at("value"))))
+            PostSettingsConfig();
+    }
+    if (path == "general.caret_state_indicator_position")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredCaretStateIndicatorPosition(value))
+            PostSettingsConfig();
+    }
+    // 这五条必须保持 else-if 链，不能各自独立 if：末位的 rfind 前缀分支覆盖了
+    // scale/font_size/auto_hide/auto_hide_delay 这四个键。拆分前它们在同一条
+    // else-if 链上，只有首个命中的分支会执行；拆成并列 if 后前缀分支会二次命中，
+    // 让 general.floating_toolbar_scale 同时写进 SetConfiguredFloatingToolbarItemEnabled。
+    if (path == "general.floating_toolbar_scale")
+    {
+        const double value = data.at("value").is_double() ? data.at("value").as_double()
+                                                          : static_cast<double>(data.at("value").as_int64());
+        if (SetConfiguredFloatingToolbarScale(value))
+        {
+            ApplyConfiguredFloatingToolbarSize();
+            PostSettingsConfig();
+        }
+    }
+    else if (path == "general.floating_toolbar_font_size")
+    {
+        if (SetConfiguredFloatingToolbarFontSize(static_cast<int>(data.at("value").as_int64())))
+        {
+            ApplyConfiguredFloatingToolbarSize();
+            PostSettingsConfig();
+        }
+    }
+    else if (path == "general.floating_toolbar_auto_hide")
+    {
+        if (SetConfiguredFloatingToolbarAutoHide(json::value_to<bool>(data.at("value"))))
+        {
+            RestartFloatingToolbarAutoHide(L"settings-auto-hide");
+            PostSettingsConfig();
+        }
+    }
+    else if (path == "general.floating_toolbar_auto_hide_delay")
+    {
+        if (SetConfiguredFloatingToolbarAutoHideDelay(static_cast<int>(data.at("value").as_int64())))
+        {
+            RestartFloatingToolbarAutoHide(L"settings-auto-hide-delay");
+            PostSettingsConfig();
+        }
+    }
+    else if (path.rfind("general.floating_toolbar_", 0) == 0)
+    {
+        const std::string item = path.substr(std::string("general.floating_toolbar_").size());
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredFloatingToolbarItemEnabled(item, value))
+        {
+            ApplyConfiguredFloatingToolbarItems();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.cn_en_mixed_input")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredEnglishCandidatesEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.candidate_translations")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredCandidateTranslationsEnabled(value))
+        {
+            FanyNamedPipe::EnqueueRefreshCandidatePageTask();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.diagnostic_log" || path == "general.candidate_window_diagnostic_log")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredDiagnosticLogEnabled(value))
+        {
+            CAND_DIAG_LOGF(L"diagnostic logging enabled from Settings");
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.tsf_diagnostic_log")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredTsfDiagnosticLogEnabled(value))
+        {
+            BroadcastToTsfWorkerThreadViaNamedpipe(
+                Global::DataFromServerMsgTypeToTsfWorkerThread::TsfDiagnosticLogChanged, value ? L"1" : L"0");
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.cn_en_mixed_input_min_chars")
+    {
+        const int value = static_cast<int>(data.at("value").as_int64());
+        if (SetConfiguredEnglishMixedInputMinChars(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.emoji_mixed_input")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredEmojiMixedInputEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.kaomoji_mixed_input")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredKaomojiMixedInputEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.cloud_candidates")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredCloudCandidatesEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.paging_minus_equal")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        SetConfiguredPagingMinusEqualEnabled(value);
+        PostSettingsConfig();
+    }
+    if (path == "general.paging_tab")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredPagingTabEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.paging_comma_period")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredPagingCommaPeriodEnabled(value))
+        {
+            BroadcastToTsfWorkerThreadViaNamedpipe(
+                Global::DataFromServerMsgTypeToTsfWorkerThread::PagingCommaPeriodChanged,
+                FormatPagingCommaPeriodWorkerPayload());
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.paging_brackets")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        SetConfiguredPagingBracketsEnabled(value);
+        PostSettingsConfig();
+    }
+    if (path == "general.paging_page_up_down")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredPagingPageUpDownEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.paging_mouse_wheel")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredPagingMouseWheelEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "general.candidate_arrow_navigation")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredCandidateArrowNavigationEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+}
+
+// [statistics] 段：使用统计开关
+static void ApplyStatisticsSubkey(const std::string &path, const json::object &data)
+{
+    if (path == "statistics.enabled")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredStatisticsEnabled(value))
+        {
+            // The DLL gates capture on this: without the
+            // broadcast an opt-out would keep classifying
+            // and writing frames until the next connect.
+            BroadcastToTsfWorkerThreadViaNamedpipe(
+                Global::DataFromServerMsgTypeToTsfWorkerThread::StatisticsEnabledChanged, value ? L"1" : L"0");
+            PostSettingsConfig();
+        }
+    }
+    if (path == "statistics.retention")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredStatisticsRetention(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+}
+
+// [tencent_tmt] 段：腾讯翻译开关
+static void ApplyTencentTmtSubkey(const std::string &path, const json::object &data)
+{
+    if (path.rfind("tencent_tmt.", 0) == 0)
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredTencentTmtString(path.substr(std::string("tencent_tmt.").size()), value))
+        {
+            if (path == "tencent_tmt.target_language")
+                FanyNamedPipe::EnqueueRefreshCandidatePageTask();
+            PostSettingsConfig();
+        }
+    }
+}
+
+// [custom_translation] 段：自定义翻译的总开关与逐项文本
+static void ApplyCustomTranslationSubkey(const std::string &path, const json::object &data)
+{
+    // 同上：rfind 前缀分支覆盖 "custom_translation.enabled"，必须保持 else-if 才能
+    // 复现拆分前「只执行首个命中分支」的语义。
+    if (path == "custom_translation.enabled")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredCustomTranslationBool("enabled", value))
+        {
+            FanyNamedPipe::EnqueueRefreshCandidatePageTask();
+            PostSettingsConfig();
+        }
+    }
+    else if (path.rfind("custom_translation.", 0) == 0)
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredCustomTranslationString(path.substr(std::string("custom_translation.").size()), value))
+        {
+            FanyNamedPipe::EnqueueRefreshCandidatePageTask();
+            PostSettingsConfig();
+        }
+    }
+}
+
+// [association] 段：联想、词格、搭配模型等
+static void ApplyAssociationSubkey(const std::string &path, const json::object &data)
+{
+    if (path == "association.sentence_wordlattice")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredAssocSentenceWordLattice(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "association.sentence_google")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredAssocSentenceGoogle(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "association.sentence_neural_desktop")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredAssocSentenceNeuralDesktop(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "association.sentence_neural_keyboard")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredAssocSentenceNeuralKeyboard(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "association.sentence_show_next_on_duplicate")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredAssocSentenceShowNextOnDuplicate(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "association.sentence_source_badge")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredAssocSentenceSourceBadge(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "association.sentence_collocation_enabled")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredAssocSentenceCollocationEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "association.sentence_collocation_model")
+    {
+        const std::string model_id = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredAssocSentenceCollocationModel(model_id))
+        {
+            PostSettingsConfig();
+        }
+    }
+}
+
+// [utility] 段：导入导出、剪贴板等工具类设置
+static void ApplyUtilitySubkey(const std::string &path, const json::object &data)
+{
+    if (path == "utility.unicode_mode")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredUnicodeModeEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "utility.quick_phrase")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredQuickPhraseEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "utility.quick_phrase_candidates")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredQuickPhraseCandidatesEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "utility.quick_phrase_frequency")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredQuickPhraseFrequencyEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "utility.mixed_candidates")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredMixedCandidatesEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "utility.date_time_candidates")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredDateTimeCandidatesEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "utility.date_time_mode")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredDateTimeModeEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "utility.emoji_mode")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredEmojiModeEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "utility.kaomoji_mode")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredKaomojiModeEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "utility.jianpin_mode")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredJianpinModeEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "utility.y_mode")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredYModeEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "utility.r_mode")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredRModeEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "utility.clipboard_history")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredClipboardHistoryEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+}
+
+// [keybindings] 段：快捷键
+static void ApplyKeybindingsSubkey(const std::string &path, const json::object &data)
+{
+    if (path == "keybindings.toggle_character_set_ctrl_shift_f")
+    {
+        SetConfiguredCharacterSetShortcutEnabled(json::value_to<bool>(data.at("value")));
+        PostSettingsConfig();
+    }
+    if (path == "keybindings.switch_language_shift")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredSwitchLanguageShiftEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "keybindings.switch_language_ctrl")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredSwitchLanguageCtrlEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "keybindings.switch_language_ctrl_alt_space")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredSwitchLanguageCtrlAltSpaceEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+}
+
+// [helpcode] 段：辅助码方案与开关
+static void ApplyHelpcodeSubkey(const std::string &path, const json::object &data)
+{
+    if (path == "helpcode.show_sp_helpcode_in_candidate_window")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredShowShuangpinHelpcodeInCandidateWindow(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "helpcode.shuangpin_helpcode")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredShuangpinHelpcodeEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "helpcode.shuangpin_mid_sentence_helpcode")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredShuangpinMidSentenceHelpcodeEnabled(value))
+        {
+            // TSF 据此决定反引号要不要当编码键吃掉。
+            BroadcastToTsfWorkerThreadViaNamedpipe(
+                Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged,
+                FormatMidSentenceHelpcodeWorkerPayload());
+            PostSettingsConfig();
+        }
+    }
+    if (path == "helpcode.shuangpin_helpcode_schema")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredShuangpinHelpcodeSchema(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "helpcode.quanpin_helpcode")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredQuanpinHelpcodeEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "helpcode.quanpin_helpcode_schema")
+    {
+        const std::string value = json::value_to<std::string>(data.at("value"));
+        if (SetConfiguredQuanpinHelpcodeSchema(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "helpcode.show_qp_helpcode_in_candidate_window")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredShowQuanpinHelpcodeInCandidateWindow(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+}
+
 HRESULT OnControllerCreatedSettingsWnd(            //
     HWND hwnd,                                     //
     HRESULT result,                                //
@@ -399,941 +1374,16 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                         {
                             const auto &data = val.at("data").as_object();
                             const std::string path = json::value_to<std::string>(data.at("path"));
-                            if (path == "input.mode")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredInputMode(value))
-                                {
-                                    ApplyConfiguredInputScheme();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.schema")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredInputScheme(value))
-                                {
-                                    ApplyConfiguredInputScheme();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.character_set")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredCharacterSet(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.default_ime_mode")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredDefaultImeMode(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.ime_mode_scope")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredImeModeScope(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.shuangpin_schema")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredShuangpinSchema(value))
-                                {
-                                    ApplyConfiguredShuangpinSchema();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.wubi_schema")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredWubiSchema(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.wubi_mixed_pinyin")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredWubiMixedPinyin(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.escape_keeps_selected_word")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredEscapeKeepsSelectedWord(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.enter_learns_english_word")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredEnterLearnsEnglishWord(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.wubi_z_mode")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredWubiZMode(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.tsf_preedit_style")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredTsfPreeditStyle(value))
-                                {
-                                    BroadcastToTsfWorkerThreadViaNamedpipe(
-                                        Global::DataFromServerMsgTypeToTsfWorkerThread::PagingCommaPeriodChanged,
-                                        FormatPagingCommaPeriodWorkerPayload());
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.tsf_preedit_shuangpin_quanpin")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredTsfPreeditShuangpinQuanpin(value))
-                                {
-                                    BroadcastToTsfWorkerThreadViaNamedpipe(
-                                        Global::DataFromServerMsgTypeToTsfWorkerThread::PagingCommaPeriodChanged,
-                                        FormatPagingCommaPeriodWorkerPayload());
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.ui_backend")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredUiBackend(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.settings_window_linger")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredSettingsWindowLinger(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.candidate_window_layout")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredCandidateWindowLayout(value))
-                                {
-                                    ApplyConfiguredCandidateWindowLayout();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.candidate_window_follow_cursor")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredCandidateWindowFollowCursor(value))
-                                {
-                                    CAND_WEBVIEW_TRACE_LOGF(L"candidate-position config-update follow_cursor={}",
-                                                            value);
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.candidate_skin")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredCandidateSkin(value))
-                                {
-                                    ApplyConfiguredUiThemes();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.candidate_window_preedit_style")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredCandidateWindowPreeditStyle(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.candidate_window_preedit_shuangpin_quanpin")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredCandidateWindowPreeditShuangpinQuanpin(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.candidate_fixed_badge")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredCandidateFixedBadge(value))
-                                {
-                                    // 徽标在组页时拼进词条，不刷新的话要等下次上屏才看得见改动
-                                    FanyNamedPipe::EnqueueRefreshCandidatePageTask();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.candidate_fixed_badge_style")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredCandidateFixedBadgeStyle(value))
-                                {
-                                    FanyNamedPipe::EnqueueRefreshCandidatePageTask();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.page_size")
-                            {
-                                const int value = static_cast<int>(data.at("value").as_int64());
-                                if (SetConfiguredCandidatePageSize(value))
-                                {
-                                    FanyNamedPipe::EnqueueApplyCandidatePageSizeTask();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.font")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredCandidateFont(value))
-                                {
-                                    ApplyConfiguredCandidateAppearance();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.fallback_fonts")
-                            {
-                                // configUpdate accepts scalar values; structured settings use a JSON string.
-                                const auto fonts = nlohmann::json::parse(json::value_to<std::string>(data.at("value")))
-                                                       .get<std::vector<std::string>>();
-                                if (SetConfiguredCandidateFallbackFonts(fonts))
-                                {
-                                    ApplyConfiguredCandidateAppearance();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.english_font")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredCandidateEnglishFont(value))
-                                {
-                                    ApplyConfiguredCandidateAppearance();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.font_size")
-                            {
-                                const int value = static_cast<int>(data.at("value").as_int64());
-                                if (SetConfiguredCandidateFontSize(value))
-                                {
-                                    ApplyConfiguredCandidateAppearance();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.candidate_window_preedit_font_size")
-                            {
-                                const int value = static_cast<int>(data.at("value").as_int64());
-                                if (SetConfiguredCandidateWindowPreeditFontSize(value))
-                                {
-                                    ApplyConfiguredCandidateAppearance();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.cand_text_color")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredCandidateTextColor(value))
-                                {
-                                    ApplyConfiguredCandidateAppearance();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.theme_mode")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredThemeMode(value))
-                                {
-                                    ApplyConfiguredUiThemes();
-                                    if (webviewController2SettingsWnd)
-                                    {
-                                        const bool settingsLight =
-                                            ResolveConfiguredTheme(GetConfiguredThemeSettings()) == "light";
-                                        COREWEBVIEW2_COLOR backgroundColor =
-                                            settingsLight ? COREWEBVIEW2_COLOR{255, 243, 243, 243}
-                                                          : COREWEBVIEW2_COLOR{255, 32, 32, 32};
-                                        webviewController2SettingsWnd->put_DefaultBackgroundColor(backgroundColor);
-                                    }
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.theme_settings")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredThemeSettings(value))
-                                {
-                                    if (webviewController2SettingsWnd)
-                                    {
-                                        const bool settingsLight =
-                                            ResolveConfiguredTheme(GetConfiguredThemeSettings()) == "light";
-                                        COREWEBVIEW2_COLOR backgroundColor =
-                                            settingsLight ? COREWEBVIEW2_COLOR{255, 243, 243, 243}
-                                                          : COREWEBVIEW2_COLOR{255, 32, 32, 32};
-                                        webviewController2SettingsWnd->put_DefaultBackgroundColor(backgroundColor);
-                                    }
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.theme_cand")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredThemeCand(value))
-                                {
-                                    ApplyConfiguredUiThemes();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.theme_ftb")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredThemeFtb(value))
-                                {
-                                    ApplyConfiguredUiThemes();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.theme_menu")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredThemeMenu(value))
-                                {
-                                    ApplyConfiguredUiThemes();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "appearance.theme_emoji")
-                            {
-                                if (SetConfiguredThemeEmoji(json::value_to<std::string>(data.at("value"))))
-                                    PostSettingsConfig();
-                            }
-                            else if (path == "appearance.theme_screen_keyboard")
-                            {
-                                if (SetConfiguredThemeScreenKeyboard(json::value_to<std::string>(data.at("value"))))
-                                    PostSettingsConfig();
-                            }
-                            else if (path == "appearance.theme_handwriting")
-                            {
-                                if (SetConfiguredThemeHandwriting(json::value_to<std::string>(data.at("value"))))
-                                    PostSettingsConfig();
-                            }
-                            else if (path == "appearance.theme_voice")
-                            {
-                                if (SetConfiguredThemeVoice(json::value_to<std::string>(data.at("value"))))
-                                    PostSettingsConfig();
-                            }
-                            else if (path == "general.floating_toolbar")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredFloatingToolbarEnabled(value))
-                                {
-                                    RestartFloatingToolbarAutoHide(L"settings-toggle");
-                                    SyncMenuFloatingToolbarToggle();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.caret_state_indicator")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredCaretStateIndicatorEnabled(value))
-                                {
-                                    if (!value && ::global_hwnd_caret_state)
-                                        PostMessage(::global_hwnd_caret_state, WM_HIDE_CARET_STATE, 0, 0);
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.caret_state_indicator_on_focus")
-                            {
-                                if (SetConfiguredCaretStateIndicatorOnFocus(json::value_to<bool>(data.at("value"))))
-                                    PostSettingsConfig();
-                            }
-                            else if (path == "general.caret_state_indicator_position")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredCaretStateIndicatorPosition(value))
-                                    PostSettingsConfig();
-                            }
-                            else if (path == "general.floating_toolbar_scale")
-                            {
-                                const double value = data.at("value").is_double()
-                                                         ? data.at("value").as_double()
-                                                         : static_cast<double>(data.at("value").as_int64());
-                                if (SetConfiguredFloatingToolbarScale(value))
-                                {
-                                    ApplyConfiguredFloatingToolbarSize();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.floating_toolbar_font_size")
-                            {
-                                if (SetConfiguredFloatingToolbarFontSize(static_cast<int>(data.at("value").as_int64())))
-                                {
-                                    ApplyConfiguredFloatingToolbarSize();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            // Must precede the general.floating_toolbar_ item prefix below.
-                            else if (path == "general.floating_toolbar_auto_hide")
-                            {
-                                if (SetConfiguredFloatingToolbarAutoHide(json::value_to<bool>(data.at("value"))))
-                                {
-                                    RestartFloatingToolbarAutoHide(L"settings-auto-hide");
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.floating_toolbar_auto_hide_delay")
-                            {
-                                if (SetConfiguredFloatingToolbarAutoHideDelay(
-                                        static_cast<int>(data.at("value").as_int64())))
-                                {
-                                    RestartFloatingToolbarAutoHide(L"settings-auto-hide-delay");
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.word_to_character")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                SetConfiguredWordToCharacterEnabled(value);
-                                PostSettingsConfig();
-                            }
-                            else if (path == "input.word_to_character_keys")
-                            {
-                                SetConfiguredWordToCharacterKeys(json::value_to<std::string>(data.at("value")));
-                                PostSettingsConfig();
-                            }
-                            else if (path == "input.smart_punctuation")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredSmartPunctuationEnabled(value))
-                                {
-                                    BroadcastToTsfWorkerThreadViaNamedpipe(
-                                        Global::DataFromServerMsgTypeToTsfWorkerThread::SmartPunctuationChanged,
-                                        value ? L"1" : L"0");
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.smart_punctuation_space_convert")
-                            {
-                                ApplySmartPunctuationSubkey(path, json::value_to<bool>(data.at("value")));
-                            }
-                            else if (path == "input.smart_punctuation_direct_digit")
-                            {
-                                ApplySmartPunctuationSubkey(path, json::value_to<bool>(data.at("value")));
-                            }
-                            else if (path == "input.smart_punctuation_direct_letter")
-                            {
-                                ApplySmartPunctuationSubkey(path, json::value_to<bool>(data.at("value")));
-                            }
-                            else if (path == "input.smart_punctuation_repeat_to_chinese")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredSmartPunctuationRepeatToChineseEnabled(value))
-                                {
-                                    BroadcastToTsfWorkerThreadViaNamedpipe(
-                                        Global::DataFromServerMsgTypeToTsfWorkerThread::
-                                            SmartPunctuationRepeatToChineseChanged,
-                                        value ? L"1" : L"0");
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.paired_punctuation")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredPairedPunctuationEnabled(value))
-                                {
-                                    BroadcastToTsfWorkerThreadViaNamedpipe(
-                                        Global::DataFromServerMsgTypeToTsfWorkerThread::PairedPunctuationChanged,
-                                        value ? L"1" : L"0");
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.punctuation_lock")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredPunctuationLock(value))
-                                {
-                                    BroadcastToTsfWorkerThreadViaNamedpipe(
-                                        Global::DataFromServerMsgTypeToTsfWorkerThread::PunctuationLockChanged,
-                                        FormatPunctuationLockWorkerPayload());
-                                    if (value == "chinese")
-                                    {
-                                        UpdateFtbPuncState(::webviewFtbWnd, 1);
-                                    }
-                                    else if (value == "english")
-                                    {
-                                        UpdateFtbPuncState(::webviewFtbWnd, 0);
-                                    }
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path.rfind("general.floating_toolbar_", 0) == 0)
-                            {
-                                const std::string item = path.substr(std::string("general.floating_toolbar_").size());
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredFloatingToolbarItemEnabled(item, value))
-                                {
-                                    ApplyConfiguredFloatingToolbarItems();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.cn_en_mixed_input")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredEnglishCandidatesEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "input.japanese_schema")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredJapaneseSchema(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.candidate_translations")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredCandidateTranslationsEnabled(value))
-                                {
-                                    FanyNamedPipe::EnqueueRefreshCandidatePageTask();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.diagnostic_log" ||
-                                     path == "general.candidate_window_diagnostic_log")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredDiagnosticLogEnabled(value))
-                                {
-                                    CAND_DIAG_LOGF(L"diagnostic logging enabled from Settings");
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.tsf_diagnostic_log")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredTsfDiagnosticLogEnabled(value))
-                                {
-                                    BroadcastToTsfWorkerThreadViaNamedpipe(
-                                        Global::DataFromServerMsgTypeToTsfWorkerThread::TsfDiagnosticLogChanged,
-                                        value ? L"1" : L"0");
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "statistics.enabled")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredStatisticsEnabled(value))
-                                {
-                                    // The DLL gates capture on this: without the
-                                    // broadcast an opt-out would keep classifying
-                                    // and writing frames until the next connect.
-                                    BroadcastToTsfWorkerThreadViaNamedpipe(
-                                        Global::DataFromServerMsgTypeToTsfWorkerThread::StatisticsEnabledChanged,
-                                        value ? L"1" : L"0");
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "statistics.retention")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredStatisticsRetention(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path.rfind("tencent_tmt.", 0) == 0)
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredTencentTmtString(path.substr(std::string("tencent_tmt.").size()),
-                                                                  value))
-                                {
-                                    if (path == "tencent_tmt.target_language")
-                                        FanyNamedPipe::EnqueueRefreshCandidatePageTask();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "custom_translation.enabled")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredCustomTranslationBool("enabled", value))
-                                {
-                                    FanyNamedPipe::EnqueueRefreshCandidatePageTask();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path.rfind("custom_translation.", 0) == 0)
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredCustomTranslationString(
-                                        path.substr(std::string("custom_translation.").size()), value))
-                                {
-                                    FanyNamedPipe::EnqueueRefreshCandidatePageTask();
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.cn_en_mixed_input_min_chars")
-                            {
-                                const int value = static_cast<int>(data.at("value").as_int64());
-                                if (SetConfiguredEnglishMixedInputMinChars(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.emoji_mixed_input")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredEmojiMixedInputEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.kaomoji_mixed_input")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredKaomojiMixedInputEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.cloud_candidates")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredCloudCandidatesEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "association.sentence_wordlattice")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredAssocSentenceWordLattice(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "association.sentence_google")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredAssocSentenceGoogle(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "association.sentence_neural_desktop")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredAssocSentenceNeuralDesktop(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "association.sentence_neural_keyboard")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredAssocSentenceNeuralKeyboard(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "association.sentence_show_next_on_duplicate")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredAssocSentenceShowNextOnDuplicate(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "association.sentence_source_badge")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredAssocSentenceSourceBadge(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "association.sentence_collocation_enabled")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredAssocSentenceCollocationEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "association.sentence_collocation_model")
-                            {
-                                const std::string model_id = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredAssocSentenceCollocationModel(model_id))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "utility.unicode_mode")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredUnicodeModeEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "utility.quick_phrase")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredQuickPhraseEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "utility.quick_phrase_candidates")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredQuickPhraseCandidatesEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "utility.quick_phrase_frequency")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredQuickPhraseFrequencyEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "utility.mixed_candidates")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredMixedCandidatesEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "utility.date_time_candidates")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredDateTimeCandidatesEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "utility.date_time_mode")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredDateTimeModeEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "utility.emoji_mode")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredEmojiModeEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "utility.kaomoji_mode")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredKaomojiModeEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "utility.jianpin_mode")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredJianpinModeEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "utility.y_mode")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredYModeEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "utility.r_mode")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredRModeEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "utility.clipboard_history")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredClipboardHistoryEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.paging_minus_equal")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                SetConfiguredPagingMinusEqualEnabled(value);
-                                PostSettingsConfig();
-                            }
-                            else if (path == "general.paging_tab")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredPagingTabEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.paging_comma_period")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredPagingCommaPeriodEnabled(value))
-                                {
-                                    BroadcastToTsfWorkerThreadViaNamedpipe(
-                                        Global::DataFromServerMsgTypeToTsfWorkerThread::PagingCommaPeriodChanged,
-                                        FormatPagingCommaPeriodWorkerPayload());
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.paging_brackets")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                SetConfiguredPagingBracketsEnabled(value);
-                                PostSettingsConfig();
-                            }
-                            else if (path == "general.paging_page_up_down")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredPagingPageUpDownEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.paging_mouse_wheel")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredPagingMouseWheelEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "general.candidate_arrow_navigation")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredCandidateArrowNavigationEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "keybindings.toggle_character_set_ctrl_shift_f")
-                            {
-                                SetConfiguredCharacterSetShortcutEnabled(json::value_to<bool>(data.at("value")));
-                                PostSettingsConfig();
-                            }
-                            else if (path == "keybindings.switch_language_shift")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredSwitchLanguageShiftEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "keybindings.switch_language_ctrl")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredSwitchLanguageCtrlEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "keybindings.switch_language_ctrl_alt_space")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredSwitchLanguageCtrlAltSpaceEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "helpcode.show_sp_helpcode_in_candidate_window")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredShowShuangpinHelpcodeInCandidateWindow(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "helpcode.shuangpin_helpcode")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredShuangpinHelpcodeEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "helpcode.shuangpin_mid_sentence_helpcode")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredShuangpinMidSentenceHelpcodeEnabled(value))
-                                {
-                                    // TSF 据此决定反引号要不要当编码键吃掉。
-                                    BroadcastToTsfWorkerThreadViaNamedpipe(
-                                        Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged,
-                                        FormatMidSentenceHelpcodeWorkerPayload());
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "helpcode.shuangpin_helpcode_schema")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredShuangpinHelpcodeSchema(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "helpcode.quanpin_helpcode")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredQuanpinHelpcodeEnabled(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "helpcode.quanpin_helpcode_schema")
-                            {
-                                const std::string value = json::value_to<std::string>(data.at("value"));
-                                if (SetConfiguredQuanpinHelpcodeSchema(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "helpcode.show_qp_helpcode_in_candidate_window")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredShowQuanpinHelpcodeInCandidateWindow(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
+                            ApplyInputSubkey(path, data);
+                            ApplyAppearanceSubkey(path, data);
+                            ApplyGeneralSubkey(path, data);
+                            ApplyStatisticsSubkey(path, data);
+                            ApplyTencentTmtSubkey(path, data);
+                            ApplyCustomTranslationSubkey(path, data);
+                            ApplyAssociationSubkey(path, data);
+                            ApplyUtilitySubkey(path, data);
+                            ApplyKeybindingsSubkey(path, data);
+                            ApplyHelpcodeSubkey(path, data);
                         }
                         catch (const std::exception &)
                         {
