@@ -1398,6 +1398,19 @@ begin
         ResultCode
       ) and (ResultCode < 8) and Moved;
 
+  { 下载的 octagram 语法模型包也搬走，否则留在旧目录里随 RemoveDataDir 一起删掉，用户得重下。}
+  if DirExists(AddBackslash(OldDir) + 'models') then
+    Moved :=
+      Exec(
+        ExpandConstant('{sys}\robocopy.exe'),
+        '"' + AddBackslash(OldDir) + 'models" "' + AddBackslash(NewDir) + 'models" ' +
+        '/E /MOVE /R:2 /W:1 /NJH /NJS /NP /NFL /NDL',
+        '',
+        SW_HIDE,
+        ewWaitUntilTerminated,
+        ResultCode
+      ) and (ResultCode < 8) and Moved;
+
   if not Moved then
   begin
     Log('User data migration reported failures; leaving ' + OldDir + ' in place.');
