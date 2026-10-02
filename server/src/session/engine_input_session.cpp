@@ -4,6 +4,30 @@
 #include "engine/core/sentence_association_options.h"
 #include "engine/quanpin/quanpin_utils.h"
 
+#include <filesystem>
+
+namespace
+{
+// 模型包的确定性布局：<resources>/models/<id>/<id>.gram。下载器与手动放置都
+// 遵守它，解析因此只是一次 stat，不需要目录扫描，也不需要 model.toml。
+std::string ResolveCollocationModelPath(const std::string &model_id)
+{
+    if (model_id.empty())
+    {
+        return {};
+    }
+    // 会话持有的是 legacy() 布局：资源根就是数据根，模型包随安装数据走。
+    const std::filesystem::path file =
+        metasequoia::RuntimePaths::legacy().resources / "models" / model_id / (model_id + ".gram");
+    std::error_code error;
+    if (!std::filesystem::is_regular_file(file, error) || error)
+    {
+        return {};
+    }
+    return file.u8string();
+}
+} // namespace
+
 EngineInputSession::EngineInputSession(SchemeType scheme, const ShuangpinProfile &profile)
     : paths_(metasequoia::RuntimePaths::legacy()), session_(scheme, profile, paths_)
 {
@@ -47,6 +71,18 @@ void EngineInputSession::ApplyConfiguration()
     association.neural_desktop = GetConfiguredAssocSentenceNeuralDesktop();
     association.neural_keyboard = GetConfiguredAssocSentenceNeuralKeyboard();
     association.show_next_on_duplicate = GetConfiguredAssocSentenceShowNextOnDuplicate();
+    // 万象语法模型：两个机制共用一份模型包。模型 id 按 <resources>/models/<id>/<id>.gram
+    // 解析成路径（下载器与手动放置都遵守这个命名）；开关开着但文件不在就等于关，词格
+    // 静默降级。解析是一次 stat，按键路径上可忽略。
+    association.collocation_model = ResolveCollocationModelPath(GetConfiguredAssocSentenceCollocationModel());
+    association.collocation_weight = GetConfiguredAssocSentenceCollocationWeight();
+    association.collocation_rerank = GetConfiguredAssocSentenceCollocationRerank();
+    association.collocation_rerank_weight = GetConfiguredAssocSentenceCollocationRerankWeight();
+    if (association.collocation_model.empty())
+    {
+        // 模型缺席时连开关一起置空，避免词典层拿空路径做无谓解析。
+        association.collocation_rerank = false;
+    }
     session_.set_sentence_association(association);
     session_.set_shuangpin_preedit_uses_raw(GetConfiguredShuangpinPreeditMode() == "shuangpin");
     // 五笔拼音混输与 z 键角色是两个独立设置：混输是「同时给五笔和拼音候选」，z 键角色只管

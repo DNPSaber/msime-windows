@@ -120,6 +120,13 @@ bool g_assoc_sentence_google = true;
 bool g_assoc_sentence_neural_desktop = false;
 bool g_assoc_sentence_neural_keyboard = true;
 bool g_assoc_sentence_show_next_on_duplicate = false;
+// 万象语法模型（octagram .gram）：两个机制默认全关，模型 id 默认空（未下载/未选）。
+// 权重不进设置页，供配置文件高级调参；取值依据 docs/research 的离线评测扫描。
+bool g_assoc_sentence_collocation_additive = false;
+bool g_assoc_sentence_collocation_rerank = false;
+std::string g_assoc_sentence_collocation_model;
+double g_assoc_sentence_collocation_weight = 0.1;
+double g_assoc_sentence_collocation_rerank_weight = 0.05;
 // 候选窗整句候选后的来源标签（〔Trigram〕〔神经K〕等），默认不显示。
 bool g_assoc_sentence_source_badge = false;
 bool g_emoji_mixed_input_enabled = false;
@@ -491,6 +498,12 @@ bool LoadImeConfig()
         g_assoc_sentence_neural_desktop = tbl["association"]["sentence_neural_desktop"].value_or(false);
         g_assoc_sentence_neural_keyboard = tbl["association"]["sentence_neural_keyboard"].value_or(true);
         g_assoc_sentence_show_next_on_duplicate = tbl["association"]["sentence_show_next_on_duplicate"].value_or(false);
+        g_assoc_sentence_collocation_additive = tbl["association"]["sentence_collocation_additive"].value_or(false);
+        g_assoc_sentence_collocation_rerank = tbl["association"]["sentence_collocation_rerank"].value_or(false);
+        g_assoc_sentence_collocation_model = tbl["association"]["sentence_collocation_model"].value_or(std::string());
+        g_assoc_sentence_collocation_weight = tbl["association"]["sentence_collocation_weight"].value_or(0.1);
+        g_assoc_sentence_collocation_rerank_weight =
+            tbl["association"]["sentence_collocation_rerank_weight"].value_or(0.05);
         g_assoc_sentence_source_badge = tbl["association"]["sentence_source_badge"].value_or(false);
         g_emoji_mixed_input_enabled = tbl["general"]["emoji_mixed_input"].value_or(false);
         g_kaomoji_mixed_input_enabled = tbl["general"]["kaomoji_mixed_input"].value_or(false);

@@ -5,6 +5,7 @@
 #include "resource/resource.h"
 #include "settings/settings_launcher.h"
 #include "settings/api_credential_test.h"
+#include "settings/collocation_model.h"
 #include "settings/settings_splash.h"
 #include "settings/dictionary_manager.h"
 #include "settings/serial_task_queue.h"
@@ -506,7 +507,13 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"sentence_neural_desktop", GetConfiguredAssocSentenceNeuralDesktop()},
             {"sentence_neural_keyboard", GetConfiguredAssocSentenceNeuralKeyboard()},
             {"sentence_show_next_on_duplicate", GetConfiguredAssocSentenceShowNextOnDuplicate()},
-            {"sentence_source_badge", GetConfiguredAssocSentenceSourceBadge()}}},
+            {"sentence_source_badge", GetConfiguredAssocSentenceSourceBadge()},
+            {"sentence_collocation_additive", GetConfiguredAssocSentenceCollocationAdditive()},
+            {"sentence_collocation_rerank", GetConfiguredAssocSentenceCollocationRerank()},
+            {"sentence_collocation_model_status", [] {
+                 const auto status = collocation::GetModelStatus();
+                 return nlohmann::json{{"state", status.state}, {"progress", status.progress}, {"error", status.error}};
+             }()}}},
           {"keybindings",
            {{"switch_language_shift", GetConfiguredSwitchLanguageShiftEnabled()},
             {"switch_language_ctrl", GetConfiguredSwitchLanguageCtrlEnabled()},
@@ -880,6 +887,10 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredAssocSentenceShowNextOnDuplicate(json::value_to<bool>(data.at("value")));
     if (path == "association.sentence_source_badge")
         return SetConfiguredAssocSentenceSourceBadge(json::value_to<bool>(data.at("value")));
+    if (path == "association.sentence_collocation_additive")
+        return SetConfiguredAssocSentenceCollocationAdditive(json::value_to<bool>(data.at("value")));
+    if (path == "association.sentence_collocation_rerank")
+        return SetConfiguredAssocSentenceCollocationRerank(json::value_to<bool>(data.at("value")));
     if (path == "utility.unicode_mode")
         return SetConfiguredUnicodeModeEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.quick_phrase")
@@ -1326,6 +1337,16 @@ void HandleWebMessage(HWND hwnd, ICoreWebView2WebMessageReceivedEventArgs *args)
             std::filesystem::create_directories(directory, ec);
             if (!ec)
                 ShellExecuteW(hwnd, L"open", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        }
+        else if (type == "collocationModelDownload")
+        {
+            // 后台线程下载，进度随下一次配置快照回给页面；页面在下载态轮询 configRequest。
+            collocation::StartDownload();
+            PostConfig(false);
+        }
+        else if (type == "collocationModelStatusRequest")
+        {
+            PostConfig(false);
         }
         else if (type == "configUpdate")
         {

@@ -208,6 +208,49 @@ bool SetConfiguredAssocSentenceNeuralKeyboard(bool enabled)
     return true;
 }
 
+bool GetConfiguredAssocSentenceCollocationAdditive()
+{
+    return g_assoc_sentence_collocation_additive;
+}
+bool SetConfiguredAssocSentenceCollocationAdditive(bool enabled)
+{
+    if (!WriteConfiguredValue("association", "sentence_collocation_additive", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_assoc_sentence_collocation_additive = enabled;
+    return true;
+}
+
+bool GetConfiguredAssocSentenceCollocationRerank()
+{
+    return g_assoc_sentence_collocation_rerank;
+}
+bool SetConfiguredAssocSentenceCollocationRerank(bool enabled)
+{
+    if (!WriteConfiguredValue("association", "sentence_collocation_rerank", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_assoc_sentence_collocation_rerank = enabled;
+    return true;
+}
+
+bool GetConfiguredAssocSentenceCollocationRerankWeight()
+{
+    return g_assoc_sentence_collocation_rerank_weight;
+}
+
+std::string GetConfiguredAssocSentenceCollocationModel()
+{
+    return g_assoc_sentence_collocation_model;
+}
+
+double GetConfiguredAssocSentenceCollocationWeight()
+{
+    return g_assoc_sentence_collocation_weight;
+}
+
 bool GetConfiguredAssocSentenceShowNextOnDuplicate()
 {
     return g_assoc_sentence_show_next_on_duplicate;

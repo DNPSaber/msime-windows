@@ -361,6 +361,15 @@ bool GetConfiguredAssocSentenceShowNextOnDuplicate();
 bool SetConfiguredAssocSentenceShowNextOnDuplicate(bool enabled);
 bool GetConfiguredAssocSentenceSourceBadge();
 bool SetConfiguredAssocSentenceSourceBadge(bool enabled);
+// 万象语法模型（[association] 段）：两个机制开关进设置页，模型 id 由下载器写回，
+// 权重是配置文件里的高级调参项，不进设置页。
+bool GetConfiguredAssocSentenceCollocationAdditive();
+bool SetConfiguredAssocSentenceCollocationAdditive(bool enabled);
+bool GetConfiguredAssocSentenceCollocationRerank();
+bool SetConfiguredAssocSentenceCollocationRerank(bool enabled);
+bool GetConfiguredAssocSentenceCollocationRerankWeight();
+std::string GetConfiguredAssocSentenceCollocationModel();
+double GetConfiguredAssocSentenceCollocationWeight();
 bool GetConfiguredUnicodeModeEnabled();
 bool SetConfiguredUnicodeModeEnabled(bool enabled);
 // Shift+K 快捷短语模式。

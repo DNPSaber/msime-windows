@@ -302,6 +302,8 @@ std::string BuildCurrentCandidatePage()
                 view.badge = " 〔神经D〕";
             else if (item.source == CandidateSource::NeuralKeyboard)
                 view.badge = " 〔神经K〕";
+            else if (item.source == CandidateSource::Collocation)
+                view.badge = " 〔万象〕";
         }
         view.fixed_position = item.fixed_position > 0;
         ApplyFixedPositionBadge(view, show_fixed_badge, fixed_badge_style);

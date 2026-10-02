@@ -81,8 +81,18 @@ sentence_neural_desktop = false
 sentence_neural_keyboard = true
 # 某个模型的首选与已有候选重复时，改为显示该模型排名最高的下一条不同结果
 sentence_show_next_on_duplicate = false
-# 在候选窗的整句候选后显示来源标签（〔Trigram〕〔Unigram〕〔神经D〕〔神经K〕）
+# 在候选窗的整句候选后显示来源标签（〔Trigram〕〔Unigram〕〔神经D〕〔神经K〕〔万象〕）
 sentence_source_badge = false
+# 万象语法模型（octagram .gram，约 390MB，设置页下载）：字级搭配强度表，与词表零耦合。
+# 两个机制共用一份模型包（models/<id>/<id>.gram），默认全关；模型未下载时开关不生效。
+# additive 在词格解码里逐边叠加搭配分，rerank 在 n-best 上按整句搭配分重排（〔万象〕行）。
+sentence_collocation_additive = false
+sentence_collocation_rerank = false
+# 模型包 id，由设置页下载器写回；也可手动放置后填 id（布局 models/<id>/<id>.gram）
+sentence_collocation_model = ""
+# 搭配项的线性权重（log10 域）。取值依据 docs/research 的离线评测扫描；不进设置页
+sentence_collocation_weight = 0.1
+sentence_collocation_rerank_weight = 0.05
 
 #
 # 腾讯云机器翻译（候选项本地词库未命中时的补全）
