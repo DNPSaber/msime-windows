@@ -1,6 +1,6 @@
 # Metasequoia IME for Windows
 
-[中文 README](README.md) · [Website](https://msime.app) · [Docs](https://msime.app/docs/) · [Privacy](PRIVACY.md)
+[中文 README](README.md) · [Website](https://msime.app) · [Docs](https://msime.app/docs/) · [Privacy](PRIVACY.md) · [Code signing policy](docs/code-signing-policy.md)
 
 <!-- badges:start -->
 [![CI](https://img.shields.io/github/actions/workflow/status/metasequoiaime/MSIME-Windows/ci.yml?branch=develop&label=CI)](https://github.com/metasequoiaime/MSIME-Windows/actions/workflows/ci.yml)
@@ -51,6 +51,12 @@ There is no telemetry, analytics or crash reporting of any kind.
 [CONTRIBUTING.md](CONTRIBUTING.md) has the environment, the build order and what to run before opening a pull request. Contributions do not have to be code — dictionary entries, documentation, icons and compatibility testing all count, and the [recruiting page](https://github.com/metasequoiaime/.github/blob/main/RECRUITING.md) lists them by area.
 
 Note that most issues, documentation and code comments are in Chinese. English pull requests and issues are welcome.
+
+## Code signing policy
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+What is signed, who the committers, reviewers and approvers are, the build and release process and the current status are in the [code signing policy](docs/code-signing-policy.md). The privacy policy is [PRIVACY.md](PRIVACY.md).
 
 ## Licence
 

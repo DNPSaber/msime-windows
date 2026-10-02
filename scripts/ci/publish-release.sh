@@ -51,6 +51,7 @@ gh release view "$release_tag" --repo "$GH_REPO" --json body --jq .body > notes.
     printf '| SHA256 | `%s` |\n' "$ASSET_SHA256"
     printf '| Dictionaries | `%s` |\n' "$DICTIONARY_TAG"
     printf '| Build inputs | `product-manifest.json` (attached and installed) |\n'
+    printf '\n[Code signing policy](https://github.com/%s/blob/develop/docs/code-signing-policy.md)\n' "$GH_REPO"
     if [[ "$SIGNING_ENABLED" != true ]]; then
         printf '\nThis build is **unsigned**. Windows warns on launch, and `uiAccess` does not take effect, so the candidate window cannot float over elevated applications.\n'
     fi
