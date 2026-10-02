@@ -24,6 +24,10 @@
 namespace collocation
 {
 
+// 内置模型包 id，也是下载器的落位目录名。解析侧在配置未指定 id 时回退到它，
+// 所以这个键可以一直留空：模型下载到位后自然生效，不依赖谁去写回配置。
+inline constexpr char kDefaultModelId[] = "wanxiang-lts-zh-hans";
+
 struct ModelStatus
 {
     std::string state;     // "absent" | "downloading" | "ready" | "error"

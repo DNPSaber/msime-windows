@@ -1,5 +1,6 @@
 #include "engine_input_session.h"
 #include "config/ime_config.h"
+#include "settings/collocation_model.h"
 #include "engine/common/helpcode_utils.h"
 #include "engine/core/sentence_association_options.h"
 #include "engine/quanpin/quanpin_utils.h"
@@ -12,13 +13,13 @@ namespace
 // 遵守它，解析因此只是一次 stat，不需要目录扫描，也不需要 model.toml。
 std::string ResolveCollocationModelPath(const std::string &model_id)
 {
-    if (model_id.empty())
-    {
-        return {};
-    }
+    // 配置键留空即用内置的 LTS 包。这个键没有别的生产者——设置页不写、也没有第二
+    // 个模型包可选——所以「空 = 未选」会让下载器必须去写回配置才能生效，而下载按钮
+    // 在模型就绪后是禁用的，已经下好的用户反而再也触发不了那次写回。回退到内置 id
+    // 之后，下载到位自然生效，配置全程不用动。
+    const std::string id = model_id.empty() ? collocation::kDefaultModelId : model_id;
     // 会话持有的是 legacy() 布局：资源根就是数据根，模型包随安装数据走。
-    const std::filesystem::path file =
-        metasequoia::RuntimePaths::legacy().resources / "models" / model_id / (model_id + ".gram");
+    const std::filesystem::path file = metasequoia::RuntimePaths::legacy().resources / "models" / id / (id + ".gram");
     std::error_code error;
     if (!std::filesystem::is_regular_file(file, error) || error)
     {

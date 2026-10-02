@@ -88,7 +88,8 @@ sentence_source_badge = false
 # additive 在词格解码里逐边叠加搭配分，rerank 在 n-best 上按整句搭配分重排（〔万象〕行）。
 sentence_collocation_additive = false
 sentence_collocation_rerank = false
-# 模型包 id，由设置页下载器写回；也可手动放置后填 id（布局 models/<id>/<id>.gram）
+# 模型包 id。留空即用内置的 wanxiang-lts-zh-hans；也可手动放置别的包后填 id
+# （布局 models/<id>/<id>.gram）。没有别的生产者会写这个键，别指望下载器回写。
 sentence_collocation_model = ""
 # 搭配项的线性权重（log10 域），越大越信任搭配表。不进设置页，供配置文件高级调参
 sentence_collocation_weight = 0.1

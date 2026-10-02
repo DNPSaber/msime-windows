@@ -26,7 +26,7 @@ namespace
 
 constexpr const wchar_t *kModelHost = L"github.com";
 constexpr const wchar_t *kModelPath = L"/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hans.gram";
-constexpr const char *kModelId = "wanxiang-lts-zh-hans";
+constexpr const char *kModelId = collocation::kDefaultModelId;
 // 上次评测时的字节摘要，只用于标注「这份评测过」，不参与放行判定——上游重训
 // 就换字节，硬锁会让每次重训都变成一次全用户下载失败，而重训只换权重不换格式。
 constexpr const char *kReviewedSha256 = "ae43724a9aa02b4c493c603025549d2cba6fa6a67ae3ae040e55efdfeeaa1183";
