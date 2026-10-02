@@ -23,8 +23,28 @@ let collocationPollTimer: ReturnType<typeof setInterval> | null = null;
 
 export type CollocationModelStatus = { state?: string; progress?: number; error?: string };
 
-// 应用快照里的 association.sentence_collocation_model_status：状态文本、按钮可用态，
-// 下载中每 2 秒发一次 collocationModelStatusRequest 拉新快照，离开下载态自动停。
+// 两个整句开关只有在 .gram 真的在盘上时才有意义：模型缺席时词格会静默降级，开关
+// 开着也看不到任何效果。与智能标点／候选混输的子开关一样，这里只置灰禁用，
+// 不替用户改回勾选状态——他开过但模型没了，得自己看见并决定。
+const COLLABORATION_TOGGLE_IDS = [
+  'sentenceCollocationAdditiveToggleBtn',
+  'sentenceCollocationRerankToggleBtn'
+];
+
+function setCollocationTogglesDisabled(disabled: boolean): void {
+  for (const id of COLLABORATION_TOGGLE_IDS) {
+    const toggle = document.getElementById(id);
+    toggle?.setAttribute('aria-disabled', String(disabled));
+    if (toggle) toggle.tabIndex = disabled ? -1 : 0;
+  }
+  document.querySelectorAll('.collocation-toggle-row').forEach((row) => {
+    row.classList.toggle('is-disabled', disabled);
+  });
+}
+
+// 应用快照里的 association.sentence_collocation_model_status：状态文本、按钮可用态、
+// 两个开关的可用态，下载中每 2 秒发一次 collocationModelStatusRequest 拉新快照，
+// 离开下载态自动停。
 export function applyCollocationModelStatus(status: CollocationModelStatus | undefined): void {
   const state = status?.state ?? 'absent';
   const text = document.getElementById('collocationModelStatusText');
@@ -42,6 +62,7 @@ export function applyCollocationModelStatus(status: CollocationModelStatus | und
   }
   if (button)
     button.disabled = state === 'downloading' || state === 'ready';
+  setCollocationTogglesDisabled(state !== 'ready');
   if (state === 'downloading' && collocationPollTimer === null) {
     collocationPollTimer = setInterval(() => {
       window.chrome?.webview?.postMessage(serializeHostMessage({ type: 'collocationModelStatusRequest' }));

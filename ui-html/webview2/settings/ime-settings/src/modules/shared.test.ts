@@ -1,5 +1,5 @@
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { setupDropdownMenu } from './shared';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { applyCollocationModelStatus, setupDropdownMenu } from './shared';
 
 vi.mock('./theme', () => ({ setSurfaceTheme: vi.fn(), setThemeMode: vi.fn() }));
 
@@ -147,4 +147,93 @@ it('allows the item after the host clears its disabled state', () => {
     type: 'configUpdate', data: { path: 'input.word_to_character_keys', value: 'minus_equal' }
   });
   expect(menu.classList.remove).toHaveBeenCalledWith('open');
+});
+
+describe('collocation model status gating', () => {
+  const TOGGLE_IDS = ['sentenceCollocationAdditiveToggleBtn', 'sentenceCollocationRerankToggleBtn'];
+
+  // 只实现 shared.ts 实际用到的那几个成员，避免继承 MenuElement 时和它的
+  // classList mock 打架。
+  class RowElement {
+    classes = new Set<string>();
+    tabIndex = 0;
+    attributes = new Map<string, string>();
+    classList = {
+      toggle: (name: string, on: boolean): boolean => {
+        if (on) {
+          this.classes.add(name);
+        } else {
+          this.classes.delete(name);
+        }
+        return on;
+      }
+    };
+    setAttribute(name: string, value: string) {
+      this.attributes.set(name, value);
+    }
+    getAttribute(name: string) {
+      return this.attributes.get(name) ?? null;
+    }
+  }
+
+  let toggles: Record<string, RowElement>;
+  let rows: RowElement[];
+  let downloadButton: { disabled: boolean };
+  let statusText: { textContent: string };
+
+  beforeEach(() => {
+    toggles = Object.fromEntries(TOGGLE_IDS.map((id) => [id, new RowElement()]));
+    rows = [new RowElement(), new RowElement()];
+    downloadButton = { disabled: false };
+    statusText = { textContent: '' };
+    vi.stubGlobal('document', {
+      getElementById: (id: string) => {
+        if (id === 'collocationModelDownloadBtn') return downloadButton;
+        if (id === 'collocationModelStatusText') return statusText;
+        return toggles[id] ?? null;
+      },
+      querySelectorAll: (selector: string) => (selector === '.collocation-toggle-row' ? rows : [])
+    });
+    vi.stubGlobal('window', { chrome: { webview: { postMessage: vi.fn() } } });
+  });
+
+  it('grays out both toggles until the model is ready', () => {
+    applyCollocationModelStatus({ state: 'absent' });
+    for (const id of TOGGLE_IDS) {
+      expect(toggles[id].getAttribute('aria-disabled')).toBe('true');
+      expect(toggles[id].tabIndex).toBe(-1);
+    }
+    expect(rows.every((row) => row.classes.has('is-disabled'))).toBe(true);
+    expect(downloadButton.disabled).toBe(false);
+
+    applyCollocationModelStatus({ state: 'ready' });
+    for (const id of TOGGLE_IDS) {
+      expect(toggles[id].getAttribute('aria-disabled')).toBe('false');
+      expect(toggles[id].tabIndex).toBe(0);
+    }
+    expect(rows.every((row) => row.classes.has('is-disabled'))).toBe(false);
+  });
+
+  it('keeps the toggles disabled while downloading and after a failure', () => {
+    applyCollocationModelStatus({ state: 'downloading', progress: 40 });
+    expect(downloadButton.disabled).toBe(true);
+    for (const id of TOGGLE_IDS) {
+      expect(toggles[id].getAttribute('aria-disabled')).toBe('true');
+    }
+
+    applyCollocationModelStatus({ state: 'error', error: '校验失败' });
+    expect(statusText.textContent).toBe('下载失败：校验失败');
+    expect(downloadButton.disabled).toBe(false);
+    for (const id of TOGGLE_IDS) {
+      expect(toggles[id].getAttribute('aria-disabled')).toBe('true');
+    }
+  });
+
+  it('treats a missing status as not downloaded', () => {
+    applyCollocationModelStatus(undefined);
+    expect(statusText.textContent).toBe('未下载');
+    for (const id of TOGGLE_IDS) {
+      expect(toggles[id].getAttribute('aria-disabled')).toBe('true');
+    }
+  });
 });

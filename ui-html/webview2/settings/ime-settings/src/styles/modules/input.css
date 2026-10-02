@@ -340,6 +340,12 @@
   pointer-events: none;
 }
 
+/* 万象 .gram 未就绪：两个开关置灰并挡住点击，勾选状态按 aria-disabled 保留展示 */
+.collocation-toggle-row.is-disabled .ftb-toggle-btn {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
 .toggle-section-disabled-hint {
   margin-top: 8px;
   color: var(--text-muted);
