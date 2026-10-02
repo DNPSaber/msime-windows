@@ -25,15 +25,15 @@ namespace collocation
 const std::vector<CatalogEntry> &Catalog()
 {
     static const std::vector<CatalogEntry> kCatalog = {
-        {kRecommendedModelId, "万象 LTS（推荐）", L"github.com",
+        {kRecommendedModelId, "万象 LTS（推荐）", "万象", L"github.com",
          L"/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hans.gram", "约 390 MB", "CC-BY-4.0",
          "© amzxyz / RIME-LMDG 项目"},
-        {"zh-hans-t-essay-bgw", "八股文·词级", L"github.com",
+        {"zh-hans-t-essay-bgw", "八股文·词级", "八股", L"github.com",
          L"/lotem/rime-octagram-data/releases/download/20260712/zh-hans-t-essay-bgw.gram", "约 197 MB", "LGPL", ""},
-        {"zh-hans-t-essay-bgw-compact", "八股文·词级紧凑", L"github.com",
+        {"zh-hans-t-essay-bgw-compact", "八股文·词级紧凑", "八股", L"github.com",
          L"/lotem/rime-octagram-data/releases/download/20260712/zh-hans-t-essay-bgw-compact.gram", "约 39 MB", "LGPL",
          ""},
-        {"zh-moqi", "白霜（实验）", L"raw.githubusercontent.com", L"/gaboolic/rime-frost/master/zh-moqi.gram",
+        {"zh-moqi", "白霜（实验）", "墨奇", L"raw.githubusercontent.com", L"/gaboolic/rime-frost/master/zh-moqi.gram",
          "约 7 MB", "GPL-3.0", "随 GPL-3.0 仓库（gaboolic/rime-frost）分发，构建链未声明许可，实验性收录"},
     };
     return kCatalog;
@@ -357,6 +357,16 @@ std::map<std::string, ModelStatus> GetModelStatuses()
         statuses[entry.id] = {"absent", 0, {}};
     }
     return statuses;
+}
+
+// 手填的 id（自备模型、目录收录前就装好的包）不在目录里。八股是 octagram 这套格式的通称，
+// 不属于任何一家，用它兜底比挂一个猜出来的品牌名诚实。
+constexpr const char *kGenericBadge = "八股";
+
+const char *BadgeForModel(const std::string &model_id)
+{
+    const CatalogEntry *entry = FindEntry(model_id);
+    return entry == nullptr ? kGenericBadge : entry->badge;
 }
 
 bool StartDownload(const std::string &model_id)

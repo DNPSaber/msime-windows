@@ -230,14 +230,6 @@ std::wstring BuildUiLessCandidatePageW()
 
 namespace
 {
-// octagram 语法模型的徽章按当前显式激活的模型包派生：wanxiang 前缀显示〔万象〕，
-// 其余 octagram 模型显示〔八股〕。激活值留空 = 未选择任何模型，此时不产生整句候选，
-// 徽章分支不会被走到。
-bool CollocationBadgeIsWanxiang()
-{
-    return GetConfiguredAssocSentenceCollocationModel().rfind("wanxiang", 0) == 0;
-}
-
 std::string BuildCurrentCandidatePage()
 {
     auto &ui = Global::candidate_ui;
@@ -257,8 +249,13 @@ std::string BuildCurrentCandidatePage()
     const bool show_fixed_badge = GetConfiguredCandidateFixedBadge();
     const std::string fixed_badge_style = GetConfiguredCandidateFixedBadgeStyle();
     const bool show_sentence_source_badge = GetConfiguredAssocSentenceSourceBadge();
-    // 徽标开启时才解析模型包 id，每次组页解析一次，不逐候选查。
-    const bool collocation_is_wanxiang = show_sentence_source_badge && CollocationBadgeIsWanxiang();
+    // 徽标开启时才解析模型包的来源标签，每次组页解析一次，不逐候选查。标签由目录条目
+    // 自己声明（万象/八股/墨奇），各家互不冒名；激活值留空时不产生整句候选，徽章分支
+    // 不会被走到。
+    const std::string collocation_badge =
+        show_sentence_source_badge
+            ? " 〔" + std::string(collocation::BadgeForModel(GetConfiguredAssocSentenceCollocationModel())) + "〕"
+            : std::string();
 
     const int start = ui.current_page_start();
     const int loop = ui.current_page_count();
@@ -314,7 +311,7 @@ std::string BuildCurrentCandidatePage()
             else if (item.source == CandidateSource::NeuralKeyboard)
                 view.badge = " 〔神经K〕";
             else if (item.source == CandidateSource::Collocation)
-                view.badge = collocation_is_wanxiang ? " 〔万象〕" : " 〔八股〕";
+                view.badge = collocation_badge;
         }
         view.fixed_position = item.fixed_position > 0;
         ApplyFixedPositionBadge(view, show_fixed_badge, fixed_badge_style);

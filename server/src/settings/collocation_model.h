@@ -24,16 +24,17 @@ namespace collocation
 {
 
 // 推荐包（万象）的 id：目录首条目，只是展示与排序上的推荐位，不承载默认或回退语义——
-// 激活值默认留空 = 未选择任何模型（整句加成关闭）。候选徽章按模型 id 的 wanxiang 前缀
-// 区分〔万象〕与其他 octagram 模型（〔八股〕）。
+// 激活值默认留空 = 未选择任何模型（整句加成关闭）。
 inline constexpr char kRecommendedModelId[] = "wanxiang-lts-zh-hans";
 
 // 内置目录的一个条目。host/path 是 HTTPS 直链（release 资产与 raw 文件都经 302 跳 CDN，
-// 下载器显式放开重定向）；size_hint/license/license_note 进设置页展示与 NOTICE.md 署名。
+// 下载器显式放开重定向）；size_hint/license/license_note 进设置页展示与 NOTICE.md 署名；
+// badge 是候选窗的整句来源标签（不含六角括号），随包公布，用户据此分辨各家模型。
 struct CatalogEntry
 {
     const char *id;
     const char *display_name;
+    const char *badge;
     const wchar_t *host;
     const wchar_t *path;
     const char *size_hint;
@@ -43,6 +44,10 @@ struct CatalogEntry
 
 // 编译期内置目录，首条目是推荐包。
 const std::vector<CatalogEntry> &Catalog();
+
+// 候选窗给该模型包的整句候选挂的来源标签（不含六角括号）。目录里没有的 id——手填进
+// config.toml 的自备模型——落回八股：那是 octagram 这套格式的通称，不冒充任何一家。
+const char *BadgeForModel(const std::string &model_id);
 
 struct ModelStatus
 {

@@ -139,8 +139,22 @@ TEST_CASE(collocation_catalog_lists_four_builtin_models)
         REQUIRE(entry.path != nullptr && entry.path[0] == L'/');
         REQUIRE(entry.size_hint != nullptr && *entry.size_hint != '\0');
         REQUIRE(entry.license != nullptr && *entry.license != '\0');
+        REQUIRE(entry.badge != nullptr && *entry.badge != '\0');
     }
     REQUIRE(std::string(catalog[3].license_note).find("构建链未声明许可") != std::string::npos);
+}
+
+TEST_CASE(collocation_badge_is_per_model_and_falls_back_to_octagram_name)
+{
+    // 候选窗的整句来源标签按模型包各自声明，不靠 id 前缀猜：万象〔万象〕、八股文两个包
+    // 都〔八股〕、白霜〔墨奇〕。
+    REQUIRE_EQ(std::string(collocation::BadgeForModel(collocation::kRecommendedModelId)), std::string("万象"));
+    REQUIRE_EQ(std::string(collocation::BadgeForModel("zh-hans-t-essay-bgw")), std::string("八股"));
+    REQUIRE_EQ(std::string(collocation::BadgeForModel("zh-hans-t-essay-bgw-compact")), std::string("八股"));
+    REQUIRE_EQ(std::string(collocation::BadgeForModel("zh-moqi")), std::string("墨奇"));
+    // 目录外手填的 id（自备模型）落回格式通称，不冒充任何一家。
+    REQUIRE_EQ(std::string(collocation::BadgeForModel("not-in-catalog")), std::string("八股"));
+    REQUIRE_EQ(std::string(collocation::BadgeForModel("")), std::string("八股"));
 }
 
 TEST_CASE(collocation_statuses_cover_catalog_and_follow_disk)

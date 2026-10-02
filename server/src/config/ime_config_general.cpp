@@ -209,8 +209,8 @@ bool SetConfiguredAssocSentenceNeuralKeyboard(bool enabled)
 }
 
 // octagram 语法模型总开关。开启时解码期叠加字级搭配分，并在 n-best 上重排出整句来源行
-// （内置万象包〔万象〕，其他模型〔八股〕）。引擎侧加成没有独立开关——它由 collocation_model
-// 非空隐含开启，所以单个键就够。
+// （标签由模型包自带：万象〔万象〕、八股文〔八股〕、白霜〔墨奇〕）。引擎侧加成没有独立
+// 开关——它由 collocation_model 非空隐含开启，所以单个键就够。
 bool GetConfiguredAssocSentenceCollocationEnabled()
 {
     return g_assoc_sentence_collocation_enabled;
