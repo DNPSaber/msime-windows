@@ -4,20 +4,16 @@
 #include "engine/ngram/octagram/octagram_gram.h"
 
 #include <Windows.h>
-#include <bcrypt.h>
 #include <winhttp.h>
 
-#include <atomic>
 #include <filesystem>
 #include <fstream>
 #include <mutex>
-#include <sstream>
 #include <string>
 #include <thread>
 #include <vector>
 
 #pragma comment(lib, "winhttp.lib")
-#pragma comment(lib, "bcrypt.lib")
 
 namespace collocation
 {
@@ -27,9 +23,6 @@ namespace
 constexpr const wchar_t *kModelHost = L"github.com";
 constexpr const wchar_t *kModelPath = L"/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hans.gram";
 constexpr const char *kModelId = collocation::kDefaultModelId;
-// 上次评测时的字节摘要，只用于标注「这份评测过」，不参与放行判定——上游重训
-// 就换字节，硬锁会让每次重训都变成一次全用户下载失败，而重训只换权重不换格式。
-constexpr const char *kReviewedSha256 = "ae43724a9aa02b4c493c603025549d2cba6fa6a67ae3ae040e55efdfeeaa1183";
 
 std::filesystem::path ModelDirectory()
 {
@@ -45,67 +38,6 @@ std::filesystem::path PartFile()
 {
     // 同一卷上的临时名，下载完成后原子 rename 到位。
     return metasequoia::data_directory() / "models" / (std::string(kModelId) + ".gram.part");
-}
-
-std::filesystem::path DigestSidecar()
-{
-    // 下载时写下的实际摘要。查询状态要跟着配置快照频繁调用，不能每次重算
-    // 400MB 的 SHA256，所以摘要落盘、状态只读这个几字节的旁挂文件。
-    return ModelDirectory() / (std::string(kModelId) + ".sha256");
-}
-
-std::string ReadRecordedDigest()
-{
-    std::ifstream in(DigestSidecar(), std::ios::binary);
-    std::string digest;
-    std::getline(in, digest);
-    return digest;
-}
-
-std::string Sha256Hex(const std::filesystem::path &file)
-{
-    BCRYPT_ALG_HANDLE algorithm = nullptr;
-    BCRYPT_HASH_HANDLE hash = nullptr;
-    std::string result;
-    DWORD digest_length = 0, object_length = 0, callback = 0;
-    if (BCryptOpenAlgorithmProvider(&algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != 0 ||
-        BCryptGetProperty(algorithm, BCRYPT_HASH_LENGTH, reinterpret_cast<PUCHAR>(&digest_length),
-                          sizeof(digest_length), &callback, 0) != 0 ||
-        BCryptGetProperty(algorithm, BCRYPT_OBJECT_LENGTH, reinterpret_cast<PUCHAR>(&object_length),
-                          sizeof(object_length), &callback, 0) != 0)
-    {
-        if (algorithm)
-            BCryptCloseAlgorithmProvider(algorithm, 0);
-        return {};
-    }
-    std::vector<unsigned char> hash_object(object_length);
-    if (BCryptCreateHash(algorithm, &hash, hash_object.data(), object_length, nullptr, 0, 0) == 0)
-    {
-        std::ifstream in(file, std::ios::binary);
-        std::vector<char> buffer(1 << 20);
-        bool ok = static_cast<bool>(in);
-        while (ok && in)
-        {
-            in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
-            const auto read = in.gcount();
-            if (read > 0)
-                ok = BCryptHashData(hash, reinterpret_cast<PUCHAR>(buffer.data()), static_cast<ULONG>(read), 0) == 0;
-        }
-        if (ok)
-        {
-            std::vector<unsigned char> digest(digest_length);
-            ok = BCryptFinishHash(hash, digest.data(), digest_length, 0) == 0;
-            static const char *kHex = "0123456789abcdef";
-            for (unsigned char byte : digest)
-            {
-                result.push_back(kHex[byte >> 4]);
-                result.push_back(kHex[byte & 0x0F]);
-            }
-        }
-        BCryptDestroyHash(hash);
-    }
-    BCryptCloseAlgorithmProvider(algorithm, 0);
-    return result;
 }
 
 // 格式锁：唯一真正拦下坏模型的检查。让引擎读取端自己开一次，Magic 与双数组边界
@@ -268,8 +200,8 @@ void DownloadThread()
         return;
     }
 
-    // 格式锁：唯一真正拦下坏模型的检查。摘要对不上不拦——上游重训就换权重，
-    // 魔数与双数组布局不变，那是「未经评测」而不是「损坏」。
+    // 格式锁：唯一真正拦下坏模型的检查，也是「已下载」的定义——能被引擎读取端
+    // 打开（魔数与双数组边界合法）就放行落位，打开不了的一律按损坏拒绝。
     std::string format_error;
     if (!ValidateFormat(PartFile(), format_error))
     {
@@ -281,7 +213,6 @@ void DownloadThread()
 
     // ValidateFormat 的局部 GramDb 已析构、映射已解除，否则下面的 rename 会被
     // 以 FILE_SHARE_READ 打开的旧句柄拒绝。
-    const std::string digest = Sha256Hex(PartFile());
     std::error_code rename_error;
     std::filesystem::rename(PartFile(), ModelFile(), rename_error);
     if (rename_error)
@@ -290,17 +221,7 @@ void DownloadThread()
         return;
     }
 
-    // 实际字节的摘要落盘：状态查询要跟着配置快照频繁调用，不能每次重算 400MB 的
-    // 摘要，reviewed 判定读这个几字节的旁挂文件。
-    {
-        std::ofstream recorded(DigestSidecar(), std::ios::binary | std::ios::trunc);
-        if (recorded)
-        {
-            recorded << digest << "\n";
-        }
-    }
-
-    // CC-BY-4.0 的署名义务随模型走：NOTICE 与模型同目录，注明来源与实际摘要。
+    // CC-BY-4.0 的署名义务随模型走：NOTICE 与模型同目录，注明来源与许可。
     std::error_code size_error;
     const long long model_bytes = static_cast<long long>(std::filesystem::file_size(ModelFile(), size_error));
     std::ofstream notice(ModelDirectory() / "NOTICE.md", std::ios::binary | std::ios::trunc);
@@ -309,12 +230,7 @@ void DownloadThread()
         notice << "# 万象语法模型（" << kModelId << "）\n\n"
                << "- 来源：https://github.com/amzxyz/RIME-LMDG/releases/tag/LTS\n"
                << "- 许可：CC-BY-4.0（© amzxyz / RIME-LMDG 项目）\n"
-               << "- 文件：" << kModelId << ".gram（" << model_bytes << " 字节）\n"
-               << "- SHA256：" << digest << "\n";
-        if (digest != kReviewedSha256)
-        {
-            notice << "- 备注：这份字节与上次评测的（" << kReviewedSha256 << "）不同，属上游重训，未经重新评测。\n";
-        }
+               << "- 文件：" << kModelId << ".gram（" << model_bytes << " 字节）\n";
     }
     SetState(DownloadState::Idle, 100, {});
 }
@@ -328,17 +244,17 @@ ModelStatus GetModelStatus()
     // 字节数：钉死它就等于钉死上游的每次重训。
     if (std::filesystem::exists(ModelFile(), fs_error) && !fs_error)
     {
-        return {"ready", 100, {}, ReadRecordedDigest() == kReviewedSha256};
+        return {"ready", 100, {}};
     }
     std::lock_guard lock(g_mutex);
     switch (g_state)
     {
     case DownloadState::Downloading:
-        return {"downloading", g_progress, {}, false};
+        return {"downloading", g_progress, {}};
     case DownloadState::Error:
-        return {"error", 0, g_error, false};
+        return {"error", 0, g_error};
     default:
-        return {"absent", 0, {}, false};
+        return {"absent", 0, {}};
     }
 }
 

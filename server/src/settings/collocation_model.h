@@ -13,10 +13,6 @@
 // engine/ngram/octagram/octagram_gram.cpp 的 GramDb::open）；读取端不按文件自带的长度
 // 做堆分配，未知权重的字节是安全输入。传输完整性交给 HTTPS 加 Content-Length 比对。
 //
-// kReviewedSha256 仍然留着，但只作对照、不参与放行：摘要对不上说明上游重训过，状态
-// 报 reviewed=false，设置页明示「上游已更新，未经评测」，照常落位。实际字节的摘要写进
-// 旁挂的 .sha256 与 NOTICE.md，事后可追溯。
-//
 // 状态以磁盘为准（模型文件存在 = ready，落位发生在格式校验之后），下载态是各进程
 // 内存里的 runtime 状态：独立设置进程与 Server 各自能看到自己的下载进度。
 
@@ -32,10 +28,9 @@ inline constexpr char kDefaultModelId[] = "wanxiang-lts-zh-hans";
 
 struct ModelStatus
 {
-    std::string state;     // "absent" | "downloading" | "ready" | "error"
-    int progress = 0;      // 下载中 0-100；其余状态无意义
-    std::string error;     // state == "error" 时的人类可读原因
-    bool reviewed = false; // ready 时：这份字节是否就是评测过的那份
+    std::string state; // "absent" | "downloading" | "ready" | "error"
+    int progress = 0;  // 下载中 0-100；其余状态无意义
+    std::string error; // state == "error" 时的人类可读原因
 };
 
 // 磁盘现状 + 本进程下载态。轻量，可随配置快照频繁调用。
