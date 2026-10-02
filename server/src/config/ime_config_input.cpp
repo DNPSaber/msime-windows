@@ -48,6 +48,7 @@ bool SetConfiguredInputScheme(const std::string &scheme)
         return false;
     }
     g_input_scheme = ParseScheme(scheme);
+    RefreshEffectiveTsfPreeditStyle();
     NotifyImeServerInputSchemeChanged();
     return true;
 }
@@ -288,9 +289,38 @@ bool SetConfiguredTsfPreeditStyle(const std::string &style)
         return false;
     }
     g_tsf_preedit_style = style;
-    GlobalSettings::setTsfPreeditStyle(style);
+    RefreshEffectiveTsfPreeditStyle();
     return true;
 }
+
+bool GetConfiguredTsfPreeditShuangpinQuanpin()
+{
+    return g_tsf_preedit_shuangpin_quanpin;
+}
+
+bool SetConfiguredTsfPreeditShuangpinQuanpin(bool enabled)
+{
+    if (!WriteConfiguredValue("appearance", "tsf_preedit_shuangpin_quanpin", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_tsf_preedit_shuangpin_quanpin = enabled;
+    RefreshEffectiveTsfPreeditStyle();
+    return true;
+}
+
+namespace ime_config_detail
+{
+void RefreshEffectiveTsfPreeditStyle()
+{
+    // 原始按键样式下 TSF 自己显示按键缓冲，从不等 Server 的预编辑；双拼要显示转换后的全拼就得
+    // 让它按分词样式等回包，回包里再按用户选的样式去掉分词符号（见 BuildTsfPreedit）。
+    const bool shuangpin_quanpin = g_tsf_preedit_shuangpin_quanpin && g_tsf_preedit_style == "raw" &&
+                                   GetConfiguredActiveInputScheme() == SchemeType::Shuangpin;
+    GlobalSettings::setTsfPreeditStyle(shuangpin_quanpin ? std::string(GlobalSettings::TsfPreeditStyle::Pinyin)
+                                                         : g_tsf_preedit_style);
+}
+} // namespace ime_config_detail
 
 bool GetConfiguredShuangpinHelpcodeEnabled()
 {
@@ -543,6 +573,7 @@ bool SetConfiguredInputMode(const std::string &mode)
         return false;
     }
     g_input_mode = mode;
+    RefreshEffectiveTsfPreeditStyle();
     NotifyImeServerInputSchemeChanged();
     return true;
 }

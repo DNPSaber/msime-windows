@@ -567,6 +567,30 @@ void AppendAiContext(const std::string &committed_word)
         g_inputSession->set_rescoring_context(g_ai_context);
 }
 
+void SyncShuangpinPreeditForms()
+{
+    auto &composition = GlobalIme::composition;
+    composition.shuangpin_raw_segmentation.clear();
+    composition.shuangpin_quanpin_segmentation.clear();
+    composition.shuangpin_forms_source.clear();
+    // 只有 segmented_pinyin 就是双拼会话自己的切分时才换成全拼：特殊模式、英文模式和 R 模式都会把它
+    // 改写成按键原串，那些组合里的字母不是双拼编码。
+    if (!g_inputSession || g_inputSession->current_scheme_type() != SchemeType::Shuangpin || g_english_input_mode ||
+        g_r_mode_triggered || IsSpecialModeCompositionActive(composition.raw_input_with_cases) ||
+        composition.segmented_pinyin != g_inputSession->get_pinyin_segmentation_with_cases())
+    {
+        return;
+    }
+    auto forms = g_inputSession->get_shuangpin_preedit_forms();
+    if (forms.quanpin.empty())
+    {
+        return;
+    }
+    composition.shuangpin_raw_segmentation = std::move(forms.raw);
+    composition.shuangpin_quanpin_segmentation = std::move(forms.quanpin);
+    composition.shuangpin_forms_source = composition.segmented_pinyin;
+}
+
 std::wstring BuildCreateWordPipePayload(const std::string &remaining_raw_input_with_cases,
                                         const std::string &current_word)
 {
@@ -575,7 +599,7 @@ std::wstring BuildCreateWordPipePayload(const std::string &remaining_raw_input_w
     // Legacy TSF only reads the first two fields.
     const std::wstring remaining = string_to_wstring(remaining_raw_input_with_cases);
     const std::wstring word = string_to_wstring(CandidateTextForOutput(current_word));
-    const std::wstring preedit = word + string_to_wstring(GlobalIme::composition.segmented_pinyin);
+    const std::wstring preedit = BuildTsfPreedit(word, remaining_raw_input_with_cases);
     return remaining + L'\t' + word + L'\t' + preedit;
 }
 } // namespace event_listener_detail
@@ -630,7 +654,7 @@ bool SendUiLessCompositionToClient(uint64_t client_id, uint64_t activation_epoch
     std::wstring preedit;
     if (GlobalSettings::getTsfPreeditStyle() == GlobalSettings::TsfPreeditStyle::Pinyin)
     {
-        preedit = GetPreedit();
+        preedit = GetTsfPreedit();
     }
     const std::wstring page = BuildUiLessCandidatePageW();
     ::WriteDataToSharedMemory(page, true);

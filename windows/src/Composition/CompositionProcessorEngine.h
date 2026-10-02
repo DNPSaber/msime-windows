@@ -6,6 +6,7 @@
 #include "MetasequoiaIMEBaseStructure.h"
 #include "Compartment.h"
 #include "define.h"
+#include <vector>
 
 class CCompositionProcessorEngine
 {
@@ -53,7 +54,9 @@ class CCompositionProcessorEngine
     {
         return _caretPosition;
     }
-    void SetRenderedPreedit(std::wstring preedit, size_t prefixLength);
+    // caretMap 是 Server 随预编辑带来的光标映射（engine/contracts/preedit_caret_map.h），为空或与
+    // 按键缓冲长度对不上时按字母个数映射。
+    void SetRenderedPreedit(std::wstring preedit, size_t prefixLength, std::vector<size_t> caretMap = {});
     DWORD_PTR GetRenderedCaretPosition() const;
 
     DWORD_PTR GetVirtualKeyLength()
@@ -226,6 +229,7 @@ class CCompositionProcessorEngine
     DWORD_PTR _caretPosition = 0;
     std::wstring _renderedPreedit;
     size_t _renderedPreeditPrefixLength = 0;
+    std::vector<size_t> _renderedPreeditCaretMap;
 
     BOOL _hasWildcardIncludedInKeystrokeBuffer;
 

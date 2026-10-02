@@ -497,6 +497,20 @@ const std::string &InputSession::get_pinyin_segmentation() const
 
 std::string InputSession::get_pinyin_segmentation_with_cases() const
 {
+    return build_pinyin_segmentation_with_cases(shuangpin_preedit_uses_raw_);
+}
+
+InputSession::ShuangpinPreeditForms InputSession::get_shuangpin_preedit_forms() const
+{
+    if (!is_shuangpin())
+    {
+        return {};
+    }
+    return {build_pinyin_segmentation_with_cases(true), build_pinyin_segmentation_with_cases(false)};
+}
+
+std::string InputSession::build_pinyin_segmentation_with_cases(bool shuangpin_raw) const
+{
     if (is_wubi())
     {
         return request().raw_input;
@@ -508,7 +522,7 @@ std::string InputSession::get_pinyin_segmentation_with_cases() const
     // 句中辅助码的反引号段在切分串里只是一个 '，显示时按原样接回对应音节后面；
     // 末尾补 ' 也要看用户敲的原串，否则 ulpb`x 会显示成 ul'pb`x'。
     const std::string &typed = get_pinyin_sequence_with_cases();
-    if (is_shuangpin() && shuangpin_preedit_uses_raw_)
+    if (is_shuangpin() && shuangpin_raw)
     {
         std::string preedit = request().raw_segmentation.empty() ? request().raw_input : request().raw_segmentation;
         preedit = shuangpin::decorate_mid_sentence_segmentation(preedit, typed, shuangpin_profile_);

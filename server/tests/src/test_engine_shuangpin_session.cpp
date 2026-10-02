@@ -621,6 +621,21 @@ TEST_CASE(EngineShuangpinDoubleHelpcodesAreDisplayedAsOneSegment)
     REQUIRE_EQ(session.get_pinyin_segmentation_with_cases(), std::string("ya'kP"));
 }
 
+TEST_CASE(EngineShuangpinSessionExposesBothPreeditForms)
+{
+    // 外观里的「双拼显示全拼」要同时拿到原串切分和全拼切分，不能受 shuangpin_preedit_mode 左右。
+    EngineInputSession session(SchemeType::Shuangpin);
+    InputLetters(session, "nihc");
+
+    const auto forms = session.get_shuangpin_preedit_forms();
+    REQUIRE_EQ(forms.raw, std::string("ni'hc"));
+    REQUIRE_EQ(forms.quanpin, std::string("ni'hao"));
+
+    EngineInputSession quanpin(SchemeType::Quanpin);
+    InputLetters(quanpin, "nihao");
+    REQUIRE(quanpin.get_shuangpin_preedit_forms().quanpin.empty());
+}
+
 TEST_CASE(EngineShuangpinSessionCloudQueryMatchesLegacyTiming)
 {
     EngineInputSession session(SchemeType::Shuangpin);

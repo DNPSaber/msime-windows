@@ -536,9 +536,11 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"candidate_window_follow_cursor", GetConfiguredCandidateWindowFollowCursor()},
             {"candidate_skin", GetConfiguredCandidateSkin()},
             {"candidate_window_preedit_style", GetConfiguredCandidateWindowPreeditStyle()},
+            {"candidate_window_preedit_shuangpin_quanpin", GetConfiguredCandidateWindowPreeditShuangpinQuanpin()},
             {"candidate_fixed_badge", GetConfiguredCandidateFixedBadge()},
             {"candidate_fixed_badge_style", GetConfiguredCandidateFixedBadgeStyle()},
             {"tsf_preedit_style", GetConfiguredTsfPreeditStyle()},
+            {"tsf_preedit_shuangpin_quanpin", GetConfiguredTsfPreeditShuangpinQuanpin()},
             {"theme_mode", GetConfiguredThemeMode()},
             {"theme_settings", GetConfiguredThemeSettings()},
             {"theme_cand", GetConfiguredThemeCand()},
@@ -765,6 +767,8 @@ bool ApplyConfigUpdate(const json::object &data)
                                             json::value_to<bool>(data.at("value")));
     if (path == "appearance.tsf_preedit_style")
         return SetConfiguredTsfPreeditStyle(json::value_to<std::string>(data.at("value")));
+    if (path == "appearance.tsf_preedit_shuangpin_quanpin")
+        return SetConfiguredTsfPreeditShuangpinQuanpin(json::value_to<bool>(data.at("value")));
     if (path == "appearance.ui_backend")
         return SetConfiguredUiBackend(json::value_to<std::string>(data.at("value")));
     if (path == "appearance.settings_window_linger")
@@ -777,6 +781,8 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredCandidateSkin(json::value_to<std::string>(data.at("value")));
     if (path == "appearance.candidate_window_preedit_style")
         return SetConfiguredCandidateWindowPreeditStyle(json::value_to<std::string>(data.at("value")));
+    if (path == "appearance.candidate_window_preedit_shuangpin_quanpin")
+        return SetConfiguredCandidateWindowPreeditShuangpinQuanpin(json::value_to<bool>(data.at("value")));
     if (path == "appearance.candidate_fixed_badge")
         return SetConfiguredCandidateFixedBadge(json::value_to<bool>(data.at("value")));
     if (path == "appearance.candidate_fixed_badge_style")

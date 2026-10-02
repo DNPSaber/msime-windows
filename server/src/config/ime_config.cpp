@@ -76,6 +76,9 @@ bool g_escape_keeps_selected_word = false;
 std::string g_wubi_z_mode = "off";
 std::string g_shuangpin_preedit_mode = "quanpin";
 std::string g_tsf_preedit_style = "raw";
+// 双拼方案下行内 / 候选窗预编辑显示转换后的全拼（原始按键去掉分词符号），默认关闭。
+bool g_tsf_preedit_shuangpin_quanpin = false;
+bool g_candidate_window_preedit_shuangpin_quanpin = false;
 bool g_shuangpin_helpcode_enabled = true;
 bool g_shuangpin_mid_sentence_helpcode_enabled = false;
 bool g_quanpin_helpcode_enabled = true;
@@ -589,6 +592,8 @@ bool LoadImeConfig()
                 tbl["appearance"]["candidate_window_preedit_style"].value_or(std::string("pinyin"));
             g_candidate_window_preedit_style = preedit_style == "empty" ? "empty" : "pinyin";
         }
+        g_candidate_window_preedit_shuangpin_quanpin =
+            tbl["appearance"]["candidate_window_preedit_shuangpin_quanpin"].value_or(false);
         g_candidate_fixed_badge = tbl["appearance"]["candidate_fixed_badge"].value_or(true);
         {
             // 非法样式一律回退到默认徽标，避免手改配置后出现无法删除的畸形标记
@@ -625,7 +630,8 @@ bool LoadImeConfig()
             const std::string tsf_preedit_style = tbl["appearance"]["tsf_preedit_style"].value_or(
                 tbl["input"]["tsf_preedit_style"].value_or(std::string("raw")));
             g_tsf_preedit_style = GlobalSettings::normalizeTsfPreeditStyle(tsf_preedit_style);
-            GlobalSettings::setTsfPreeditStyle(g_tsf_preedit_style);
+            g_tsf_preedit_shuangpin_quanpin = tbl["appearance"]["tsf_preedit_shuangpin_quanpin"].value_or(false);
+            RefreshEffectiveTsfPreeditStyle();
         }
         // Parse into a local and publish it in one step, so readers never observe half-rewritten strings or maps.
         VoiceInputConfig voice;

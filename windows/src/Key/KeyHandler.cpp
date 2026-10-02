@@ -13,6 +13,7 @@
 #include "Ipc.h"
 #include "CommitCandidateAndContinuePayload.h"
 #include "FanyDefines.h"
+#include "../../../engine/contracts/preedit_caret_map.h"
 
 namespace
 {
@@ -61,37 +62,6 @@ WCHAR GetPairedPunctuationStepOverCandidate(WCHAR wch, const std::wstring &resol
     return IsPairedPunctuationClosing(resolved[0]) ? resolved[0] : 0;
 }
 
-DWORD_PTR MapRawCaretToPreedit(const CStringRange &raw, DWORD_PTR rawCaret, const std::wstring &preedit,
-                               size_t prefixLength)
-{
-    rawCaret = min(rawCaret, raw.GetLength());
-    size_t lettersBeforeCaret = 0;
-    for (DWORD_PTR i = 0; i < rawCaret; ++i)
-    {
-        if (raw.Get()[i] != L'\'')
-        {
-            ++lettersBeforeCaret;
-        }
-    }
-    size_t displayPosition = min(prefixLength, preedit.size());
-    size_t seenLetters = 0;
-    while (displayPosition < preedit.size() && seenLetters < lettersBeforeCaret)
-    {
-        if (preedit[displayPosition] != L'\'')
-        {
-            ++seenLetters;
-        }
-        ++displayPosition;
-    }
-    if (rawCaret > 0 && raw.Get()[rawCaret - 1] == L'\'')
-    {
-        while (displayPosition < preedit.size() && preedit[displayPosition] == L'\'')
-        {
-            ++displayPosition;
-        }
-    }
-    return displayPosition;
-}
 } // namespace
 
 //////////////////////////////////////////////////////////////////////
@@ -620,6 +590,7 @@ HRESULT CMetasequoiaIME::_HandleCompositionInputWorker(_In_ CCompositionProcesso
     {
         CStringRange curReadingStr;
         std::wstring readingStr = readingStrings.GetAt(0)->ToWString();
+        std::vector<size_t> preeditCaretMap;
         const auto &preeditStyle = GlobalSettings::getTsfPreeditStyle();
 
         if (preeditStyle == GlobalSettings::TsfPreeditStyle::Empty)
@@ -658,7 +629,12 @@ HRESULT CMetasequoiaIME::_HandleCompositionInputWorker(_In_ CCompositionProcesso
                 }
             }
 
-            if (!gotServerPreedit && !GlobalIme::word_for_creating_word.empty())
+            if (gotServerPreedit)
+            {
+                // 双拼显示全拼时预编辑和按键缓冲不再是同一串字母，Server 把光标映射附在末尾。
+                FanyImePreeditCaretMap::Decode(readingStr, preeditCaretMap);
+            }
+            else if (!GlobalIme::word_for_creating_word.empty())
             {
                 // Fallback when Preedit is missing: keep 汉字 + remaining raw,
                 // matching raw create-word structure until the next Preedit.
@@ -679,10 +655,9 @@ HRESULT CMetasequoiaIME::_HandleCompositionInputWorker(_In_ CCompositionProcesso
 
         const size_t preeditPrefixLength =
             preeditStyle == GlobalSettings::TsfPreeditStyle::Empty ? 0 : GlobalIme::word_for_creating_word.size();
-        const DWORD_PTR displayCaret = MapRawCaretToPreedit(pCompositionProcessorEngine->GetKeystrokeBuffer(),
-                                                            pCompositionProcessorEngine->GetCaretPosition(),
-                                                            curReadingStr.ToWString(), preeditPrefixLength);
-        pCompositionProcessorEngine->SetRenderedPreedit(curReadingStr.ToWString(), preeditPrefixLength);
+        pCompositionProcessorEngine->SetRenderedPreedit(curReadingStr.ToWString(), preeditPrefixLength,
+                                                        std::move(preeditCaretMap));
+        const DWORD_PTR displayCaret = pCompositionProcessorEngine->GetRenderedCaretPosition();
 
         hr = _AddComposingAndChar(ec, pContext, &curReadingStr);
 

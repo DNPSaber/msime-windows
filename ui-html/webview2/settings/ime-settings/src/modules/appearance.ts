@@ -35,6 +35,8 @@ export type CandidateAppearanceConfig = {
   candidate_window_follow_cursor?: boolean;
   candidate_fixed_badge?: boolean;
   candidate_fixed_badge_style?: string;
+  candidate_window_preedit_shuangpin_quanpin?: boolean;
+  tsf_preedit_shuangpin_quanpin?: boolean;
   ui_backend?: string;
   settings_window_linger?: string;
   system_fonts?: string[];
@@ -512,6 +514,12 @@ export function applyAppearanceConfig(
     applyToggleState('candidateFixedBadgeToggleBtn', candidateAppearance.candidate_fixed_badge);
   }
   applyDropdownValue('candFixedBadgeStyleBtn', 'candFixedBadgeStyleMenu', candidateAppearance?.candidate_fixed_badge_style);
+  if (typeof candidateAppearance?.candidate_window_preedit_shuangpin_quanpin === 'boolean') {
+    applyToggleState('candPreeditShuangpinQuanpinToggleBtn', candidateAppearance.candidate_window_preedit_shuangpin_quanpin);
+  }
+  if (typeof candidateAppearance?.tsf_preedit_shuangpin_quanpin === 'boolean') {
+    applyToggleState('tsfPreeditShuangpinQuanpinToggleBtn', candidateAppearance.tsf_preedit_shuangpin_quanpin);
+  }
   applyDropdownValue('uiBackendBtn', 'uiBackendMenu', candidateAppearance?.ui_backend);
   applyDropdownValue('settingsLingerBtn', 'settingsLingerMenu', candidateAppearance?.settings_window_linger);
   populateFontMenus(candidateAppearance?.system_fonts);
@@ -661,6 +669,9 @@ export async function setupAppearance() {
       return previewPreeditStyle;
     }
   );
+  setupToggleButton('candPreeditShuangpinQuanpinToggleBtn', (active) => {
+    postConfigUpdate('appearance.candidate_window_preedit_shuangpin_quanpin', active);
+  });
 
   // 行内预编辑
   setupDropdownMenu(
@@ -670,4 +681,7 @@ export async function setupAppearance() {
     true,
     'appearance.tsf_preedit_style'
   );
+  setupToggleButton('tsfPreeditShuangpinQuanpinToggleBtn', (active) => {
+    postConfigUpdate('appearance.tsf_preedit_shuangpin_quanpin', active);
+  });
 }

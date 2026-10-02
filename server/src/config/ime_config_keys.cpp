@@ -2,6 +2,7 @@
 #include "config/ime_config_internal.h"
 #include <string>
 #include "utils/common_utils.h"
+#include "global/globals.h"
 
 using namespace ime_config_detail;
 
@@ -74,7 +75,8 @@ bool SetConfiguredPagingBracketsEnabled(bool enabled)
 std::wstring FormatPagingCommaPeriodWorkerPayload()
 {
     // data[0] = paging flag for legacy clients; "|style" is ignored by old TSF.
-    return (g_paging_comma_period_enabled ? L"1|" : L"0|") + string_to_wstring(g_tsf_preedit_style);
+    // The style is the effective one: raw turns into pinyin while shuangpin shows its quanpin.
+    return (g_paging_comma_period_enabled ? L"1|" : L"0|") + string_to_wstring(GlobalSettings::getTsfPreeditStyle());
 }
 
 bool GetConfiguredPagingPageUpDownEnabled()

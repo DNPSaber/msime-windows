@@ -96,6 +96,9 @@ std::string CandidateTextForOutput(const std::string &text);
 void AppendAiContext(const std::string &committed_word);
 std::wstring BuildCreateWordPipePayload(const std::string &remaining_raw_input_with_cases,
                                         const std::string &current_word);
+// segmented_pinyin 定下来之后调用：双拼组合时把原串切分和全拼切分记进 GlobalIme::composition，
+// 供「双拼显示全拼」使用，其余组合清空。
+void SyncShuangpinPreeditForms();
 
 // event_listener_candidates.cpp
 void EnsureCandidatePageReady();

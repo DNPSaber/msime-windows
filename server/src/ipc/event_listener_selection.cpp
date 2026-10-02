@@ -400,6 +400,7 @@ void ProcessSelectionKey(UINT keycode, uint64_t client_id, uint64_t activation_e
             GlobalIme::composition.creating_word.active = true;
             Global::MsgTypeToTsf = Global::DataFromServerMsgType::NeedToCreateWord;
             GlobalIme::composition.segmented_pinyin = selection_transition.current_segmentation_with_cases;
+            SyncShuangpinPreeditForms();
 
             PrepareCandidateList(client_id, activation_epoch);
         }

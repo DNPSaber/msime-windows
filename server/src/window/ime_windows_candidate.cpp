@@ -520,7 +520,7 @@ LRESULT CALLBACK WndProcCandWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
             const bool previous_tsf_diagnostic_log = GetConfiguredTsfDiagnosticLogEnabled();
             const bool previous_statistics_enabled = GetConfiguredStatisticsEnabled();
             const std::wstring previous_mid_sentence_helpcode = FormatMidSentenceHelpcodeWorkerPayload();
-            const std::string previous_tsf_preedit_style = GetConfiguredTsfPreeditStyle();
+            const std::wstring previous_paging_worker_payload = FormatPagingCommaPeriodWorkerPayload();
             const std::string previous_theme_mode = GetConfiguredThemeMode();
             const std::string previous_theme_cand = GetConfiguredThemeCand();
             const std::string previous_theme_ftb = GetConfiguredThemeFtb();
@@ -607,7 +607,7 @@ LRESULT CALLBACK WndProcCandWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
                 if (previous_cloud_candidates && !GetConfiguredCloudCandidatesEnabled())
                     FanyNamedPipe::CancelCloudCandidateRequest();
                 if (previous_comma_period != GetConfiguredPagingCommaPeriodEnabled() ||
-                    previous_tsf_preedit_style != GetConfiguredTsfPreeditStyle())
+                    previous_paging_worker_payload != FormatPagingCommaPeriodWorkerPayload())
                 {
                     BroadcastToTsfWorkerThreadViaNamedpipe(
                         Global::DataFromServerMsgTypeToTsfWorkerThread::PagingCommaPeriodChanged,

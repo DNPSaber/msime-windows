@@ -102,6 +102,12 @@ struct RestoredSelectionHighlight
 struct CompositionState
 {
     std::string segmented_pinyin;
+    // 双拼会话的原串切分与转换后的全拼切分，给外观里「双拼显示全拼」两个开关用。只在
+    // shuangpin_forms_source 仍等于 segmented_pinyin 时有效：特殊模式、英文模式等改写了
+    // segmented_pinyin 的组合会让它们自动失效。
+    std::string shuangpin_raw_segmentation;
+    std::string shuangpin_quanpin_segmentation;
+    std::string shuangpin_forms_source;
     std::string raw_input_with_cases;
     size_t caret_position = 0;
     CreatingWordState creating_word;
@@ -118,6 +124,9 @@ struct CompositionState
     void clear()
     {
         segmented_pinyin.clear();
+        shuangpin_raw_segmentation.clear();
+        shuangpin_quanpin_segmentation.clear();
+        shuangpin_forms_source.clear();
         raw_input_with_cases.clear();
         caret_position = 0;
         creating_word.clear();
@@ -166,6 +175,11 @@ struct CompositionState
     bool last_selection_raw_edited() const
     {
         return !selection_history.empty() && selection_history.back().raw_edited_after_selection;
+    }
+
+    bool has_shuangpin_forms() const
+    {
+        return !shuangpin_quanpin_segmentation.empty() && shuangpin_forms_source == segmented_pinyin;
     }
 
     RestoredSelectionHighlight take_restored_selection_highlight()

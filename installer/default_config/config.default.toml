@@ -170,6 +170,8 @@ candidate_skin = "willow_green"
 #   pinyin -> 显示分词预编辑（与候选框当前行为一致）
 #   empty  -> 隐藏顶部预编辑行
 candidate_window_preedit_style = "pinyin"
+# 双拼方案下候选窗预编辑显示转换后的全拼分词（ni'hao），关闭时显示双拼原串
+candidate_window_preedit_shuangpin_quanpin = false
 # 固定排位候选词是否显示徽标
 candidate_fixed_badge = true
 # 固定排位候选词徽标样式，可选："paperclip", "pushpin", "dot"
@@ -181,6 +183,8 @@ candidate_fixed_badge_style = "paperclip"
 tsf_preedit_style = "raw"
 # tsf_preedit_style = "pinyin"
 # tsf_preedit_style = "empty"
+# 双拼方案下行内预编辑显示转换后的全拼：raw 显示不带分词符号的全拼（nihao），pinyin 显示带分词符号的全拼（ni'hao）
+tsf_preedit_shuangpin_quanpin = false
 
 #
 # Input

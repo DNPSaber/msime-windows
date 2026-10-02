@@ -383,14 +383,21 @@ BOOL CCompositionProcessorEngine::MoveCaret(int offset)
     return TRUE;
 }
 
-void CCompositionProcessorEngine::SetRenderedPreedit(std::wstring preedit, size_t prefixLength)
+void CCompositionProcessorEngine::SetRenderedPreedit(std::wstring preedit, size_t prefixLength,
+                                                     std::vector<size_t> caretMap)
 {
     _renderedPreedit = std::move(preedit);
     _renderedPreeditPrefixLength = min(prefixLength, _renderedPreedit.size());
+    _renderedPreeditCaretMap = std::move(caretMap);
 }
 
 DWORD_PTR CCompositionProcessorEngine::GetRenderedCaretPosition() const
 {
+    if (!_renderedPreeditCaretMap.empty() && _renderedPreeditCaretMap.size() == _keystrokeBuffer.GetLength() + 1)
+    {
+        return min(_renderedPreeditCaretMap[min(_caretPosition, _keystrokeBuffer.GetLength())],
+                   _renderedPreedit.size());
+    }
     size_t lettersBeforeCaret = 0;
     for (DWORD_PTR i = 0; i < min(_caretPosition, _keystrokeBuffer.GetLength()); ++i)
     {
@@ -439,6 +446,7 @@ void CCompositionProcessorEngine::PurgeVirtualKey()
     _caretPosition = 0;
     _renderedPreedit.clear();
     _renderedPreeditPrefixLength = 0;
+    _renderedPreeditCaretMap.clear();
 }
 
 WCHAR CCompositionProcessorEngine::GetVirtualKey(DWORD_PTR dwIndex)

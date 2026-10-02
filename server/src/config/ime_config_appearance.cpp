@@ -269,6 +269,21 @@ bool SetConfiguredCandidateWindowPreeditStyle(const std::string &style)
     return true;
 }
 
+bool GetConfiguredCandidateWindowPreeditShuangpinQuanpin()
+{
+    return g_candidate_window_preedit_shuangpin_quanpin;
+}
+
+bool SetConfiguredCandidateWindowPreeditShuangpinQuanpin(bool enabled)
+{
+    if (!WriteConfiguredValue("appearance", "candidate_window_preedit_shuangpin_quanpin", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_candidate_window_preedit_shuangpin_quanpin = enabled;
+    return true;
+}
+
 bool GetConfiguredCandidateFixedBadge()
 {
     return g_candidate_fixed_badge;

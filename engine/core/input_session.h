@@ -180,6 +180,15 @@ class InputSession
     const std::string &get_pure_pinyin_sequence() const;
     const std::string &get_pinyin_segmentation() const;
     std::string get_pinyin_segmentation_with_cases() const;
+    // 双拼会话的两种预编辑切分，不受 set_shuangpin_preedit_uses_raw 影响：raw 是按键原串的
+    // 切分（ni'hc），quanpin 是转换后的全拼切分（ni'hao），两者音节数一致、辅助码装饰相同。
+    // 非双拼会话两者都为空。
+    struct ShuangpinPreeditForms
+    {
+        std::string raw;
+        std::string quanpin;
+    };
+    ShuangpinPreeditForms get_shuangpin_preedit_forms() const;
     // Offsets in get_pinyin_sequence_with_cases() where one input unit starts,
     // always including 0 (when non-empty) and raw.size(). A unit is one syllable:
     // the `ma` of ni'hao'ma, one 1-2 key syllable in shuangpin. Schemes and
@@ -257,6 +266,8 @@ class InputSession
 
   private:
     const QueryRequest &request() const;
+    // 拼音类方案的预编辑切分；shuangpin_raw 决定双拼显示按键原串还是转换后的全拼。
+    std::string build_pinyin_segmentation_with_cases(bool shuangpin_raw) const;
     bool is_shuangpin() const;
     bool is_wubi() const;
     // 候选是否由五笔码表产出。混输组合里五笔候选在前、拼音候选追加在后，调频、删除、固定
