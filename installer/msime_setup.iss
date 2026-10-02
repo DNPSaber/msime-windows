@@ -821,6 +821,16 @@ begin
   Result := CompareText(FileName, 'shuangpin') = 0;
 end;
 
+function IsCollocationModelDirectory(const FileName: String): Boolean;
+begin
+  { 万象模型包在 <数据目录>\models\<id>，是设置页按需下载的约 390MB，安装包不携带，
+    也不是每次安装都会重写的东西。这份名单的语义恰好是「升级保留、卸载删除」——
+    IsPreservedAppDataItem 只被 CleanAppDataExceptUserFiles（覆盖安装）与 RemoveDataDir
+    （卸载/换目录）读——所以归这里，不能进 IsRuntimeAppDataItem：后者两条路径都删，
+    覆盖安装会把模型一并清掉，用户得重下一次。}
+  Result := CompareText(FileName, 'models') = 0;
+end;
+
 function IsPreservedAppDataItem(const FileName: String): Boolean;
 begin
   { 标记文件也要留下。它虽然会在 ssPostInstall 重写一遍，但安装若在中途失败，
@@ -831,6 +841,7 @@ begin
     IsUserConfigFile(FileName) or
     IsUserSkinDirectory(FileName) or
     IsUserShuangpinDirectory(FileName) or
+    IsCollocationModelDirectory(FileName) or
     (CompareText(FileName, DataDirMarkerName) = 0);
 end;
 
@@ -878,10 +889,7 @@ begin
     (CompareText(Copy(FileName, 1, 20), 'config.toml.corrupt-') = 0) or
     (CompareText(FileName, '.ime-write-probe') = 0) or
     (CompareText(FileName, 'msime-write-probe.tmp') = 0) or
-    (CompareText(FileName, 'logs') = 0) or
-    { 万象模型包目录：设置页下载器写的 models/<id>，含 .gram、.sha256 和 NOTICE.md。
-      整树可删——模型是下载物，重新装一次再下载即可，不是用户自己放的数据。}
-    (CompareText(FileName, 'models') = 0);
+    (CompareText(FileName, 'logs') = 0);
 end;
 
 { 数据目录不整个归我们时，只有这些名字允许删（#537）。html、logs 这种通用目录名
