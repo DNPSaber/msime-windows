@@ -1,6 +1,6 @@
 # 水杉输入法
 
-[官网](https://msime.app) · [用户文档](https://msime.app/docs/) · [隐私说明](PRIVACY.md) · [English README](README.en.md)
+[官网](https://msime.app) · [用户文档](https://msime.app/docs/) · [隐私说明](PRIVACY.md) · [代码签名策略 / Code signing policy](docs/code-signing-policy.md) · [English README](README.en.md)
 
 <!-- badges:start -->
 [![CI](https://img.shields.io/github/actions/workflow/status/metasequoiaime/MSIME-Windows/ci.yml?branch=develop&label=CI)](https://github.com/metasequoiaime/MSIME-Windows/actions/workflows/ci.yml)
@@ -337,6 +337,12 @@ Server 启动时会同时启动 Watchdog。服务意外退出后，Watchdog 会�
 <!-- 亮色 -->
 
 <img src="docs/images/settings-light.png" width="780">
+
+## 代码签名策略
+
+Free code signing provided by [SignPath.io](https://about.signpath.io/), certificate by [SignPath Foundation](https://signpath.org/).
+
+签名范围、团队角色（Committers / Reviewers / Approvers）、构建与发布流程以及当前状态见 [Code signing policy](docs/code-signing-policy.md)，隐私说明见 [PRIVACY.md](PRIVACY.md)。
 
 ## 开源协议
 
