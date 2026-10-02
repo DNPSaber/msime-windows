@@ -59,6 +59,16 @@ HRESULT EnsureCompositionVisualTreeSettingsWnd(HWND hwnd)
     return dcompDeviceSettingsWnd->Commit();
 }
 
+// TSF 据此决定反引号、分号要不要当句中辅助码的编码键吃掉，两个键各走一个 opcode。
+static void BroadcastMidSentenceHelpcodeTriggers()
+{
+    BroadcastToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged,
+                                           FormatMidSentenceHelpcodeWorkerPayload());
+    BroadcastToTsfWorkerThreadViaNamedpipe(
+        Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeSemicolonChanged,
+        FormatMidSentenceHelpcodeSemicolonWorkerPayload());
+}
+
 // 死宿主（InitWebviewSettingsWnd 无调用者）的智能标点子键分发。单独成函数，避免在
 // OnControllerCreatedSettingsWnd 的深层 if/else 链里插入折行——那条链一旦出现折行，
 // clang-format 会连带重排整个 lambda 的缩进（行宽 120 的罚分择优）。
@@ -1038,10 +1048,20 @@ static void ApplyHelpcodeSubkey(const std::string &path, const json::object &dat
         const bool value = json::value_to<bool>(data.at("value"));
         if (SetConfiguredShuangpinMidSentenceHelpcodeEnabled(value))
         {
-            // TSF 据此决定反引号要不要当编码键吃掉。
-            BroadcastToTsfWorkerThreadViaNamedpipe(
-                Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged,
-                FormatMidSentenceHelpcodeWorkerPayload());
+            BroadcastMidSentenceHelpcodeTriggers();
+            PostSettingsConfig();
+        }
+    }
+    if (path == "helpcode.shuangpin_mid_sentence_helpcode_backtick" ||
+        path == "helpcode.shuangpin_mid_sentence_helpcode_semicolon")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        const bool saved = path == "helpcode.shuangpin_mid_sentence_helpcode_backtick"
+                               ? SetConfiguredShuangpinMidSentenceHelpcodeBacktick(value)
+                               : SetConfiguredShuangpinMidSentenceHelpcodeSemicolon(value);
+        if (saved)
+        {
+            BroadcastMidSentenceHelpcodeTriggers();
             PostSettingsConfig();
         }
     }
@@ -1649,6 +1669,8 @@ void PostSettingsConfig()
           {"helpcode",
            {{"shuangpin_helpcode", GetConfiguredShuangpinHelpcodeEnabled()},
             {"shuangpin_mid_sentence_helpcode", GetConfiguredShuangpinMidSentenceHelpcodeEnabled()},
+            {"shuangpin_mid_sentence_helpcode_backtick", GetConfiguredShuangpinMidSentenceHelpcodeBacktick()},
+            {"shuangpin_mid_sentence_helpcode_semicolon", GetConfiguredShuangpinMidSentenceHelpcodeSemicolon()},
             {"shuangpin_helpcode_schema", GetConfiguredShuangpinHelpcodeSchema()},
             {"quanpin_helpcode", GetConfiguredQuanpinHelpcodeEnabled()},
             {"quanpin_helpcode_schema", GetConfiguredQuanpinHelpcodeSchema()},

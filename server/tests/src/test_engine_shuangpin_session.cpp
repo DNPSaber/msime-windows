@@ -1428,8 +1428,26 @@ TEST_CASE(EngineShuangpinMidSentenceHelpcodeConstrainsSentenceSources)
     REQUIRE(SetConfiguredShuangpinHelpcodeSchema("ziranma"));
     REQUIRE(SetConfiguredAssocSentenceWordLattice(true));
     REQUIRE(SetConfiguredAssocSentenceGoogle(true));
-    REQUIRE_EQ(FormatMidSentenceHelpcodeWorkerPayload(),
-               std::wstring(GetConfiguredInputScheme() == SchemeType::Shuangpin ? L"1" : L"0"));
+    const bool shuangpin_active = GetConfiguredInputScheme() == SchemeType::Shuangpin;
+    const std::wstring on = shuangpin_active ? L"1" : L"0";
+    // 触发键可多选，反引号和分号各走一个 opcode，载荷都只能是单个 "0"/"1"——TSF 会丢掉更长的帧。
+    REQUIRE_EQ(FormatMidSentenceHelpcodeWorkerPayload(), on);
+    REQUIRE_EQ(FormatMidSentenceHelpcodeSemicolonWorkerPayload(), std::wstring(L"0"));
+    REQUIRE(IsConfiguredMidSentenceHelpcodeTrigger(L'`'));
+    REQUIRE(!IsConfiguredMidSentenceHelpcodeTrigger(L';'));
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeSemicolon(true));
+    REQUIRE(IsConfiguredMidSentenceHelpcodeTrigger(L';'));
+    REQUIRE_EQ(FormatMidSentenceHelpcodeWorkerPayload(), on);
+    REQUIRE_EQ(FormatMidSentenceHelpcodeSemicolonWorkerPayload(), on);
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeBacktick(false));
+    REQUIRE(!IsConfiguredMidSentenceHelpcodeTrigger(L'`'));
+    REQUIRE_EQ(FormatMidSentenceHelpcodeWorkerPayload(), std::wstring(L"0"));
+    REQUIRE_EQ(FormatMidSentenceHelpcodeSemicolonWorkerPayload(), on);
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeEnabled(false));
+    REQUIRE_EQ(FormatMidSentenceHelpcodeSemicolonWorkerPayload(), std::wstring(L"0"));
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeEnabled(true));
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeSemicolon(false));
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeBacktick(true));
 
     EngineInputSession session(SchemeType::Shuangpin);
     const auto first_code = [&session](const std::string &hanzi) {

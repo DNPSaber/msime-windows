@@ -497,6 +497,7 @@ HRESULT CMetasequoiaIME::_HandleCompositionInput(TfEditCookie ec, _In_ ITfContex
     }
 
     // Add virtual key to composition processor engine
+    wch = pCompositionProcessorEngine->NormalizeMidSentenceHelpcodeTrigger(wch);
     const DWORD_PTR previousLength = pCompositionProcessorEngine->GetVirtualKeyLength();
     if (pCompositionProcessorEngine->AddVirtualKey(wch) &&
         pCompositionProcessorEngine->GetVirtualKeyLength() > previousLength)

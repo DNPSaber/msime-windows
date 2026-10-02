@@ -256,8 +256,18 @@ bool SetConfiguredShuangpinHelpcodeEnabled(bool enabled);
 // 双拼句中辅助码（helpcode.shuangpin_mid_sentence_helpcode），默认关闭。
 bool GetConfiguredShuangpinMidSentenceHelpcodeEnabled();
 bool SetConfiguredShuangpinMidSentenceHelpcodeEnabled(bool enabled);
-// MidSentenceHelpcodeChanged 的载荷："1" 表示开关开着且当前方案是双拼。
+// 句中辅助码的触发键，可多选：反引号（helpcode.shuangpin_mid_sentence_helpcode_backtick，默认开）
+// 和分号（helpcode.shuangpin_mid_sentence_helpcode_semicolon，默认关）。
+bool GetConfiguredShuangpinMidSentenceHelpcodeBacktick();
+bool SetConfiguredShuangpinMidSentenceHelpcodeBacktick(bool enabled);
+bool GetConfiguredShuangpinMidSentenceHelpcodeSemicolon();
+bool SetConfiguredShuangpinMidSentenceHelpcodeSemicolon(bool enabled);
+// 字符 ch（'`' 或 ';'）此刻是不是一个开着的句中辅助码触发键：总开关开着且勾了这个键。
+bool IsConfiguredMidSentenceHelpcodeTrigger(wchar_t ch);
+// MidSentenceHelpcodeChanged 的载荷："1" 表示开关开着、勾了反引号且当前方案是双拼。
 std::wstring FormatMidSentenceHelpcodeWorkerPayload();
+// MidSentenceHelpcodeSemicolonChanged 的载荷：同上，换成分号。
+std::wstring FormatMidSentenceHelpcodeSemicolonWorkerPayload();
 const std::string &GetConfiguredShuangpinHelpcodeSchema();
 bool SetConfiguredShuangpinHelpcodeSchema(const std::string &schema);
 bool GetConfiguredQuanpinHelpcodeEnabled();

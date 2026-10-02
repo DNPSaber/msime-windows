@@ -26,7 +26,6 @@
 #include "../Utils/PerfTimer.h"
 #include <chrono>
 #include "../../../engine/contracts/ipc_negotiation.h"
-#include "../../../engine/contracts/mid_sentence_helpcode.h"
 #include "KeyEventSinkInternal.h"
 
 using namespace key_event_sink_detail;
@@ -91,6 +90,9 @@ void ApplyDeferredKeyState(DeferredShadowState &shadow, const _KEYSTROKE_STATE &
             shadow.unicodeMode = (wch == L'U');
         }
         shadow.caret = min(shadow.caret, shadow.rawInput.size());
+        // 和真正加入按键缓冲时一样，分号触发的句中辅助码记成反引号。
+        wch = CCompositionProcessorEngine::NormalizeMidSentenceHelpcodeTrigger(wch, shadow.rawInput.data(),
+                                                                               shadow.rawInput.size(), shadow.caret);
         if (shadow.rawInput.size() < MAX_PINYIN_LENGTH && wch != L'\0')
         {
             const bool duplicateSeparator =
@@ -527,11 +529,10 @@ bool CMetasequoiaIME::_ClassifyDeferredKeyDown(_In_ ITfContext *pContext, WPARAM
             isInputKey = (caret - chunkStart) % 2 == 1;
         }
         // 与 CompositionProcessorEngine_KeyClassify.cpp 的句中辅助码判断一致，按影子状态算。
-        if (!isInputKey && Global::MidSentenceHelpcodeEnabled.load(std::memory_order_relaxed) &&
-            *classifiedCode == VK_OEM_3 && *classifiedWch == L'`' && !shadow.rawInput.empty())
+        if (!isInputKey)
         {
-            isInputKey = FanyImeMidSentenceHelpcode::AcceptsMarkerAt(shadow.rawInput.data(), shadow.rawInput.size(),
-                                                                     min(shadow.caret, shadow.rawInput.size()));
+            isInputKey = CCompositionProcessorEngine::IsMidSentenceHelpcodeTriggerKey(
+                *classifiedCode, *classifiedWch, shadow.rawInput.data(), shadow.rawInput.size(), shadow.caret);
         }
         if (shadow.inputLength == 0 && (GetKeyState(VK_CAPITAL) & 0x0001) != 0 && *classifiedWch >= L'A' &&
             *classifiedWch <= L'Z' && *classifiedCode >= L'A' && *classifiedCode <= L'Z')

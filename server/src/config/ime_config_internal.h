@@ -135,6 +135,8 @@ extern bool g_tsf_preedit_shuangpin_quanpin;
 extern bool g_candidate_window_preedit_shuangpin_quanpin;
 extern bool g_shuangpin_helpcode_enabled;
 extern bool g_shuangpin_mid_sentence_helpcode_enabled;
+extern bool g_shuangpin_mid_sentence_helpcode_backtick;
+extern bool g_shuangpin_mid_sentence_helpcode_semicolon;
 extern bool g_quanpin_helpcode_enabled;
 extern std::string g_shuangpin_helpcode_schema;
 extern std::string g_quanpin_helpcode_schema;

@@ -35,12 +35,21 @@
       </div>
     </div>
 
-    <!-- 句中辅助码：完整音节后敲反引号，接着的字母筛这个音节上的字，第二码用大写 -->
+    <!-- 句中辅助码：完整音节后敲触发键（` 或 ;），接着的字母筛这个音节上的字，第二码用大写 -->
     <div class="section-header section-header-shuangpin-helpcode">
-      <div class="section-title" title="在完整音节后敲反引号 `，接着的字母筛这个音节上的字（如 ulpb`x），第二码用大写才参与筛选（如 ulpb`xY），之后可以接着打。整句候选会带着锁住的字重新打分">句中辅助码（` 触发）</div>
+      <div class="section-title" title="在完整音节后敲触发键（如反引号 `），接着的字母筛这个音节上的字（如 ulpb`x），第二码用大写才参与筛选（如 ulpb`xY），之后可以接着打。整句候选会带着锁住的字重新打分">句中辅助码</div>
       <div class="ftb-toggle-btn" id="midSentenceHelpcodeToggleBtn">
         <div class="ftb-toggle-knob"></div>
       </div>
+    </div>
+    <div class="section-header section-header-shuangpin-helpcode">
+      <div class="section-title">句中辅助码触发键</div>
+    </div>
+    <div class="content-page-option">
+      <label class="check-option"><input type="checkbox" name="mid-sentence-helpcode-trigger" id="midSentenceHelpcodeBacktickCheckbox" value="backtick" checked><span>` 反引号</span></label>
+      <div class="input-option-divider"></div>
+      <label class="check-option"><input type="checkbox" name="mid-sentence-helpcode-trigger" id="midSentenceHelpcodeSemicolonCheckbox" value="semicolon"><span>; 分号</span></label>
+      <div class="input-setting-description">至少保留一个。分号在微软、搜狗、紫光双拼里也是 ing 韵母，只有在完整音节后才当触发键；按下后预编辑里同样显示为 `</div>
     </div>
   </div>
 

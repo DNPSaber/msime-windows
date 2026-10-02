@@ -268,6 +268,9 @@ void ApplyConfiguredInputScheme()
     // 句中辅助码只在双拼下有效，换方案或切日语模式都要让 TSF 重新判断反引号。
     BroadcastToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged,
                                            FormatMidSentenceHelpcodeWorkerPayload());
+    BroadcastToTsfWorkerThreadViaNamedpipe(
+        Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeSemicolonChanged,
+        FormatMidSentenceHelpcodeSemicolonWorkerPayload());
     // 「双拼显示全拼」让原始按键样式在双拼下改由 Server 回包驱动，换方案时 TSF 要跟着换。
     BroadcastToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::PagingCommaPeriodChanged,
                                            FormatPagingCommaPeriodWorkerPayload());

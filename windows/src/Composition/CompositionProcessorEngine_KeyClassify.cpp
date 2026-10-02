@@ -24,13 +24,34 @@
 
 namespace
 {
-// 双拼句中辅助码的反引号：开关开着，且光标前是一节完整的两键音节时是编码键，否则仍按标点处理。
-// 光标可以在句中（用箭头移回去补辅助码），只看光标前的部分。Server 用同一条形状规则决定收不收
-// （engine/contracts/mid_sentence_helpcode.h）。
+// 微软/搜狗/紫光双拼的 ';' 是 ing 韵母：光标前这一节（最后一个 ' 之后）是奇数键时它是编码键。
+bool IsMicrosoftShuangpinIngKeyAt(UINT uCode, WCHAR wch, const WCHAR *buffer, DWORD_PTR length, DWORD_PTR caret)
+{
+    if (!Global::MicrosoftShuangpinEnabled.load(std::memory_order_relaxed) || uCode != VK_OEM_1 || wch != L';' ||
+        buffer == nullptr || length == 0)
+    {
+        return false;
+    }
+    caret = min(caret, length);
+    DWORD_PTR chunkLength = 0;
+    for (DWORD_PTR index = caret; index > 0 && buffer[index - 1] != L'\''; --index)
+    {
+        ++chunkLength;
+    }
+    return chunkLength % 2 == 1;
+}
+
+// 双拼句中辅助码的触发键（反引号，或设置里勾了的分号）：开关开着，且光标前是一节完整的两键音节时
+// 是编码键，否则仍按标点处理。分号先让给 ing 韵母。光标可以在句中（用箭头移回去补辅助码），只看
+// 光标前的部分。Server 用同一条形状规则决定收不收（engine/contracts/mid_sentence_helpcode.h）。
 bool IsMidSentenceHelpcodeMarkerKey(UINT uCode, WCHAR wch, const WCHAR *buffer, DWORD_PTR length, DWORD_PTR caret)
 {
-    return Global::MidSentenceHelpcodeEnabled.load(std::memory_order_relaxed) && uCode == VK_OEM_3 && wch == L'`' &&
-           buffer != nullptr && length > 0 &&
+    const bool backtick =
+        uCode == VK_OEM_3 && wch == L'`' && Global::MidSentenceHelpcodeEnabled.load(std::memory_order_relaxed);
+    const bool semicolon = uCode == VK_OEM_1 && wch == L';' &&
+                           Global::MidSentenceHelpcodeSemicolonEnabled.load(std::memory_order_relaxed) &&
+                           !IsMicrosoftShuangpinIngKeyAt(uCode, wch, buffer, length, caret);
+    return (backtick || semicolon) && buffer != nullptr && length > 0 &&
            FanyImeMidSentenceHelpcode::AcceptsMarkerAt(buffer, static_cast<std::size_t>(length),
                                                        static_cast<std::size_t>(min(caret, length)));
 }
@@ -303,19 +324,8 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeed( //
         return TRUE;
     }
 
-    bool isMicrosoftShuangpinIngKey = false;
-    if (Global::MicrosoftShuangpinEnabled.load(std::memory_order_relaxed) && uCode == VK_OEM_1 && pwch &&
-        *pwch == L';' && _keystrokeBuffer.GetLength() > 0 && _keystrokeBuffer.Get())
-    {
-        const DWORD_PTR caret = min(_caretPosition, _keystrokeBuffer.GetLength());
-        DWORD_PTR chunkLength = 0;
-        for (DWORD_PTR index = caret; index > 0 && _keystrokeBuffer.Get()[index - 1] != L'\''; --index)
-        {
-            ++chunkLength;
-        }
-        isMicrosoftShuangpinIngKey = chunkLength % 2 == 1;
-    }
-    if (isMicrosoftShuangpinIngKey)
+    if (IsMicrosoftShuangpinIngKeyAt(uCode, pwch ? *pwch : 0, _keystrokeBuffer.Get(), _keystrokeBuffer.GetLength(),
+                                     _caretPosition))
     {
         if (pKeyState)
         {
@@ -835,6 +845,25 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeed( //
     }
 
     return FALSE;
+}
+
+bool CCompositionProcessorEngine::IsMidSentenceHelpcodeTriggerKey(UINT uCode, WCHAR wch, const WCHAR *buffer,
+                                                                  DWORD_PTR length, DWORD_PTR caret)
+{
+    return IsMidSentenceHelpcodeMarkerKey(uCode, wch, buffer, length, caret);
+}
+
+// 分号触发的句中辅助码段在按键缓冲里记成反引号，与 Server 的 raw 一致。在加入缓冲之前、按与吃键
+// 预判相同的状态判断。
+WCHAR CCompositionProcessorEngine::NormalizeMidSentenceHelpcodeTrigger(WCHAR wch, const WCHAR *buffer, DWORD_PTR length,
+                                                                       DWORD_PTR caret)
+{
+    if (wch == FanyImeMidSentenceHelpcode::kSemicolonTrigger &&
+        IsMidSentenceHelpcodeMarkerKey(VK_OEM_1, wch, buffer, length, caret))
+    {
+        return static_cast<WCHAR>(FanyImeMidSentenceHelpcode::kMarker);
+    }
+    return wch;
 }
 
 //+---------------------------------------------------------------------------

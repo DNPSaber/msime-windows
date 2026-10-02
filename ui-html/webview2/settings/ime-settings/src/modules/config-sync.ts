@@ -328,6 +328,14 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (typeof data?.helpcode?.shuangpin_mid_sentence_helpcode === 'boolean') {
     applyToggleState('midSentenceHelpcodeToggleBtn', data.helpcode.shuangpin_mid_sentence_helpcode);
   }
+  if (typeof data?.helpcode?.shuangpin_mid_sentence_helpcode_backtick === 'boolean') {
+    const checkbox = findElement('midSentenceHelpcodeBacktickCheckbox') as HTMLInputElement | null;
+    if (checkbox) checkbox.checked = data.helpcode.shuangpin_mid_sentence_helpcode_backtick;
+  }
+  if (typeof data?.helpcode?.shuangpin_mid_sentence_helpcode_semicolon === 'boolean') {
+    const checkbox = findElement('midSentenceHelpcodeSemicolonCheckbox') as HTMLInputElement | null;
+    if (checkbox) checkbox.checked = data.helpcode.shuangpin_mid_sentence_helpcode_semicolon;
+  }
   applyDropdownValue(
     'shuangpinHelpcodeSchemeBtn',
     'shuangpinHelpcodeSchemeMenu',

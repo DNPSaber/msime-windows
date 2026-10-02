@@ -116,7 +116,7 @@ bool IsManualPinyinSeparatorKey(UINT keycode, WCHAR wch)
            g_inputSession->current_scheme_type() != SchemeType::Wubi && !g_inputSession->get_pinyin_sequence().empty();
 }
 
-bool IsMicrosoftShuangpinIngKey(UINT keycode, WCHAR wch, const std::string &raw_input)
+bool IsMicrosoftShuangpinIngKeyAt(UINT keycode, WCHAR wch, const std::string &raw_input, size_t caret)
 {
     if (keycode != VK_OEM_1 || wch != L';' || !IsConfiguredShuangpinSemicolonFinal() || g_inputSession == nullptr ||
         g_inputSession->current_scheme_type() != SchemeType::Shuangpin)
@@ -124,18 +124,28 @@ bool IsMicrosoftShuangpinIngKey(UINT keycode, WCHAR wch, const std::string &raw_
         return false;
     }
 
-    const size_t caret = (std::min)(GlobalIme::composition.caret_position, raw_input.size());
     const size_t separator = caret == 0 ? std::string::npos : raw_input.rfind('\'', caret - 1);
     const size_t chunk_start = separator == std::string::npos ? 0 : separator + 1;
     return (caret - chunk_start) % 2 == 1;
 }
 
-// 句中辅助码的反引号：开关开着、双拼，且光标前这一节能接一段时，它是编码键而不是标点。光标可以
-// 在句中（用箭头移回去补辅助码）。TSF 端按同一条形状规则（FanyImeMidSentenceHelpcode::AcceptsMarkerAt）
-// 预判吃键，光标也按 ApplyCompositionEditKey 插字时的同一个位置算。
+bool IsMicrosoftShuangpinIngKey(UINT keycode, WCHAR wch, const std::string &raw_input)
+{
+    return IsMicrosoftShuangpinIngKeyAt(keycode, wch, raw_input,
+                                        (std::min)(GlobalIme::composition.caret_position, raw_input.size()));
+}
+
+// 句中辅助码的触发键（反引号或分号，按设置里勾选的）：开关开着、双拼，且光标前这一节能接一段时，
+// 它是编码键而不是标点，输入串里一律记成反引号。光标可以在句中（用箭头移回去补辅助码）。TSF 端按
+// 同一条形状规则（FanyImeMidSentenceHelpcode::AcceptsMarkerAt）预判吃键，光标也按
+// ApplyCompositionEditKey 插字时的同一个位置算。分号先让给 ing 韵母（IsMicrosoftShuangpinIngKey），
+// 两侧判断顺序一致。
 bool IsMidSentenceHelpcodeMarkerKey(UINT keycode, WCHAR wch, const std::string &raw_input)
 {
-    if (keycode != VK_OEM_3 || wch != L'`' || g_english_input_mode || g_inputSession == nullptr)
+    const bool backtick = keycode == VK_OEM_3 && wch == L'`';
+    const bool semicolon = keycode == VK_OEM_1 && wch == L';';
+    if ((!backtick && !semicolon) || !IsConfiguredMidSentenceHelpcodeTrigger(wch) || g_english_input_mode ||
+        g_inputSession == nullptr)
     {
         return false;
     }
@@ -143,6 +153,10 @@ bool IsMidSentenceHelpcodeMarkerKey(UINT keycode, WCHAR wch, const std::string &
     const size_t caret = composition.raw_input_with_cases != raw_input && composition.caret_position == 0
                              ? raw_input.size()
                              : (std::min)(composition.caret_position, raw_input.size());
+    if (semicolon && IsMicrosoftShuangpinIngKeyAt(keycode, wch, raw_input, caret))
+    {
+        return false;
+    }
     return g_inputSession->accepts_mid_sentence_helpcode_marker(caret);
 }
 
@@ -360,8 +374,7 @@ bool ApplyCompositionEditKey(UINT keycode, WCHAR wch, UINT modifiers_down, bool 
         {
             input = '\'';
         }
-        else if (keycode == VK_OEM_1 && wch == L';' && IsConfiguredShuangpinSemicolonFinal() &&
-                 g_inputSession->current_scheme_type() == SchemeType::Shuangpin)
+        else if (IsMicrosoftShuangpinIngKey(keycode, wch, raw))
         {
             input = ';';
         }
