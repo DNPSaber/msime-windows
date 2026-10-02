@@ -443,6 +443,13 @@ export function setupInput(): void {
   setupToggleButton('sentenceSourceBadgeToggleBtn', (active) => {
     updateConfig('association.sentence_source_badge', active);
   });
+  // octagram 语法模型总开关：一并接入解码期搭配加成与 n-best 重排，引擎侧不再分两个开关。
+  setupToggleButton('sentenceCollocationToggleBtn', (active) => {
+    updateConfig('association.sentence_collocation_enabled', active);
+  });
+  // 模型列表行（激活单选/下载/删除）由 shared.seedCollocationRows 按 catalog 播种并在行构建时
+  // 接线；状态文本、控件可用态与轮询由 shared.applyCollocationModelStatus 随配置快照驱动
+  // （config-sync 调用）。
 }
 
 function setupFrequencyOptions(): void {

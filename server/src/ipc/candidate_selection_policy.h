@@ -31,12 +31,14 @@ inline size_t CountCanonicalSyllables(const std::string &canonical_pinyin) noexc
     return 1 + static_cast<size_t>(std::count(canonical_pinyin.begin(), canonical_pinyin.end(), '\''));
 }
 
-// 猜出来的整句来源：词格 Generated、Google 解码器 Fallback，以及神经整句
-// NeuralDesktop / NeuralKeyboard。它们都不是词库里已有的行，落库/学习判定同类处理。
+// 猜出来的整句来源：词格 Generated、Google 解码器 Fallback，神经整句
+// NeuralDesktop / NeuralKeyboard，以及 octagram 语法模型重排的 Collocation。
+// 它们都不是词库里已有的行，落库/学习判定同类处理。
 constexpr bool IsGuessedSentenceSource(CandidateSource source) noexcept
 {
     return source == CandidateSource::Generated || source == CandidateSource::Fallback ||
-           source == CandidateSource::NeuralDesktop || source == CandidateSource::NeuralKeyboard;
+           source == CandidateSource::NeuralDesktop || source == CandidateSource::NeuralKeyboard ||
+           source == CandidateSource::Collocation;
 }
 
 // 整句候选独立上屏——不接在造词前缀后面、自己就是整条输入——时是否该落库。该落：整句是
@@ -64,10 +66,11 @@ inline bool ShouldStoreEarlyReturnPhrase(CandidateSource source, bool creating_w
                                          const std::string &prefix_canonical_pinyin,
                                          const std::string &candidate_canonical_pinyin) noexcept
 {
-    // 与词格 Generated 同一支：神经整句同样带 canonical quanpin，可以结束一段造词或独立
-    // 上屏。Google Fallback 沿用旧语义仍不走这条造词落库路径。
+    // 与词格 Generated 同一支：神经整句与语法模型重排句同样带 canonical quanpin，可以结束
+    // 一段造词或独立上屏。Google Fallback 沿用旧语义仍不走这条造词落库路径。
     const bool early_return_source = source == CandidateSource::Generated || source == CandidateSource::NeuralDesktop ||
-                                     source == CandidateSource::NeuralKeyboard;
+                                     source == CandidateSource::NeuralKeyboard ||
+                                     source == CandidateSource::Collocation;
     if (!early_return_source || candidate_canonical_pinyin.empty())
     {
         return false;

@@ -12,6 +12,7 @@ vi.mock('./shared', () => ({
   applyCandidateArrange: vi.fn(),
   applyDropdownValue: vi.fn(),
   applyToggleState: vi.fn(),
+  applyCollocationModelStatus: vi.fn(),
   setFuzzyRuleOptionsDisabled: vi.fn(),
   setMixedCandidateOptionsDisabled: vi.fn(),
   setSmartPunctuationOptionsDisabled: vi.fn()

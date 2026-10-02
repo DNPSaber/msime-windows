@@ -27,3 +27,10 @@ log.txt
 # 由 scripts/fetch-neural-model.ps1 按 lock.json 从 release 重新取到并校验 sha256。
 /neural-model/*.safetensors
 __pycache__/
+
+# 外部模型包：models/ 下是按需下载的大文件（如万象 .gram 400MB），来源与摘要
+# 记在调研文档与锁文件里，不进仓库。
+/models/
+
+# 本地测试数据暂存（照 scripts/ci/test-server.ps1 的布局手工准备的）
+/stage/

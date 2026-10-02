@@ -17,6 +17,150 @@ export function registerDropdownPreparer(menuId: string, preparer: DropdownPrepa
   dropdownPreparers.set(menuId, preparer);
 }
 
+// ---- octagram 语法模型（八股文）状态 ----
+
+let collocationPollTimer: ReturnType<typeof setInterval> | null = null;
+
+export type CollocationModelStatus = { state?: string; progress?: number; error?: string };
+export type CollocationCatalogEntry = { id: string; displayName?: string; sizeHint?: string; license?: string };
+
+// 整句开关只有在当前激活的模型就绪时才有意义：模型缺席（包括未选择任何模型）时词格会
+// 静默降级，开关开着也看不到任何效果。与智能标点／候选混输的子开关一样，这里只置灰
+// 禁用，不替用户改回勾选状态——他开过但模型没了，得自己看见并决定。
+const COLLABORATION_TOGGLE_IDS = ['sentenceCollocationToggleBtn'];
+
+function setCollocationTogglesDisabled(disabled: boolean): void {
+  for (const id of COLLABORATION_TOGGLE_IDS) {
+    const toggle = document.getElementById(id);
+    toggle?.setAttribute('aria-disabled', String(disabled));
+    if (toggle) toggle.tabIndex = disabled ? -1 : 0;
+  }
+  document.querySelectorAll('.collocation-toggle-row').forEach((row) => {
+    row.classList.toggle('is-disabled', disabled);
+  });
+}
+
+function collocationStatusText(status: CollocationModelStatus | undefined): string {
+  const state = status?.state ?? 'absent';
+  if (state === 'ready') return '模型已就绪';
+  if (state === 'downloading') return `下载中 ${status?.progress ?? 0}%`;
+  if (state === 'error') return `下载失败：${status?.error || '未知原因'}`;
+  return '未下载';
+}
+
+// 按 catalog 播种模型列表行：显示名/大小/许可 + 状态文本 + 激活单选/下载/删除。每行都是
+// 普通目录条目，激活单选写各自的 id（没有默认/回退行）；行内控件只发消息，状态一律等
+// 下一份快照回放，页面不持本地状态机。
+function seedCollocationRows(catalog: CollocationCatalogEntry[]): void {
+  const list = document.getElementById('collocationModelList');
+  // 行只播种一次，以容器非空为标志：2 秒轮询期间逐帧重建会把正在点击的按钮从焦点里
+  // 换掉，而目录随 Server 版本固定，装载后不会变。
+  if (!list || list.children.length > 0 || catalog.length === 0) return;
+  for (const entry of catalog) {
+    const row = document.createElement('div');
+    row.className = 'collocation-model-row';
+    row.dataset.modelId = entry.id;
+
+    const info = document.createElement('div');
+    info.className = 'collocation-model-info';
+    const name = document.createElement('div');
+    name.className = 'collocation-model-name';
+    name.textContent = entry.displayName ?? entry.id;
+    const meta = document.createElement('span');
+    meta.className = 'collocation-model-meta';
+    meta.textContent = [entry.sizeHint, entry.license].filter(Boolean).join(' · ');
+    name.appendChild(meta);
+    const status = document.createElement('div');
+    status.className = 'input-setting-description collocation-model-status';
+    info.appendChild(name);
+    info.appendChild(status);
+
+    const actions = document.createElement('div');
+    actions.className = 'collocation-model-actions';
+    const radio = document.createElement('input');
+    radio.type = 'radio';
+    radio.name = 'collocation-model';
+    radio.value = entry.id;
+    radio.addEventListener('change', () => {
+      window.chrome?.webview?.postMessage(serializeHostMessage({
+        type: 'configUpdate',
+        data: { path: 'association.sentence_collocation_model', value: radio.value }
+      }));
+    });
+    actions.appendChild(radio);
+    const download = document.createElement('button');
+    download.type = 'button';
+    download.className = 'restart-server-button collocation-model-download';
+    download.textContent = '下载';
+    download.addEventListener('click', () => {
+      window.chrome?.webview?.postMessage(serializeHostMessage({
+        type: 'collocationModelDownload', data: { modelId: entry.id }
+      }));
+    });
+    actions.appendChild(download);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'restart-server-button collocation-model-delete';
+    remove.textContent = '删除';
+    remove.addEventListener('click', () => {
+      window.chrome?.webview?.postMessage(serializeHostMessage({
+        type: 'collocationModelDelete', data: { modelId: entry.id }
+      }));
+    });
+    actions.appendChild(remove);
+
+    row.appendChild(info);
+    row.appendChild(actions);
+    list.appendChild(row);
+  }
+}
+
+// 应用快照里的 association 模型集合：按 catalog 播种行（仅一次），逐行刷新状态文本与
+// 控件可用态；整句开关按「当前激活的模型 ready」置灰（未选择任何模型时同样置灰）；任一
+// 模型下载中每 2 秒发一次 collocationModelStatusRequest 拉新快照，全部离开下载态自停。
+export function applyCollocationModelStatus(
+  statuses: Record<string, CollocationModelStatus> | undefined,
+  catalog: CollocationCatalogEntry[] | undefined,
+  activeModel: string | undefined
+): void {
+  seedCollocationRows(catalog ?? []);
+  // 激活值留空 = 未选择任何模型：没有受保护的包，整句开关保持置灰。
+  const activeId = activeModel ?? '';
+  // 单网络槽：同一时刻至多一个下载在飞，宿主对忙碌请求直接拒绝。
+  const anyDownloading = Object.values(statuses ?? {}).some((s) => s.state === 'downloading');
+  document.querySelectorAll<HTMLElement>('.collocation-model-row').forEach((row) => {
+    const id = row.dataset.modelId ?? '';
+    const status = statuses?.[id];
+    const state = status?.state ?? 'absent';
+    const text = row.querySelector<HTMLElement>('.collocation-model-status');
+    if (text) text.textContent = collocationStatusText(status);
+    const download = row.querySelector<HTMLButtonElement>('.collocation-model-download');
+    // 其余行的下载按钮在下载态一并禁用，把单网络槽语义摆到界面上（服务端拒绝是兜底）。
+    if (download) download.disabled = state === 'downloading' || state === 'ready' || anyDownloading;
+    const remove = row.querySelector<HTMLButtonElement>('.collocation-model-delete');
+    if (remove) {
+      // 任何就绪的包都可删（包括当前激活的包）：宿主删除激活包时会一并清空激活值，
+      // 快照回放后该行回到未下载、未选中。
+      remove.hidden = state !== 'ready';
+    }
+    const radio = row.querySelector<HTMLInputElement>('input[type="radio"]');
+    if (radio) {
+      // 只有就绪的包才可激活：激活一个没下载的包只会得到静默降级。
+      radio.disabled = state !== 'ready';
+      radio.checked = (activeModel ?? '') === radio.value;
+    }
+  });
+  setCollocationTogglesDisabled(statuses?.[activeId]?.state !== 'ready');
+  if (anyDownloading && collocationPollTimer === null) {
+    collocationPollTimer = setInterval(() => {
+      window.chrome?.webview?.postMessage(serializeHostMessage({ type: 'collocationModelStatusRequest' }));
+    }, 2000);
+  } else if (!anyDownloading && collocationPollTimer !== null) {
+    clearInterval(collocationPollTimer);
+    collocationPollTimer = null;
+  }
+}
+
 function nextPaint(): Promise<void> {
   return new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));

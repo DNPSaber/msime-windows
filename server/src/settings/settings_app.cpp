@@ -5,6 +5,7 @@
 #include "resource/resource.h"
 #include "settings/settings_launcher.h"
 #include "settings/api_credential_test.h"
+#include "settings/collocation_model.h"
 #include "settings/settings_splash.h"
 #include "settings/dictionary_manager.h"
 #include "settings/serial_task_queue.h"
@@ -506,7 +507,28 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"sentence_neural_desktop", GetConfiguredAssocSentenceNeuralDesktop()},
             {"sentence_neural_keyboard", GetConfiguredAssocSentenceNeuralKeyboard()},
             {"sentence_show_next_on_duplicate", GetConfiguredAssocSentenceShowNextOnDuplicate()},
-            {"sentence_source_badge", GetConfiguredAssocSentenceSourceBadge()}}},
+            {"sentence_source_badge", GetConfiguredAssocSentenceSourceBadge()},
+            {"sentence_collocation_enabled", GetConfiguredAssocSentenceCollocationEnabled()},
+            {"sentence_collocation_model_status", [] {
+                 nlohmann::json statuses = nlohmann::json::object();
+                 for (const auto &[model_id, status] : collocation::GetModelStatuses())
+                     statuses[model_id] = nlohmann::json{{"state", status.state}, {"progress", status.progress},
+                                                         {"error", status.error}};
+                 return statuses;
+             }()},
+            {"sentence_collocation_model", GetConfiguredAssocSentenceCollocationModel()},
+            {"sentence_collocation_catalog", [] {
+                 // 页面不自持目录副本：id 与下载 URL 留在 Server 侧，只下发展示字段。
+                 nlohmann::json catalog = nlohmann::json::array();
+                 for (const auto &entry : collocation::Catalog())
+                 {
+                     catalog.push_back(nlohmann::json{{"id", entry.id},
+                                                      {"displayName", entry.display_name},
+                                                      {"sizeHint", entry.size_hint},
+                                                      {"license", entry.license}});
+                 }
+                 return catalog;
+             }()}}},
           {"keybindings",
            {{"switch_language_shift", GetConfiguredSwitchLanguageShiftEnabled()},
             {"switch_language_ctrl", GetConfiguredSwitchLanguageCtrlEnabled()},
@@ -880,6 +902,10 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredAssocSentenceShowNextOnDuplicate(json::value_to<bool>(data.at("value")));
     if (path == "association.sentence_source_badge")
         return SetConfiguredAssocSentenceSourceBadge(json::value_to<bool>(data.at("value")));
+    if (path == "association.sentence_collocation_enabled")
+        return SetConfiguredAssocSentenceCollocationEnabled(json::value_to<bool>(data.at("value")));
+    if (path == "association.sentence_collocation_model")
+        return SetConfiguredAssocSentenceCollocationModel(json::value_to<std::string>(data.at("value")));
     if (path == "utility.unicode_mode")
         return SetConfiguredUnicodeModeEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.quick_phrase")
@@ -1326,6 +1352,23 @@ void HandleWebMessage(HWND hwnd, ICoreWebView2WebMessageReceivedEventArgs *args)
             std::filesystem::create_directories(directory, ec);
             if (!ec)
                 ShellExecuteW(hwnd, L"open", directory.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        }
+        else if (type == "collocationModelDownload")
+        {
+            // 后台线程下载，进度随下一次配置快照回给页面；页面在下载态轮询 configRequest。
+            // 忙碌（其他模型在下载）时 StartDownload 拒绝，页面在下载态禁用其余下载按钮。
+            collocation::StartDownload(json::value_to<std::string>(value.at("data").at("modelId")));
+            PostConfig(false);
+        }
+        else if (type == "collocationModelDelete")
+        {
+            // 下载中与当前生效解析的 id 在 DeleteModel 里拒绝；无论成败都回快照刷新列表。
+            collocation::DeleteModel(json::value_to<std::string>(value.at("data").at("modelId")));
+            PostConfig(false);
+        }
+        else if (type == "collocationModelStatusRequest")
+        {
+            PostConfig(false);
         }
         else if (type == "configUpdate")
         {

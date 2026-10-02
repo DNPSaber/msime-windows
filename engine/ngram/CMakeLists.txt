@@ -43,13 +43,23 @@ list(FILTER METASEQUOIA_IME_KENLM_SOURCES EXCLUDE REGEX "_main\\.cc$")
 
 add_library(metasequoia_ime_ngram STATIC
     ${METASEQUOIA_IME_KENLM_SOURCES}
-    "${CMAKE_CURRENT_SOURCE_DIR}/language_model.cpp")
+    "${CMAKE_CURRENT_SOURCE_DIR}/language_model.cpp"
+    # 万象语法模型（octagram .gram）的读取端，与 kenlm 同库：它和语言模型封装
+    # 一样是「引擎其余部分只看头文件」的独立模块，Win32 mmap 的实现细节留在 cpp 里。
+    "${CMAKE_CURRENT_SOURCE_DIR}/octagram/octagram_gram.cpp")
 
 # PUBLIC 指向仓库根，这样调用方按 AGENTS.md 的约定写
 # #include "engine/ngram/language_model.h"。kenlm 的头保持 PRIVATE。
 target_include_directories(metasequoia_ime_ngram
     PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/../.."
     PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/kenlm")
+
+# octagram 的头（含第三方 darts.h）按外部头暴露：darts.h 有一批 MSVC size_t 收窄
+# 告警（C4267），会随引擎头在每个消费方的编译单元里重复报一遍——引擎库自己有 /wd
+# 兜底，服务器端没有。SYSTEM 让 MSVC 走 /external:I、类 Unix 编译器走 -isystem，
+# 告警在消费方被抑制；移植代码 octagram_gram.* 不吃亏，本目标的 /wd 已覆盖同类告警。
+target_include_directories(metasequoia_ime_ngram
+    SYSTEM PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/octagram")
 target_compile_definitions(metasequoia_ime_ngram PRIVATE KENLM_MAX_ORDER=3)
 set_target_properties(metasequoia_ime_ngram PROPERTIES POSITION_INDEPENDENT_CODE ON)
 

@@ -834,8 +834,11 @@ void test_word_lattice()
                    "Expected the reranker's pick tagged with its own source and the lattice's with Generated.");
         }
 
-        // 重排器同意词格的排序时不该凭空多出一行。按 word_lattice.h 的契约，被其他来源认可的
-        // 三元首选只是提前，来源仍记在词格（Generated）上；重排器的首选与它重复，默认不往下补位。
+        // 重排器同意词格的排序时不该凭空多出一行。行保持词格来源（Generated）：
+        // include_lattice_best=true 时词格首选永远是 Generated，见 word_lattice.h 单重排器
+        // 契约——被其他来源认可的三元首选只是提前，来源仍记在词格上。历史意图曾是
+        // 「模型看过并认可了它，来源记在重排那边」，但 merge 的实现与头文件契约都是词格
+        // 来源；以实现为准，若要恢复「认可即署名」需要先改 merge。
         std::vector<WordItem> agreed;
         quanpin::merge_lattice_candidates(
             agreed, {"ni", "hao"}, make_table_lattice_lookup(table), "ni'hao", {},
@@ -845,7 +848,7 @@ void test_word_lattice()
         if (agreed.size() == 1 && alone.size() == 1)
         {
             expect(agreed.front().word == alone.front().word && agreed.front().source == CandidateSource::Generated,
-                   "A trigram pick the reranker agreed with should keep the lattice's source.");
+                   "A trigram pick the reranker agreed with should keep the lattice's own source.");
         }
 
         // 弃权（模型没加载、后台还没算完）时重排器不参与共识，这一行同样只记在词格上。
@@ -1664,6 +1667,41 @@ void test_quanpin_autocorrect_display()
     fs::remove(db_path, cleanup_ec);
 }
 
+// 万象语法模型的会话链路冒烟：经 QuanpinDictionary::set_sentence_association 下发
+// 模型路径，验证加性搭配项能改写整句首选——bu'zhe'ji 在三元模型下出「不这几」，
+// 加上搭配后词格首选应为「不着急」（离线评测的典型翻盘案例）。模型路径由
+// METASEQUOIA_IME_TEST_COLLOCATION_MODEL 环境变量给出，未设置或载入失败时优雅跳过：
+// .gram 是按需下载的可选资产，测试数据目录默认没有。
+void test_quanpin_collocation_session()
+{
+    fmt::println("==== Quanpin Collocation Session ====");
+    const char *model_path = std::getenv("METASEQUOIA_IME_TEST_COLLOCATION_MODEL");
+    if (model_path == nullptr)
+    {
+        fmt::println("Skipped: METASEQUOIA_IME_TEST_COLLOCATION_MODEL is not set.");
+        return;
+    }
+
+    QuanpinDictionary dictionary;
+    SentenceAssociationOptions association;
+    association.word_lattice = true;
+    association.collocation_model = model_path;
+    association.collocation_weight = 0.25;
+    dictionary.set_sentence_association(association);
+
+    const auto result = dictionary.query("buzheji");
+    const auto trigram = std::find_if(result.begin(), result.end(),
+                                      [](const WordItem &item) { return item.source == CandidateSource::Generated; });
+    if (trigram == result.end())
+    {
+        fmt::println("Skipped: no lattice sentence for 'buzheji' (dictionary or sc.lm incomplete?).");
+        return;
+    }
+    expect(
+        trigram->word == "不着急",
+        fmt::format("Expected the collocation-enabled lattice to pick 不着急 for buzheji, got '{}'.", trigram->word));
+}
+
 int main(int argc, char *argv[])
 {
     try
@@ -1685,6 +1723,7 @@ int main(int argc, char *argv[])
         test_quanpin_four_syllable_alternative_segmentation();
         test_quanpin_lattice_precedes_google_fallback();
         test_quanpin_lattice_rejects_rare_readings();
+        test_quanpin_collocation_session();
         test_quanpin_lattice_covers_every_syllable();
         test_quanpin_single_letter_jianpin_ranking();
         test_quanpin_query_timings();

@@ -241,6 +241,13 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generateSeries( //
             neural_rerankers.push_back({quanpin::make_neural_reranker(neural_desktop_model_.get(), rescoring_context_),
                                         CandidateSource::NeuralDesktop});
         }
+        // 万象语法模型重排，与全拼同构，见 QuanpinDictionary::query_series。
+        if (sentence_association_.collocation_rerank && collocation_db_ != nullptr && collocation_db_->valid())
+        {
+            neural_rerankers.push_back(
+                {quanpin::make_octagram_reranker(collocation_db_, sentence_association_.collocation_rerank_weight),
+                 CandidateSource::Collocation});
+        }
         quanpin::WordLatticeOptions lattice_options;
         const bool needs_alternatives = !neural_rerankers.empty() || (sentence_association_.word_lattice &&
                                                                       sentence_association_.show_next_on_duplicate);
@@ -248,6 +255,14 @@ vector<ShuangpinDictionary::WordItem> ShuangpinDictionary::generateSeries( //
         lattice_options.include_lattice_best = sentence_association_.word_lattice;
         lattice_options.show_next_on_duplicate = sentence_association_.show_next_on_duplicate;
         lattice_options.language_model = language_model_;
+        if (collocation_db_ != nullptr && collocation_db_->valid() && sentence_association_.collocation_weight != 0.0)
+        {
+            lattice_options.collocation_scorer = [db = collocation_db_](std::string_view tail, std::string_view word,
+                                                                        bool is_rear) {
+                return db->query(std::string(tail), std::string(word), is_rear, gram::GrammarConfig{});
+            };
+            lattice_options.collocation_weight = sentence_association_.collocation_weight;
+        }
         // 句中辅助码：词格建图时按约束筛边，受约束的跨度不截断地查词库（生僻字才筛得出来）。
         // 音节序号与 quanpin_syllables 一一对应：两者都按同一份双拼切分逐段换算。
         for (const auto &helpcode : syllable_helpcodes_)
@@ -1178,6 +1193,11 @@ void ShuangpinDictionary::set_sentence_association(const SentenceAssociationOpti
         return;
     }
     sentence_association_ = options;
+    // 模型路径随开关一起变更时才重新解析，见 QuanpinDictionary::set_sentence_association。
+    collocation_db_ =
+        sentence_association_.collocation_model.empty()
+            ? nullptr
+            : gram::shared_gram_db(metasequoia::path_from_utf8(sentence_association_.collocation_model.c_str()));
     // 开关变了就清缓存，否则打开/关闭要等缓存过期才见效。见 generateSeries 的整句块。
     reset_cache();
 }

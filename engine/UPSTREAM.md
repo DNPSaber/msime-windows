@@ -20,7 +20,32 @@ The engine's own nested submodules were expanded in place at the commits it pinn
 | `googlepinyinime-rev/` | `metasequoiaime/Google-PinyinIME-Rev` | `12db5237adfcecb79b8ac602d80f3576639ea219` |
 | `utfcpp/` | `nemtrif/utfcpp` | `2d8e20b22dcb3e9b3c4f52103182ebda949c6089` |
 | `ngram/kenlm/` | `kpu/kenlm` | `4cb443e60b7bf2c0ddf3c745378f76cb59e254e5` |
+| `ngram/octagram/darts.h` | `s-yata/darts-clone` | `87b71afd6cf784953e3c08f24c64203397f3b724` (tag `v0.32h`) |
 | `voice/third_party/miniaudio/` | `mackron/miniaudio` | `9634bedb5b5a2ca38c1ee7108a9358a4e233f14d` |
+
+`ngram/octagram/darts.h` is the only file of that copy in the tree — upstream ships it as
+`include/darts.h` next to `COPYING.md`, both of which are renamed on import to sit beside the
+`octagram_gram` reader that is ours. It is a header-only double-array trie: `octagram_gram` uses
+`set_array` to adopt the mmap of a `.gram` file, then `traverse` and `commonPrefixSearch`. None of
+that is registered with darts-clone upstream, so it is tracked by tag rather than by branch.
+
+**This copy is patched, not verbatim.** Replaying an upgrade means re-applying all of these against
+the new tag:
+
+- `DoubleArrayImpl::open()` drops upstream's 256-unit header check — the `size < 256 || (size & 0xFF)`
+  guard, the `units[0]` validation, and the two-stage read that copies those units into `buf` before
+  reading the remainder — and reads the array in a single `fread`.
+- `DoubleArrayImpl::save()` drops its `offset` parameter and the `fseek` that used it, becoming
+  `save(const char *, const char *, std::size_t) const`.
+- `commonLongestPrefixSearch` is deleted: both overloads declared on the class and the out-of-line
+  template definition. Only `commonPrefixSearch` and `traverse` are called by `octagram_gram`.
+- `DoubleArrayBuilder`'s `BLOCK_SIZE` / `NUM_EXTRA_BLOCKS` / `NUM_EXTRAS` change from an unnamed `enum`
+  to `static const std::size_t`.
+- A `label()` comment typo is fixed (`associted` → `associated`).
+
+The `open()` and `save()` rewrites follow from the same decision as the rest of this reader: loading
+goes through Win32 mmap, so the file-opening and file-writing entry points are dead here. Verify the
+current state against the tag before assuming any of them still applies.
 
 `ngram/kenlm/` did not arrive with the engine import; it was added later, at the commit libime pins
 for its own `src/libime/core/kenlm` submodule, so the query code and the shipped `sc.lm` come from

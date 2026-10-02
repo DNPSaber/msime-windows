@@ -53,6 +53,9 @@ cd "$project_root"
 #     contracts/{assets,dictionary,punctuation,webview}/generate.py, and CI
 #     re-runs each generator with --check. Reformatting the checked-in copy
 #     would only make it disagree with what the generator produces.
+#   - ngram/octagram/darts.h is darts-clone itself, listed by exact path rather
+#     than by directory the way the other copies are: its siblings in that
+#     directory are ours (octagram_gram.{h,cpp}) and stay under the gate.
 git ls-files --cached --others --exclude-standard \
         'server/*.cpp' 'server/*.h' \
         'windows/*.cpp' 'windows/*.h' \
@@ -67,5 +70,6 @@ git ls-files --cached --others --exclude-standard \
         -e engine/contracts/dictionary/format.h \
         -e engine/contracts/punctuation/policy.h \
         -e engine/contracts/webview/schema.h \
+        -e engine/ngram/octagram/darts.h \
     | sort -u \
     | xargs "$clang_format" "${clang_format_arguments[@]}" --style=file

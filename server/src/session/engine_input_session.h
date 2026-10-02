@@ -4,6 +4,11 @@
 #include "engine/common/helpcode_utils.h"
 #include "engine/core/input_session.h"
 
+// 模型包的确定性布局解析：<DataDir>/models/<id>/<id>.gram。配置 id 留空 = 未选择任何
+// 模型，解析返回空串；文件缺席同样返回空串，调用方按整句加成全关处理。定义在
+// engine_input_session.cpp，声明在此供测试钉住激活解析语义。
+std::string ResolveCollocationModelPath(const std::string &model_id);
+
 class EngineInputSession : public IInputSession
 {
   public:

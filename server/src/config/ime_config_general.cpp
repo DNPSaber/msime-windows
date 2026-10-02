@@ -208,6 +208,51 @@ bool SetConfiguredAssocSentenceNeuralKeyboard(bool enabled)
     return true;
 }
 
+// octagram 语法模型总开关。开启时解码期叠加字级搭配分，并在 n-best 上重排出整句来源行
+// （标签由模型包自带：万象〔万象〕、八股文〔八股〕、白霜〔墨奇〕）。引擎侧加成没有独立
+// 开关——它由 collocation_model 非空隐含开启，所以单个键就够。
+bool GetConfiguredAssocSentenceCollocationEnabled()
+{
+    return g_assoc_sentence_collocation_enabled;
+}
+bool SetConfiguredAssocSentenceCollocationEnabled(bool enabled)
+{
+    if (!WriteConfiguredValue("association", "sentence_collocation_enabled", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_assoc_sentence_collocation_enabled = enabled;
+    return true;
+}
+
+bool GetConfiguredAssocSentenceCollocationRerankWeight()
+{
+    return g_assoc_sentence_collocation_rerank_weight;
+}
+
+std::string GetConfiguredAssocSentenceCollocationModel()
+{
+    return g_assoc_sentence_collocation_model;
+}
+
+// 激活某个 octagram 模型包（单选）。空串 = 未选择任何模型（整句加成关闭），设置页单选
+// 其他包时写入该包 id。写入经配置三重传导到 Server，下一次击键 ApplyConfiguration 即
+// 生效，无需重启。
+bool SetConfiguredAssocSentenceCollocationModel(const std::string &model_id)
+{
+    if (!WriteConfiguredValue("association", "sentence_collocation_model", EscapeTomlBasicString(model_id)))
+    {
+        return false;
+    }
+    g_assoc_sentence_collocation_model = model_id;
+    return true;
+}
+
+double GetConfiguredAssocSentenceCollocationWeight()
+{
+    return g_assoc_sentence_collocation_weight;
+}
+
 bool GetConfiguredAssocSentenceShowNextOnDuplicate()
 {
     return g_assoc_sentence_show_next_on_duplicate;

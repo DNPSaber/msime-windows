@@ -821,6 +821,17 @@ begin
   Result := CompareText(FileName, 'shuangpin') = 0;
 end;
 
+function IsCollocationModelDirectory(const FileName: String): Boolean;
+begin
+  { octagram 语法模型包（目录首项为推荐包万象）在 <数据目录>\models\<id>，是设置页按需下载的
+    约 390MB，安装包不携带，
+    也不是每次安装都会重写的东西。这份名单的语义恰好是「升级保留、卸载删除」——
+    IsPreservedAppDataItem 只被 CleanAppDataExceptUserFiles（覆盖安装）与 RemoveDataDir
+    （卸载/换目录）读——所以归这里，不能进 IsRuntimeAppDataItem：后者两条路径都删，
+    覆盖安装会把模型一并清掉，用户得重下一次。}
+  Result := CompareText(FileName, 'models') = 0;
+end;
+
 function IsPreservedAppDataItem(const FileName: String): Boolean;
 begin
   { 标记文件也要留下。它虽然会在 ssPostInstall 重写一遍，但安装若在中途失败，
@@ -831,6 +842,7 @@ begin
     IsUserConfigFile(FileName) or
     IsUserSkinDirectory(FileName) or
     IsUserShuangpinDirectory(FileName) or
+    IsCollocationModelDirectory(FileName) or
     (CompareText(FileName, DataDirMarkerName) = 0);
 end;
 
@@ -1379,6 +1391,19 @@ begin
       Exec(
         ExpandConstant('{sys}\robocopy.exe'),
         '"' + AddBackslash(OldDir) + 'shuangpin" "' + AddBackslash(NewDir) + 'shuangpin" ' +
+        '/E /MOVE /R:2 /W:1 /NJH /NJS /NP /NFL /NDL',
+        '',
+        SW_HIDE,
+        ewWaitUntilTerminated,
+        ResultCode
+      ) and (ResultCode < 8) and Moved;
+
+  { 下载的 octagram 语法模型包也搬走，否则留在旧目录里随 RemoveDataDir 一起删掉，用户得重下。}
+  if DirExists(AddBackslash(OldDir) + 'models') then
+    Moved :=
+      Exec(
+        ExpandConstant('{sys}\robocopy.exe'),
+        '"' + AddBackslash(OldDir) + 'models" "' + AddBackslash(NewDir) + 'models" ' +
         '/E /MOVE /R:2 /W:1 /NJH /NJS /NP /NFL /NDL',
         '',
         SW_HIDE,

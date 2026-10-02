@@ -21,6 +21,7 @@
 #include "cloud/cloud_translation.h"
 #include "english/english_ime.h"
 #include "config/ime_config.h"
+#include "settings/collocation_model.h"
 #include "engine/local_modes/quick_phrase_query.h"
 #include "engine/local_modes/unicode_query.h"
 #include "engine/local_modes/date_time_query.h"
@@ -248,6 +249,13 @@ std::string BuildCurrentCandidatePage()
     const bool show_fixed_badge = GetConfiguredCandidateFixedBadge();
     const std::string fixed_badge_style = GetConfiguredCandidateFixedBadgeStyle();
     const bool show_sentence_source_badge = GetConfiguredAssocSentenceSourceBadge();
+    // 徽标开启时才解析模型包的来源标签，每次组页解析一次，不逐候选查。标签由目录条目
+    // 自己声明（万象/八股/墨奇），各家互不冒名；激活值留空时不产生整句候选，徽章分支
+    // 不会被走到。
+    const std::string collocation_badge =
+        show_sentence_source_badge
+            ? " 〔" + std::string(collocation::BadgeForModel(GetConfiguredAssocSentenceCollocationModel())) + "〕"
+            : std::string();
 
     const int start = ui.current_page_start();
     const int loop = ui.current_page_count();
@@ -302,6 +310,8 @@ std::string BuildCurrentCandidatePage()
                 view.badge = " 〔神经D〕";
             else if (item.source == CandidateSource::NeuralKeyboard)
                 view.badge = " 〔神经K〕";
+            else if (item.source == CandidateSource::Collocation)
+                view.badge = collocation_badge;
         }
         view.fixed_position = item.fixed_position > 0;
         ApplyFixedPositionBadge(view, show_fixed_badge, fixed_badge_style);
