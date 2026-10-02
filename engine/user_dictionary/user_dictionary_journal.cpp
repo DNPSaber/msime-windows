@@ -86,6 +86,23 @@ bool execute_sql(sqlite3 *db, const char *sql)
     return db != nullptr && sqlite3_exec(db, sql, nullptr, nullptr, nullptr) == SQLITE_OK;
 }
 
+// Learning writes run on the dictionary writer thread while the key thread reads
+// the same files. In the default rollback-journal mode every commit takes an
+// exclusive lock, so a read on the key path waits out the whole commit and its
+// fsync -- seconds on a busy disk or under an antivirus scan of the -journal
+// file, and long enough for the client's commit-reply wait to time out and drop
+// the composition. WAL lets readers proceed against the last committed snapshot.
+// The mode is persistent; switching needs a moment with no other connection
+// mid-transaction, so a busy database simply stays as it is until the next try.
+bool use_write_ahead_log(sqlite3 *db)
+{
+    auto stmt = prepare(db, "PRAGMA journal_mode=WAL");
+    if (!stmt || sqlite3_step(stmt.get()) != SQLITE_ROW)
+        return false;
+    const unsigned char *mode = sqlite3_column_text(stmt.get(), 0);
+    return mode != nullptr && std::string(reinterpret_cast<const char *>(mode)) == "wal";
+}
+
 bool bind_text(sqlite3_stmt *stmt, int index, const std::string &value)
 {
     return sqlite3_bind_text(stmt, index, value.c_str(), -1, SQLITE_TRANSIENT) == SQLITE_OK;
@@ -157,6 +174,12 @@ bool ensure_schema(sqlite3 *db)
                                            "ADD COLUMN user_inserted INTEGER NOT NULL DEFAULT 0",
                                            nullptr, nullptr, nullptr) != SQLITE_OK)
         return false;
+    // Setting user_version is a write, even to the same value. Skip it when it is
+    // already current, so opening a connection never waits for another writer.
+    auto version = prepare(db, "PRAGMA user_version");
+    if (version && sqlite3_step(version.get()) == SQLITE_ROW && sqlite3_column_int(version.get(), 0) == 3)
+        return true;
+    version.reset();
     return sqlite3_exec(db, "PRAGMA user_version=3", nullptr, nullptr, nullptr) == SQLITE_OK;
 }
 
@@ -399,7 +422,10 @@ CachedDatabase &default_database_cache()
 std::shared_ptr<sqlite3> open_shared_database(const std::string &path)
 {
     Db opened = open_database(path, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE);
-    if (!opened || !ensure_schema(opened.get()))
+    if (!opened)
+        return {};
+    (void)use_write_ahead_log(opened.get());
+    if (!ensure_schema(opened.get()))
         return {};
     return std::shared_ptr<sqlite3>(opened.release(), [](sqlite3 *db) { sqlite3_close(db); });
 }
@@ -475,6 +501,12 @@ void close_default_user_database()
     // The local-mode queries share connections to the dictionaries in the same
     // data directory; they have to let go too.
     metasequoia::local_modes::close_cached_local_databases();
+}
+
+bool enable_write_ahead_log(const std::string &db_path)
+{
+    auto db = open_database(db_path, SQLITE_OPEN_READWRITE);
+    return db && use_write_ahead_log(db.get());
 }
 
 bool ensure_user_database(const std::string &user_db_path)

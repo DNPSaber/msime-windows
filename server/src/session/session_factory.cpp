@@ -3,6 +3,8 @@
 #include "config/ime_config.h"
 #include "engine_input_session.h"
 #include "engine/shuangpin/shuangpin_profile.h"
+#include "engine/user_dictionary/user_dictionary_journal.h"
+#include "utils/common_utils.h"
 #include <algorithm>
 #include <stdexcept>
 #include <string>
@@ -43,6 +45,11 @@ std::string ResolveEffectiveBackend(std::string configured_backend, SchemeType s
 
 std::shared_ptr<IInputSession> CreateInputSessionFromConfig()
 {
+    // The dictionary writer commits learned weights into msime.db while this
+    // session queries it on the key thread; in WAL mode those queries no longer
+    // wait for the commit. An installer upgrade ships a fresh rollback-mode file,
+    // so this runs at every session creation, not once.
+    (void)user_dictionary::enable_write_ahead_log(CommonUtils::get_ime_data_path() + "\\msime.db");
     const std::string backend = DescribeEffectiveInputSessionBackendFromConfig();
     const ShuangpinProfile &shuangpin_profile = GetShuangpinProfile(GetConfiguredShuangpinSchema());
     if (backend == "engine-shuangpin")

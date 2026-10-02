@@ -50,6 +50,53 @@ class TestDatabase
 };
 } // namespace
 
+// The dictionary writer thread commits learned weights while the key thread
+// builds candidates from the same files. In rollback-journal mode a commit's
+// exclusive lock made those reads wait out the whole commit -- up to a second
+// per key on a busy disk, long enough to time out a following commit key and
+// drop the composition. In WAL mode the reads see the last committed snapshot.
+TEST_CASE(DictionaryReadsDoNotWaitForALearningWrite)
+{
+    const auto directory =
+        std::filesystem::temp_directory_path() / ("msime-wal-reads-" + std::to_string(GetCurrentProcessId()));
+    std::error_code ec;
+    std::filesystem::remove_all(directory, ec);
+    std::filesystem::create_directories(directory);
+    const auto user_path = directory / "msime_user.db";
+    const auto main_path = directory / "msime.db";
+    {
+        TestDatabase db(main_path);
+        db.exec("CREATE TABLE tbl_1_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                "INSERT INTO tbl_1_n VALUES('ni','n','甲',100);"
+                "INSERT INTO tbl_1_n VALUES('ni','n','乙',90);");
+    }
+    REQUIRE(user_dictionary::enable_write_ahead_log(test::Utf8(main_path)));
+    REQUIRE(user_dictionary::set_fixed_position(test::Utf8(user_path), "ni", "ni", "乙", 1));
+
+    {
+        TestDatabase journal_writer(user_path);
+        TestDatabase main_writer(main_path);
+        REQUIRE_EQ(journal_writer.scalar_int("SELECT COUNT(*) FROM pragma_journal_mode WHERE journal_mode='wal'"), 1);
+        journal_writer.exec("BEGIN EXCLUSIVE");
+        journal_writer.exec("DELETE FROM fixed_candidate_positions");
+        main_writer.exec("BEGIN EXCLUSIVE");
+        main_writer.exec("UPDATE tbl_1_n SET weight=1");
+
+        const ULONGLONG started = GetTickCount64();
+        std::vector<WordItem> candidates = {{"ni", "甲", 100}, {"ni", "乙", 90}};
+        user_dictionary::apply_fixed_positions(test::Utf8(user_path), "ni", candidates, false);
+        REQUIRE(std::any_of(candidates.begin(), candidates.end(),
+                            [](const WordItem &item) { return item.word == "乙" && item.fixed_position == 1; }));
+        TestDatabase reader(main_path);
+        REQUIRE_EQ(reader.scalar_int("SELECT weight FROM tbl_1_n WHERE value='甲'"), 100);
+        REQUIRE(GetTickCount64() - started < 1000);
+
+        journal_writer.exec("ROLLBACK");
+        main_writer.exec("ROLLBACK");
+    }
+    std::filesystem::remove_all(directory, ec);
+}
+
 TEST_CASE(UserDictionaryReplayIsIdempotentAcrossAllSettingsDictionaries)
 {
     const auto directory =

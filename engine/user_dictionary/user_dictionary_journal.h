@@ -29,6 +29,10 @@ bool record_delete(const std::string &user_db_path, DictionaryKind kind, const s
 bool is_user_inserted(const std::string &user_db_path, DictionaryKind kind, const std::string &key,
                       const std::string &value);
 bool ensure_user_database(const std::string &user_db_path);
+// Switch an existing dictionary database (msime.db) to WAL so the key thread's
+// queries never wait for a learning write's commit. The user journal does this
+// on every connection it opens. Returns whether the database is now in WAL mode.
+bool enable_write_ahead_log(const std::string &db_path);
 bool record_pinyin_upsert_from_database(const std::string &main_db_path, const std::string &key,
                                         const std::string &value,
                                         const std::string &user_db_path = default_user_db_path());
