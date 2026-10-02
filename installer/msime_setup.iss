@@ -878,7 +878,10 @@ begin
     (CompareText(Copy(FileName, 1, 20), 'config.toml.corrupt-') = 0) or
     (CompareText(FileName, '.ime-write-probe') = 0) or
     (CompareText(FileName, 'msime-write-probe.tmp') = 0) or
-    (CompareText(FileName, 'logs') = 0);
+    (CompareText(FileName, 'logs') = 0) or
+    { 万象模型包目录：设置页下载器写的 models/<id>，含 .gram、.sha256 和 NOTICE.md。
+      整树可删——模型是下载物，重新装一次再下载即可，不是用户自己放的数据。}
+    (CompareText(FileName, 'models') = 0);
 end;
 
 { 数据目录不整个归我们时，只有这些名字允许删（#537）。html、logs 这种通用目录名
