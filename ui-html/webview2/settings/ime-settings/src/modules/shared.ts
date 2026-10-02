@@ -17,6 +17,41 @@ export function registerDropdownPreparer(menuId: string, preparer: DropdownPrepa
   dropdownPreparers.set(menuId, preparer);
 }
 
+// ---- 万象语法模型状态 ----
+
+let collocationPollTimer: ReturnType<typeof setInterval> | null = null;
+
+export type CollocationModelStatus = { state?: string; progress?: number; error?: string };
+
+// 应用快照里的 association.sentence_collocation_model_status：状态文本、按钮可用态，
+// 下载中每 2 秒发一次 collocationModelStatusRequest 拉新快照，离开下载态自动停。
+export function applyCollocationModelStatus(status: CollocationModelStatus | undefined): void {
+  const state = status?.state ?? 'absent';
+  const text = document.getElementById('collocationModelStatusText');
+  const button = document.getElementById('collocationModelDownloadBtn') as HTMLButtonElement | null;
+  if (text) {
+    if (state === 'ready') {
+      text.textContent = '模型已就绪';
+    } else if (state === 'downloading') {
+      text.textContent = `下载中 ${status?.progress ?? 0}%`;
+    } else if (state === 'error') {
+      text.textContent = `下载失败：${status?.error || '未知原因'}`;
+    } else {
+      text.textContent = '未下载';
+    }
+  }
+  if (button)
+    button.disabled = state === 'downloading' || state === 'ready';
+  if (state === 'downloading' && collocationPollTimer === null) {
+    collocationPollTimer = setInterval(() => {
+      window.chrome?.webview?.postMessage(serializeHostMessage({ type: 'collocationModelStatusRequest' }));
+    }, 2000);
+  } else if (state !== 'downloading' && collocationPollTimer !== null) {
+    clearInterval(collocationPollTimer);
+    collocationPollTimer = null;
+  }
+}
+
 function nextPaint(): Promise<void> {
   return new Promise((resolve) => {
     requestAnimationFrame(() => requestAnimationFrame(() => resolve()));

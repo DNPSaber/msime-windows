@@ -627,9 +627,35 @@
       <div class="section-header frequency-option-row">
         <div>
           <div class="section-title">显示整句来源标签</div>
-          <div class="input-setting-description">在整句候选后显示〔Trigram〕〔Unigram〕〔神经D〕〔神经K〕等来源标签</div>
+          <div class="input-setting-description">在整句候选后显示〔Trigram〕〔Unigram〕〔神经D〕〔神经K〕〔万象〕等来源标签</div>
         </div>
         <div class="ftb-toggle-btn" id="sentenceSourceBadgeToggleBtn" role="switch" aria-checked="false" tabindex="0">
+          <div class="ftb-toggle-knob"></div>
+        </div>
+      </div>
+      <div class="section-header frequency-option-row">
+        <div>
+          <div class="section-title">万象语法模型（需先下载，约 390MB）</div>
+          <div class="input-setting-description" id="collocationModelStatusText">未下载</div>
+          <button type="button" class="restart-server-button" id="collocationModelDownloadBtn" style="margin-top:6px;">下载模型</button>
+        </div>
+        <div></div>
+      </div>
+      <div class="section-header frequency-option-row">
+        <div>
+          <div class="section-title">万象搭配加成整句</div>
+          <div class="input-setting-description">下载模型后可用：在词格解码时叠加字级搭配信号，整句首选更准（评测 top1 +6 个百分点）</div>
+        </div>
+        <div class="ftb-toggle-btn" id="sentenceCollocationAdditiveToggleBtn" role="switch" aria-checked="false" tabindex="0">
+          <div class="ftb-toggle-knob"></div>
+        </div>
+      </div>
+      <div class="section-header frequency-option-row">
+        <div>
+          <div class="section-title">万象搭配重排整句</div>
+          <div class="input-setting-description">下载模型后可用：在整句备选里按搭配强度重新排序，以〔万象〕来源行显示</div>
+        </div>
+        <div class="ftb-toggle-btn" id="sentenceCollocationRerankToggleBtn" role="switch" aria-checked="false" tabindex="0">
           <div class="ftb-toggle-knob"></div>
         </div>
       </div>

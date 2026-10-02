@@ -26,6 +26,16 @@
         "settings"
       ]
     },
+    "collocationModelDownload": {
+      "surfaces": [
+        "settings"
+      ]
+    },
+    "collocationModelStatusRequest": {
+      "surfaces": [
+        "settings"
+      ]
+    },
     "openHandwritingPanel": {
       "surfaces": [
         "settings"
