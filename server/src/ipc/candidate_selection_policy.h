@@ -32,7 +32,7 @@ inline size_t CountCanonicalSyllables(const std::string &canonical_pinyin) noexc
 }
 
 // 猜出来的整句来源：词格 Generated、Google 解码器 Fallback，神经整句
-// NeuralDesktop / NeuralKeyboard，以及万象语法模型重排的 Collocation。
+// NeuralDesktop / NeuralKeyboard，以及 octagram 语法模型重排的 Collocation。
 // 它们都不是词库里已有的行，落库/学习判定同类处理。
 constexpr bool IsGuessedSentenceSource(CandidateSource source) noexcept
 {
@@ -66,7 +66,7 @@ inline bool ShouldStoreEarlyReturnPhrase(CandidateSource source, bool creating_w
                                          const std::string &prefix_canonical_pinyin,
                                          const std::string &candidate_canonical_pinyin) noexcept
 {
-    // 与词格 Generated 同一支：神经整句与万象重排句同样带 canonical quanpin，可以结束
+    // 与词格 Generated 同一支：神经整句与语法模型重排句同样带 canonical quanpin，可以结束
     // 一段造词或独立上屏。Google Fallback 沿用旧语义仍不走这条造词落库路径。
     const bool early_return_source = source == CandidateSource::Generated || source == CandidateSource::NeuralDesktop ||
                                      source == CandidateSource::NeuralKeyboard ||

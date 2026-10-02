@@ -823,7 +823,8 @@ end;
 
 function IsCollocationModelDirectory(const FileName: String): Boolean;
 begin
-  { 万象模型包在 <数据目录>\models\<id>，是设置页按需下载的约 390MB，安装包不携带，
+  { octagram 语法模型包（内置推荐包为万象）在 <数据目录>\models\<id>，是设置页按需下载的
+    约 390MB，安装包不携带，
     也不是每次安装都会重写的东西。这份名单的语义恰好是「升级保留、卸载删除」——
     IsPreservedAppDataItem 只被 CleanAppDataExceptUserFiles（覆盖安装）与 RemoveDataDir
     （卸载/换目录）读——所以归这里，不能进 IsRuntimeAppDataItem：后者两条路径都删，

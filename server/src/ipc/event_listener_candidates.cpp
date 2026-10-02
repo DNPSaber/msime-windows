@@ -21,6 +21,7 @@
 #include "cloud/cloud_translation.h"
 #include "english/english_ime.h"
 #include "config/ime_config.h"
+#include "settings/collocation_model.h"
 #include "engine/local_modes/quick_phrase_query.h"
 #include "engine/local_modes/unicode_query.h"
 #include "engine/local_modes/date_time_query.h"
@@ -229,6 +230,17 @@ std::wstring BuildUiLessCandidatePageW()
 
 namespace
 {
+// octagram 语法模型的徽章按实际加载的模型包派生：id 空回退内置包（与
+// engine_input_session.cpp 的 ResolveCollocationModelPath 同一规则），内置推荐包
+// （万象）显示〔万象〕，手动放置的其他 octagram 模型按机制名显示〔八股〕。
+bool CollocationBadgeIsWanxiang()
+{
+    std::string id = GetConfiguredAssocSentenceCollocationModel();
+    if (id.empty())
+        id = collocation::kDefaultModelId;
+    return id.rfind("wanxiang", 0) == 0;
+}
+
 std::string BuildCurrentCandidatePage()
 {
     auto &ui = Global::candidate_ui;
@@ -248,6 +260,8 @@ std::string BuildCurrentCandidatePage()
     const bool show_fixed_badge = GetConfiguredCandidateFixedBadge();
     const std::string fixed_badge_style = GetConfiguredCandidateFixedBadgeStyle();
     const bool show_sentence_source_badge = GetConfiguredAssocSentenceSourceBadge();
+    // 徽标开启时才解析模型包 id，每次组页解析一次，不逐候选查。
+    const bool collocation_is_wanxiang = show_sentence_source_badge && CollocationBadgeIsWanxiang();
 
     const int start = ui.current_page_start();
     const int loop = ui.current_page_count();
@@ -303,7 +317,7 @@ std::string BuildCurrentCandidatePage()
             else if (item.source == CandidateSource::NeuralKeyboard)
                 view.badge = " 〔神经K〕";
             else if (item.source == CandidateSource::Collocation)
-                view.badge = " 〔万象〕";
+                view.badge = collocation_is_wanxiang ? " 〔万象〕" : " 〔八股〕";
         }
         view.fixed_position = item.fixed_position > 0;
         ApplyFixedPositionBadge(view, show_fixed_badge, fixed_badge_style);

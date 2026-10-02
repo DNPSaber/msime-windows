@@ -1,6 +1,7 @@
 #pragma once
 
-// 万象语法模型（octagram .gram）的按需下载与状态查询。
+// octagram 语法模型（八股文，.gram）的按需下载与状态查询。下载器只精选了内置
+// 推荐包（万象），机制本身按模型包 id 通用：其他 octagram 模型手动放置后即可用。
 //
 // 390MB 的模型不进安装包：设置页提供下载按钮，落到
 // <DataDir>/models/wanxiang-lts-zh-hans/wanxiang-lts-zh-hans.gram。
@@ -24,8 +25,9 @@
 namespace collocation
 {
 
-// 内置模型包 id，也是下载器的落位目录名。解析侧在配置未指定 id 时回退到它，
+// 内置推荐包（万象）的 id，也是下载器的落位目录名。解析侧在配置未指定 id 时回退到它，
 // 所以这个键可以一直留空：模型下载到位后自然生效，不依赖谁去写回配置。
+// 候选徽章也按这个 id 的 wanxiang 前缀区分〔万象〕与其他 octagram 模型（〔八股〕）。
 inline constexpr char kDefaultModelId[] = "wanxiang-lts-zh-hans";
 
 struct ModelStatus

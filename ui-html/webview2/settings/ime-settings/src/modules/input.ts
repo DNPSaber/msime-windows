@@ -443,11 +443,11 @@ export function setupInput(): void {
   setupToggleButton('sentenceSourceBadgeToggleBtn', (active) => {
     updateConfig('association.sentence_source_badge', active);
   });
-  // 万象总开关：一并接入解码期搭配加成与 n-best 重排，引擎侧不再分两个开关。
+  // octagram 语法模型总开关：一并接入解码期搭配加成与 n-best 重排，引擎侧不再分两个开关。
   setupToggleButton('sentenceCollocationToggleBtn', (active) => {
     updateConfig('association.sentence_collocation_enabled', active);
   });
-  // 万象语法模型下载：点击后发 host 消息。状态文本、按钮态与轮询由
+  // 万象包下载（内置推荐模型，设置页唯一的精选来源）：点击后发 host 消息。状态文本、按钮态与轮询由
   // shared.applyCollocationModelStatus 随配置快照驱动（config-sync 调用）。
   const downloadButton = document.getElementById('collocationModelDownloadBtn') as HTMLButtonElement | null;
   downloadButton?.addEventListener('click', () => {

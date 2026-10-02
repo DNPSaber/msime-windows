@@ -17,7 +17,7 @@ export function registerDropdownPreparer(menuId: string, preparer: DropdownPrepa
   dropdownPreparers.set(menuId, preparer);
 }
 
-// ---- 万象语法模型状态 ----
+// ---- octagram 语法模型（八股文）状态 ----
 
 let collocationPollTimer: ReturnType<typeof setInterval> | null = null;
 

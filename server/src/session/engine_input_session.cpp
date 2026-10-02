@@ -72,7 +72,7 @@ void EngineInputSession::ApplyConfiguration()
     association.neural_desktop = GetConfiguredAssocSentenceNeuralDesktop();
     association.neural_keyboard = GetConfiguredAssocSentenceNeuralKeyboard();
     association.show_next_on_duplicate = GetConfiguredAssocSentenceShowNextOnDuplicate();
-    // 万象总开关：开关关时连模型路径都不解析。引擎侧的加成分由 collocation_model
+    // octagram 语法模型总开关：开关关时连模型路径都不解析。引擎侧的加成分由 collocation_model
     // 非空隐含开启，没有独立开关，所以路径空即全部能力关闭；模型缺席时同样置空重排，
     // 免得词典层拿空路径做无谓解析。
     const bool collocation_enabled = GetConfiguredAssocSentenceCollocationEnabled();

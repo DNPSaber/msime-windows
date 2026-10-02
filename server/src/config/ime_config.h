@@ -361,8 +361,8 @@ bool GetConfiguredAssocSentenceShowNextOnDuplicate();
 bool SetConfiguredAssocSentenceShowNextOnDuplicate(bool enabled);
 bool GetConfiguredAssocSentenceSourceBadge();
 bool SetConfiguredAssocSentenceSourceBadge(bool enabled);
-// 万象语法模型（[association] 段）：两个机制开关进设置页，模型 id 留空即用内置包，
-// 权重是配置文件里的高级调参项，不进设置页。
+// octagram 语法模型（八股文，[association] 段）：两个机制开关进设置页，模型 id 留空即用
+// 内置推荐包（万象），权重是配置文件里的高级调参项，不进设置页。
 bool GetConfiguredAssocSentenceCollocationEnabled();
 bool SetConfiguredAssocSentenceCollocationEnabled(bool enabled);
 bool GetConfiguredAssocSentenceCollocationRerankWeight();
