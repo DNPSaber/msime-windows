@@ -135,7 +135,8 @@ int main()
     CHECK(FanyImeWorkerReplyType::CommitCandidate == FanyImeWorkerReplyType::CommitCurCandidate);
     CHECK(FanyImeWorkerReplyType::CommitCandidateAndContinue == 27);
     CHECK(FanyImeWorkerReplyType::MidSentenceHelpcodeChanged == 28);
-    CHECK(FanyImeWorkerReplyType::MaxKnown == FanyImeWorkerReplyType::MidSentenceHelpcodeChanged);
+    CHECK(FanyImeWorkerReplyType::MidSentenceHelpcodeSemicolonChanged == 29);
+    CHECK(FanyImeWorkerReplyType::MaxKnown == FanyImeWorkerReplyType::MidSentenceHelpcodeSemicolonChanged);
     // TSF（WCHAR）与引擎（char）共用同一条句中辅助码形状规则。
     const auto accepts = [](const std::wstring &text) {
         return FanyImeMidSentenceHelpcode::AcceptsMarker(text.data(), text.size());

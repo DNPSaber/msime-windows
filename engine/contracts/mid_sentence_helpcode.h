@@ -9,9 +9,15 @@
 // 没有音节表，所以这里只看形状，不判断前面的键是不是合法音节。
 //
 // 一段是反引号加至多两个字母：第一码（大小写都算）和紧跟其后的大写第二码。
+//
+// 触发键可以是反引号，也可以是分号（设置里多选）。无论按的是哪个，输入串里记的都是反引号：TSF 的
+// 按键缓冲、Server 的 raw 和引擎解析的都是同一种串，分号在微软/搜狗/紫光双拼里还是 ing 韵母，
+// 不能让它在串里有两种意思。分号只在 AcceptsMarkerAt 成立时才是触发键，那时这一节是偶数键，
+// 而 ing 韵母只跟在奇数键之后，两者不会抢同一个位置。
 namespace FanyImeMidSentenceHelpcode
 {
 inline constexpr char kMarker = '`';
+inline constexpr char kSemicolonTrigger = ';';
 
 template <typename Char> constexpr bool IsAsciiLetter(Char ch)
 {

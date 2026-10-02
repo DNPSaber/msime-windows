@@ -209,9 +209,11 @@ inline std::atomic_bool SmartPunctuationDirectLetterEnabled{false};
 // Default on until the Server sends the persisted setting.
 inline std::atomic_bool PairedPunctuationEnabled{true};
 inline std::atomic_bool MicrosoftShuangpinEnabled{false};
-// 双拼句中辅助码开着且当前是双拼：组合中的反引号按 engine/contracts/mid_sentence_helpcode.h
-// 的形状规则当编码键吃掉，见 CompositionProcessorEngine_KeyClassify.cpp。
+// 双拼句中辅助码开着、勾了反引号且当前是双拼：组合中的反引号按
+// engine/contracts/mid_sentence_helpcode.h 的形状规则当编码键吃掉，见 CompositionProcessorEngine_KeyClassify.cpp。
 inline std::atomic_bool MidSentenceHelpcodeEnabled{false};
+// 同上，换成分号触发键（设置里多选）。分号触发的段在按键缓冲里同样记成反引号。
+inline std::atomic_bool MidSentenceHelpcodeSemicolonEnabled{false};
 inline std::atomic_bool JapaneseInputModeEnabled{false};
 inline std::atomic_bool CapsLockEnabled{false};
 inline std::atomic_bool TsfDiagnosticLogEnabled{false};

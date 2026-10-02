@@ -56,7 +56,8 @@ TEST_CASE(ipc_pipe_ready_is_a_distinct_server_reply)
     // left unused, and the number is never recycled: a shipped test build would
     // otherwise misread a new frame. New frames take the next free number.
     REQUIRE_EQ(Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged, 28u);
-    REQUIRE_EQ(Global::DataFromServerMsgTypeToTsfWorkerThread::MaxKnown, 28u);
+    REQUIRE_EQ(Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeSemicolonChanged, 29u);
+    REQUIRE_EQ(Global::DataFromServerMsgTypeToTsfWorkerThread::MaxKnown, 29u);
     REQUIRE(Global::DataFromServerMsgTypeToTsfWorkerThread::FocusSessionReady >
             Global::DataFromServerMsgTypeToTsfWorkerThread::PagingCommaPeriodChanged);
     REQUIRE(Global::DataFromServerMsgTypeToTsfWorkerThread::PipeReady >
@@ -97,8 +98,10 @@ TEST_CASE(ipc_pipe_ready_is_a_distinct_server_reply)
             Global::DataFromServerMsgTypeToTsfWorkerThread::StatisticsEnabledChanged);
     REQUIRE(Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged >
             Global::DataFromServerMsgTypeToTsfWorkerThread::CommitCandidateAndContinue);
+    REQUIRE(Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeSemicolonChanged >
+            Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged);
     REQUIRE_EQ(Global::DataFromServerMsgTypeToTsfWorkerThread::MaxKnown,
-               Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged);
+               Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeSemicolonChanged);
 }
 
 TEST_CASE(ipc_client_suspension_is_a_distinct_nonterminal_route_reset)

@@ -63,6 +63,24 @@ export function setupHelpcode(): void {
     updateConfig('helpcode.shuangpin_mid_sentence_helpcode', active);
   });
 
+  // 句中辅助码触发键，可多选；至少留一个，最后一个取消不掉
+  const triggerCheckboxes: [string, string][] = [
+    ['midSentenceHelpcodeBacktickCheckbox', 'helpcode.shuangpin_mid_sentence_helpcode_backtick'],
+    ['midSentenceHelpcodeSemicolonCheckbox', 'helpcode.shuangpin_mid_sentence_helpcode_semicolon'],
+  ];
+  for (const [id, path] of triggerCheckboxes) {
+    const checkbox = document.getElementById(id) as HTMLInputElement | null;
+    checkbox?.addEventListener('change', () => {
+      const anyChecked = triggerCheckboxes.some(
+        ([otherId]) => (document.getElementById(otherId) as HTMLInputElement | null)?.checked);
+      if (!anyChecked) {
+        checkbox.checked = true;
+        return;
+      }
+      updateConfig(path, checkbox.checked);
+    });
+  }
+
   // 全拼辅助码开关
   setupToggleButton('quanpinHelpcodeToggleBtn', (active) => {
     updateConfig('helpcode.quanpin_helpcode', active);

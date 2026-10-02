@@ -411,8 +411,12 @@ constexpr std::uint32_t CommitCandidateAndContinue = 27;
 // Whether '`' can open a shuangpin mid-sentence helpcode block while composing. Payload "0"/"1".
 // TSF still checks the block shape at its caret itself (FanyImeMidSentenceHelpcode::AcceptsMarkerAt)
 // and the Server makes the final call; this flag only keeps TSF from eating '`' when the feature is off.
+// The payload must stay a single "0"/"1": the worker drops any longer frame for this opcode.
 constexpr std::uint32_t MidSentenceHelpcodeChanged = 28;
-constexpr std::uint32_t MaxKnown = MidSentenceHelpcodeChanged;
+// Same as MidSentenceHelpcodeChanged for the optional ';' trigger. Payload "0"/"1". A separate
+// opcode keeps 28 meaning "'`' is a trigger" for older DLLs, which ignore this one.
+constexpr std::uint32_t MidSentenceHelpcodeSemicolonChanged = 29;
+constexpr std::uint32_t MaxKnown = MidSentenceHelpcodeSemicolonChanged;
 // Source compatibility for the Server's historical spellings.
 constexpr std::uint32_t SwitchToEn = SwitchToEnglish;
 constexpr std::uint32_t SwitchToCn = SwitchToChinese;

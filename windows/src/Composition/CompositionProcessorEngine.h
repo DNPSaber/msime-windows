@@ -45,6 +45,18 @@ class CCompositionProcessorEngine
                                              _Out_opt_ _KEYSTROKE_STATE *pKeyState);
 
     BOOL AddVirtualKey(WCHAR wch);
+    // 句中辅助码触发键（反引号，或设置里勾了的分号）在 buffer 的 caret 处是不是编码键，规则见
+    // engine/contracts/mid_sentence_helpcode.h。分号先让给 ing 韵母。
+    static bool IsMidSentenceHelpcodeTriggerKey(UINT uCode, WCHAR wch, _In_reads_opt_(length) const WCHAR *buffer,
+                                                DWORD_PTR length, DWORD_PTR caret);
+    // 当句中辅助码触发键的分号在缓冲里记成反引号（与 Server 的 raw 一致），其余字符原样返回。
+    static WCHAR NormalizeMidSentenceHelpcodeTrigger(WCHAR wch, _In_reads_opt_(length) const WCHAR *buffer,
+                                                     DWORD_PTR length, DWORD_PTR caret);
+    WCHAR NormalizeMidSentenceHelpcodeTrigger(WCHAR wch) const
+    {
+        return NormalizeMidSentenceHelpcodeTrigger(wch, _keystrokeBuffer.Get(), _keystrokeBuffer.GetLength(),
+                                                   _caretPosition);
+    }
     void RemoveVirtualKey(DWORD_PTR dwIndex);
     BOOL RemoveVirtualKeyBeforeCaret();
     BOOL RemoveVirtualKeyAtCaret();

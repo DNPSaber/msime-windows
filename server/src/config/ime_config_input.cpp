@@ -367,10 +367,57 @@ bool SetConfiguredShuangpinMidSentenceHelpcodeEnabled(bool enabled)
     return true;
 }
 
+bool GetConfiguredShuangpinMidSentenceHelpcodeBacktick()
+{
+    return g_shuangpin_mid_sentence_helpcode_backtick;
+}
+
+bool SetConfiguredShuangpinMidSentenceHelpcodeBacktick(bool enabled)
+{
+    if (!WriteConfiguredValue("helpcode", "shuangpin_mid_sentence_helpcode_backtick", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_shuangpin_mid_sentence_helpcode_backtick = enabled;
+    return true;
+}
+
+bool GetConfiguredShuangpinMidSentenceHelpcodeSemicolon()
+{
+    return g_shuangpin_mid_sentence_helpcode_semicolon;
+}
+
+bool SetConfiguredShuangpinMidSentenceHelpcodeSemicolon(bool enabled)
+{
+    if (!WriteConfiguredValue("helpcode", "shuangpin_mid_sentence_helpcode_semicolon", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_shuangpin_mid_sentence_helpcode_semicolon = enabled;
+    return true;
+}
+
+bool IsConfiguredMidSentenceHelpcodeTrigger(wchar_t ch)
+{
+    if (!g_shuangpin_mid_sentence_helpcode_enabled)
+    {
+        return false;
+    }
+    return (ch == L'`' && g_shuangpin_mid_sentence_helpcode_backtick) ||
+           (ch == L';' && g_shuangpin_mid_sentence_helpcode_semicolon);
+}
+
 std::wstring FormatMidSentenceHelpcodeWorkerPayload()
 {
-    // TSF 只需要知道反引号此刻有没有可能是编码键：开关开着且正在用双拼。
-    return g_shuangpin_mid_sentence_helpcode_enabled && GetConfiguredActiveInputScheme() == SchemeType::Shuangpin
+    // TSF 只需要知道反引号此刻有没有可能是编码键：开关开着、勾了反引号且正在用双拼。
+    return IsConfiguredMidSentenceHelpcodeTrigger(L'`') && GetConfiguredActiveInputScheme() == SchemeType::Shuangpin
+               ? L"1"
+               : L"0";
+}
+
+std::wstring FormatMidSentenceHelpcodeSemicolonWorkerPayload()
+{
+    return IsConfiguredMidSentenceHelpcodeTrigger(L';') && GetConfiguredActiveInputScheme() == SchemeType::Shuangpin
                ? L"1"
                : L"0";
 }
