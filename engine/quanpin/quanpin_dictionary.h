@@ -12,6 +12,7 @@
 #include "lattice_rerank.h"
 #include "quanpin_query.h"
 #include "engine/ngram/language_model.h"
+#include "engine/ngram/octagram/octagram_gram.h"
 #include "../core/fuzzy_pinyin_options.h"
 #include <sqlite3.h>
 #include <string>
@@ -158,6 +159,9 @@ class QuanpinDictionary
     // 词格整句的打分模型（kenlm 三元），按资源路径进程内共享、只读。缺模型时
     // valid() 为假，word_lattice 退回旧的启发式打分：整句候选只是变差，不会消失。
     const ngram::LanguageModel *language_model_ = nullptr;
+    // 万象语法模型（octagram .gram），随 set_sentence_association 的模型路径解析，
+    // 进程内按路径共享、mmap 只读。路径为空或无效时为 nullptr，词格退回无搭配打分。
+    const gram::GramDb *collocation_db_ = nullptr;
     // 神经整句模型（chinese-ime-lm），按资源路径进程内共享、只读。两档可同时参与打分；
     // 缺文件时对应的整句候选不出，不影响其它候选。对应开关第一次生效时才载入，
     // 关着的那档不占内存。

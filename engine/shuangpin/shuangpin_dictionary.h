@@ -100,6 +100,8 @@ class ShuangpinDictionary
     metasequoia::PinyinDecoder decoder_;
     // 与全拼共用的词格打分模型，见 QuanpinDictionary::language_model_。
     const ngram::LanguageModel *language_model_ = nullptr;
+    // 万象语法模型（octagram .gram），见 QuanpinDictionary::collocation_db_。
+    const gram::GramDb *collocation_db_ = nullptr;
     // 神经整句模型，见 QuanpinDictionary::neural_desktop_model_。与全拼共用同一份
     // 进程内缓存（按资源路径），双拼这侧只是各自持一份句柄，开关生效时才载入。
     neural::LazySentenceModel neural_desktop_model_;

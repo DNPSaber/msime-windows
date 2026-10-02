@@ -582,6 +582,13 @@ std::vector<WordItem> QuanpinDictionary::query_series(const std::string &raw_inp
             neural_rerankers.push_back({quanpin::make_neural_reranker(neural_desktop_model_.get(), rescoring_context_),
                                         CandidateSource::NeuralDesktop});
         }
+        // 万象语法模型重排：与其他来源各自独立地从静态 n-best 出发行（Collocation）。
+        if (sentence_association_.collocation_rerank && collocation_db_ != nullptr && collocation_db_->valid())
+        {
+            neural_rerankers.push_back(
+                {quanpin::make_octagram_reranker(collocation_db_, sentence_association_.collocation_rerank_weight),
+                 CandidateSource::Collocation});
+        }
         quanpin::WordLatticeOptions lattice_options;
         // 神经模型和去重补位都需要完整候选池；否则只解最优的一条。
         const bool needs_alternatives = !neural_rerankers.empty() || (sentence_association_.word_lattice &&
@@ -590,6 +597,15 @@ std::vector<WordItem> QuanpinDictionary::query_series(const std::string &raw_inp
         lattice_options.include_lattice_best = sentence_association_.word_lattice;
         lattice_options.show_next_on_duplicate = sentence_association_.show_next_on_duplicate;
         lattice_options.language_model = language_model_;
+        // 万象语法模型的加性搭配项：逐边叠加字级搭配分，与三元模型在同一 Viterbi 里竞争。
+        if (collocation_db_ != nullptr && collocation_db_->valid() && sentence_association_.collocation_weight != 0.0)
+        {
+            lattice_options.collocation_scorer = [db = collocation_db_](std::string_view tail, std::string_view word,
+                                                                        bool is_rear) {
+                return db->query(std::string(tail), std::string(word), is_rear, gram::GrammarConfig{});
+            };
+            lattice_options.collocation_weight = sentence_association_.collocation_weight;
+        }
         if (sentence_association_.word_lattice || !neural_rerankers.empty())
         {
             quanpin::merge_lattice_candidates(
@@ -1135,6 +1151,13 @@ void QuanpinDictionary::set_sentence_association(const SentenceAssociationOption
         return;
     }
     sentence_association_ = options;
+    // 模型路径随开关一起变更时才重新解析：进程内按路径共享（shared_gram_db），
+    // 重复解析只是查一次表，路径无效时拿到 valid()==false 的实例，词格静默降级。
+    // 路径是宿主下发的 UTF-8，必须显式按 UTF-8 转，隐式转换走 ANSI 代码页。
+    collocation_db_ =
+        sentence_association_.collocation_model.empty()
+            ? nullptr
+            : gram::shared_gram_db(metasequoia::path_from_utf8(sentence_association_.collocation_model.c_str()));
     // 开关变了，之前缓存的候选列表按旧开关算出，必须清掉，否则打开/关闭后要到缓存过期
     // 才见效。整句候选都进这几个缓存，见 query_series / query_single_path。
     reset_cache();

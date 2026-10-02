@@ -26,6 +26,9 @@ enum class CandidateSource
     // 全拼/双拼里打 rq / sj / xq 等唤醒词时混进普通候选的日期、时间、星期。Shift+T 模式里的同一批
     // 文本仍记 Generated：那是独占的候选列表，不和别的候选排位置。
     DateTime,
+    // 万象语法模型（octagram .gram）在词格 n-best 上重排挑中的那一句。句子仍是词格
+    // 解出来的，搭配强度表只负责挑；落库/学习判定与 NeuralDesktop/NeuralKeyboard 同类。
+    Collocation,
 };
 
 struct WordItem
