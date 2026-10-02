@@ -46,6 +46,15 @@ TEST_CASE(ai_suggestion_cache_misses_when_prompt_changes)
             AiAssistant::detail::BuildSuggestionCacheKey(changed_request));
 }
 
+TEST_CASE(ai_suggestion_cache_key_tolerates_invalid_utf8)
+{
+    auto request = MakeRequest();
+    request.context = std::string("\xE6\x88", 2);
+    request.config.prompt = std::string("\xFF", 1);
+
+    REQUIRE(!AiAssistant::detail::BuildSuggestionCacheKey(request).empty());
+}
+
 TEST_CASE(ai_suggestion_cache_misses_when_candidate_limit_changes)
 {
     const auto request = MakeRequest();
