@@ -147,6 +147,8 @@ endif()
 set(SRC_FILES
     "./src/ai/ai_assistant.cpp"
     "./src/ai/ai_assistant.h"
+    "./src/ai/ai_assistant_cache.cpp"
+    "./src/ai/ai_assistant_cache.h"
     "./src/ai/ai_assistant_cache_key.cpp"
     "./src/ai/ai_assistant_cache_key.h"
     "./src/clipboard/clipboard_history.cpp"
