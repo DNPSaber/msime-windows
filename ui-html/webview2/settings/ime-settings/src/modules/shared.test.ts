@@ -151,9 +151,9 @@ it('allows the item after the host clears its disabled state', () => {
 
 describe('collocation model status gating', () => {
   const TOGGLE_IDS = ['sentenceCollocationToggleBtn'];
-  const BUILT_IN_ID = 'wanxiang-lts-zh-hans';
+  const RECOMMENDED_ID = 'wanxiang-lts-zh-hans';
   const CATALOG = [
-    { id: BUILT_IN_ID, displayName: '万象 LTS（推荐）', sizeHint: '约 390 MB', license: 'CC-BY-4.0' },
+    { id: RECOMMENDED_ID, displayName: '万象 LTS（推荐）', sizeHint: '约 390 MB', license: 'CC-BY-4.0' },
     { id: 'zh-moqi', displayName: '白霜（实验）', sizeHint: '约 7 MB', license: 'GPL-3.0' }
   ];
 
@@ -248,17 +248,16 @@ describe('collocation model status gating', () => {
     vi.stubGlobal('window', { chrome: { webview: { postMessage } } });
   });
 
-  it('seeds one row per catalog entry and leaves the built-in package activatable while absent', () => {
-    applyCollocationModelStatus({ [BUILT_IN_ID]: { state: 'absent' }, 'zh-moqi': { state: 'absent' } }, CATALOG, '');
+  it('seeds one row per catalog entry and selects nothing when activation is empty', () => {
+    applyCollocationModelStatus({ [RECOMMENDED_ID]: { state: 'absent' }, 'zh-moqi': { state: 'absent' } }, CATALOG, '');
     expect(rows()).toHaveLength(2);
-    // 激活留空 = 内置推荐包：对应单选选中且可点（未下载也可用，引擎静默降级）。
-    expect(radioOf(rowById(BUILT_IN_ID)).value).toBe('');
-    expect(radioOf(rowById(BUILT_IN_ID)).disabled).toBe(false);
-    expect(radioOf(rowById(BUILT_IN_ID)).checked).toBe(true);
-    // 未就绪的社区包不可激活。
+    // 激活留空 = 未选择任何模型：没有行被选中，未下载的行一律不可激活（没有默认/回退行）。
+    expect(radioOf(rowById(RECOMMENDED_ID)).value).toBe(RECOMMENDED_ID);
+    expect(radioOf(rowById(RECOMMENDED_ID)).disabled).toBe(true);
+    expect(radioOf(rowById(RECOMMENDED_ID)).checked).toBe(false);
     expect(radioOf(rowById('zh-moqi')).disabled).toBe(true);
     expect(radioOf(rowById('zh-moqi')).checked).toBe(false);
-    // 生效解析（留空 = 内置推荐）未就绪 → 整句开关置灰。
+    // 未选择 = 没有就绪的模型 → 整句开关置灰。
     for (const id of TOGGLE_IDS) {
       expect(toggles[id].getAttribute('aria-disabled')).toBe('true');
       expect(toggles[id].tabIndex).toBe(-1);
@@ -274,27 +273,29 @@ describe('collocation model status gating', () => {
 
   it('replays per-model status text and download/delete visibility', () => {
     applyCollocationModelStatus(
-      { [BUILT_IN_ID]: { state: 'ready' }, 'zh-moqi': { state: 'downloading', progress: 40 } },
+      { [RECOMMENDED_ID]: { state: 'ready' }, 'zh-moqi': { state: 'downloading', progress: 40 } },
       CATALOG,
       ''
     );
-    const builtIn = rowById(BUILT_IN_ID);
+    const recommended = rowById(RECOMMENDED_ID);
     const moqi = rowById('zh-moqi');
-    expect(statusOf(builtIn).textContent).toBe('模型已就绪');
-    expect(downloadOf(builtIn).disabled).toBe(true);
-    // 当前生效解析（留空 = 内置推荐）的包不可删。
-    expect(removeOf(builtIn).hidden).toBe(true);
+    expect(statusOf(recommended).textContent).toBe('模型已就绪');
+    expect(downloadOf(recommended).disabled).toBe(true);
+    // 激活留空 = 未选择：没有受保护的包，就绪的推荐包可以删除。
+    expect(removeOf(recommended).hidden).toBe(false);
     expect(statusOf(moqi).textContent).toBe('下载中 40%');
     expect(downloadOf(moqi).disabled).toBe(true);
     expect(removeOf(moqi).hidden).toBe(true);
   });
 
   it('activates a ready model, unguards the toggles, and offers deletion only for inactive rows', () => {
-    applyCollocationModelStatus({ [BUILT_IN_ID]: { state: 'ready' }, 'zh-moqi': { state: 'ready' } }, CATALOG, 'zh-moqi');
+    applyCollocationModelStatus({ [RECOMMENDED_ID]: { state: 'ready' }, 'zh-moqi': { state: 'ready' } }, CATALOG, 'zh-moqi');
     expect(radioOf(rowById('zh-moqi')).disabled).toBe(false);
     expect(radioOf(rowById('zh-moqi')).checked).toBe(true);
+    // 显式激活只选中自己：推荐行不再有「留空回退」的隐式选中。
+    expect(radioOf(rowById(RECOMMENDED_ID)).checked).toBe(false);
     expect(removeOf(rowById('zh-moqi')).hidden).toBe(true);
-    expect(removeOf(rowById(BUILT_IN_ID)).hidden).toBe(false);
+    expect(removeOf(rowById(RECOMMENDED_ID)).hidden).toBe(false);
     // 生效解析 = zh-moqi 已就绪 → 整句开关解禁。
     for (const id of TOGGLE_IDS) {
       expect(toggles[id].getAttribute('aria-disabled')).toBe('false');
@@ -319,22 +320,22 @@ describe('collocation model status gating', () => {
 
   it('disables the other rows download buttons while any download is in flight', () => {
     applyCollocationModelStatus(
-      { [BUILT_IN_ID]: { state: 'absent' }, 'zh-moqi': { state: 'downloading', progress: 10 } },
+      { [RECOMMENDED_ID]: { state: 'absent' }, 'zh-moqi': { state: 'downloading', progress: 10 } },
       CATALOG,
       ''
     );
     expect(downloadOf(rowById('zh-moqi')).disabled).toBe(true);
     // 单网络槽：未下载的行也一并禁用，忙碌语义在界面上可见（服务端拒绝是兜底）。
-    expect(downloadOf(rowById(BUILT_IN_ID)).disabled).toBe(true);
+    expect(downloadOf(rowById(RECOMMENDED_ID)).disabled).toBe(true);
   });
 
-  it('sends the activation update with an empty value for the built-in row', () => {
-    applyCollocationModelStatus({ 'zh-moqi': { state: 'ready' } }, CATALOG, '');
-    radioOf(rowById(BUILT_IN_ID)).handlers.get('change')?.();
+  it('sends the activation update with the row model id', () => {
+    applyCollocationModelStatus({ [RECOMMENDED_ID]: { state: 'ready' }, 'zh-moqi': { state: 'ready' } }, CATALOG, '');
+    radioOf(rowById(RECOMMENDED_ID)).handlers.get('change')?.();
     const message = JSON.parse(postMessage.mock.calls[0]?.[0] as string);
     expect(message).toMatchObject({
       type: 'configUpdate',
-      data: { path: 'association.sentence_collocation_model', value: '' }
+      data: { path: 'association.sentence_collocation_model', value: RECOMMENDED_ID }
     });
   });
 

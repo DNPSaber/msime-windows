@@ -23,10 +23,10 @@
 namespace collocation
 {
 
-// 内置推荐包（万象）的 id，也是激活值留空时的回退目标（引擎解析侧与删除守卫同样回退到
-// 它），所以激活键可以一直留空：模型下载到位后自然生效，不依赖谁去写回配置。
-// 候选徽章也按模型 id 的 wanxiang 前缀区分〔万象〕与其他 octagram 模型（〔八股〕）。
-inline constexpr char kDefaultModelId[] = "wanxiang-lts-zh-hans";
+// 推荐包（万象）的 id：目录首条目，只是展示与排序上的推荐位，不承载默认或回退语义——
+// 激活值默认留空 = 未选择任何模型（整句加成关闭）。候选徽章按模型 id 的 wanxiang 前缀
+// 区分〔万象〕与其他 octagram 模型（〔八股〕）。
+inline constexpr char kRecommendedModelId[] = "wanxiang-lts-zh-hans";
 
 // 内置目录的一个条目。host/path 是 HTTPS 直链（release 资产与 raw 文件都经 302 跳 CDN，
 // 下载器显式放开重定向）；size_hint/license/license_note 进设置页展示与 NOTICE.md 署名。
@@ -41,7 +41,7 @@ struct CatalogEntry
     const char *license_note; // 可为空串：无补充说明
 };
 
-// 编译期内置目录，首条目是内置推荐包。
+// 编译期内置目录，首条目是推荐包。
 const std::vector<CatalogEntry> &Catalog();
 
 struct ModelStatus
@@ -59,9 +59,9 @@ std::map<std::string, ModelStatus> GetModelStatuses();
 // false，原因记入该 id 的状态。完成/失败经状态查询可见。
 bool StartDownload(const std::string &model_id);
 
-// 删除已下载的模型目录（.gram 与 NOTICE.md 一并）。守卫：该 id 下载中拒绝；id 为当前生效
-// 解析（激活值留空时回退内置推荐包）拒绝——删掉正在用的包会让整句加成静默失效。目录里
-// 没有的 id 返回 false。
+// 删除已下载的模型目录（.gram 与 NOTICE.md 一并）。守卫：该 id 下载中拒绝；id 为当前显式
+// 激活的包拒绝——删掉正在用的包会让整句加成静默失效。激活值留空（未选择）时没有受保护
+// 的目标。目录里没有的 id 返回 false。
 bool DeleteModel(const std::string &model_id);
 
 } // namespace collocation

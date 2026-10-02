@@ -1,5 +1,5 @@
 // octagram 模型目录（catalog）与激活链路的测试：快照集合形状、modelId 下载/删除守卫、
-// 激活写入与「空激活回退内置推荐包」的解析语义。消息 schema 的形状（collocationModel
+// 激活写入与「空激活 = 未选择任何模型」的解析语义。消息 schema 的形状（collocationModel
 // Download/Delete 带 modelId）由 webview_contract 的 fixtures 覆盖，这里钉 Server 侧行为。
 #include "tests/includes/test_framework.h"
 #include "src/config/ime_config.h"
@@ -126,8 +126,8 @@ TEST_CASE(collocation_catalog_lists_four_builtin_models)
 {
     const auto &catalog = collocation::Catalog();
     REQUIRE_EQ(catalog.size(), static_cast<std::size_t>(4));
-    // 次序即设置页展示次序；首条目必须是内置推荐包（激活留空的回退目标）。
-    REQUIRE_EQ(std::string(catalog[0].id), std::string(collocation::kDefaultModelId));
+    // 次序即设置页展示次序；首条目是推荐包（仅展示身份，不承载默认语义）。
+    REQUIRE_EQ(std::string(catalog[0].id), std::string(collocation::kRecommendedModelId));
     REQUIRE_EQ(std::string(catalog[1].id), std::string("zh-hans-t-essay-bgw"));
     REQUIRE_EQ(std::string(catalog[2].id), std::string("zh-hans-t-essay-bgw-compact"));
     REQUIRE_EQ(std::string(catalog[3].id), std::string("zh-moqi"));
@@ -174,46 +174,41 @@ TEST_CASE(collocation_download_and_delete_reject_ids_outside_catalog)
     REQUIRE(collocation::StartDownload("zh-moqi"));
 }
 
-TEST_CASE(collocation_activation_write_and_empty_fallback_delete_guard)
+TEST_CASE(collocation_activation_write_and_delete_guard)
 {
     ScopedCollocationEnvironment env;
-    // 激活写入：setter 落盘并同步全局；空串 = 回退内置推荐包，也是「切回内置」的写法。
+    // 激活写入：setter 落盘并同步全局。空串 = 未选择任何模型（没有默认/回退包）。
     REQUIRE(SetConfiguredAssocSentenceCollocationModel("zh-moqi"));
     REQUIRE_EQ(GetConfiguredAssocSentenceCollocationModel(), std::string("zh-moqi"));
     REQUIRE(SetConfiguredAssocSentenceCollocationModel(""));
     REQUIRE(GetConfiguredAssocSentenceCollocationModel().empty());
 
-    // 空激活的删除守卫：生效解析 = 内置推荐包，删除被拒绝且文件原封不动。
+    // 未选择时没有受保护目标：推荐包也只是普通目录条目，删掉就是删掉。
     SeedModelFile(env.models_dir(), L"wanxiang-lts-zh-hans");
     SeedModelFile(env.models_dir(), L"zh-moqi");
-    REQUIRE(!collocation::DeleteModel(collocation::kDefaultModelId));
-    REQUIRE(std::filesystem::exists(env.models_dir() / L"wanxiang-lts-zh-hans" / L"wanxiang-lts-zh-hans.gram"));
-    // 非激活的包可以删，删完整个目录消失。
+    REQUIRE(collocation::DeleteModel(collocation::kRecommendedModelId));
+    REQUIRE(!std::filesystem::exists(env.models_dir() / L"wanxiang-lts-zh-hans"));
     REQUIRE(collocation::DeleteModel("zh-moqi"));
     REQUIRE(!std::filesystem::exists(env.models_dir() / L"zh-moqi"));
 
-    // 显式激活 zh-moqi 后守卫换目标：它不可删，内置包不再受保护。
+    // 显式激活 zh-moqi 后守卫换目标：它不可删，其他包不受影响。
     SeedModelFile(env.models_dir(), L"zh-moqi");
     REQUIRE(SetConfiguredAssocSentenceCollocationModel("zh-moqi"));
     REQUIRE(!collocation::DeleteModel("zh-moqi"));
     REQUIRE(std::filesystem::exists(env.models_dir() / L"zh-moqi" / L"zh-moqi.gram"));
-    REQUIRE(collocation::DeleteModel(collocation::kDefaultModelId));
-    REQUIRE(!std::filesystem::exists(env.models_dir() / L"wanxiang-lts-zh-hans"));
     // 还原激活状态，不把测试残留带给同进程的后续用例。
     REQUIRE(SetConfiguredAssocSentenceCollocationModel(""));
 }
 
-TEST_CASE(collocation_path_resolution_falls_back_to_default_on_empty_id)
+TEST_CASE(collocation_path_resolution_treats_empty_as_unselected)
 {
     ScopedCollocationEnvironment env;
-    // 什么都没下载：解析返回空串，调用方按整句加成全关处理。
-    REQUIRE(ResolveCollocationModelPath("").empty());
-    REQUIRE(ResolveCollocationModelPath("zh-moqi").empty());
-    // 空激活回退内置推荐包：解析落在内置 id 的确定性布局上，而不是拿空 id 拼路径。
+    // 激活值留空 = 未选择任何模型：即使推荐包就在盘上也不回退，解析返回空串，
+    // 调用方按整句加成全关处理。
     SeedModelFile(env.models_dir(), L"wanxiang-lts-zh-hans");
-    const std::string resolved = ResolveCollocationModelPath("");
-    REQUIRE(!resolved.empty());
-    REQUIRE(resolved.find("wanxiang-lts-zh-hans") != std::string::npos);
+    REQUIRE(ResolveCollocationModelPath("").empty());
     // 显式 id 只解析自己的文件，缺席仍返回空。
     REQUIRE(ResolveCollocationModelPath("zh-moqi").empty());
+    REQUIRE(ResolveCollocationModelPath(collocation::kRecommendedModelId).find("wanxiang-lts-zh-hans") !=
+            std::string::npos);
 }

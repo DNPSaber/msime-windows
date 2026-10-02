@@ -19,13 +19,13 @@
 namespace collocation
 {
 
-// 编译期内置目录，首条目是内置推荐包。收录新模型 = 改这里发版，条目随签名安装包走；
+// 编译期内置目录，首条目是推荐包。收录新模型 = 改这里发版，条目随签名安装包走；
 // 不引入动态目录源，避免免签分发渠道。zh-moqi 的构建链未声明许可，license_note 如实
 // 说明并标实验。
 const std::vector<CatalogEntry> &Catalog()
 {
     static const std::vector<CatalogEntry> kCatalog = {
-        {kDefaultModelId, "万象 LTS（推荐）", L"github.com",
+        {kRecommendedModelId, "万象 LTS（推荐）", L"github.com",
          L"/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hans.gram", "约 390 MB", "CC-BY-4.0",
          "© amzxyz / RIME-LMDG 项目"},
         {"zh-hans-t-essay-bgw", "八股文·词级", L"github.com",
@@ -123,14 +123,6 @@ void SetState(const std::string &model_id, DownloadState state, int progress, st
     runtime.state = state;
     runtime.progress = progress;
     runtime.error = std::move(error);
-}
-
-// 当前生效解析的模型 id：激活值留空即回退内置推荐包（与引擎解析侧同一语义）。删除
-// 守卫按解析后的 id 判定，否则会删掉空激活实际正在使用的内置包。
-std::string ResolvedActiveModelId()
-{
-    const std::string configured = GetConfiguredAssocSentenceCollocationModel();
-    return configured.empty() ? std::string(kDefaultModelId) : configured;
 }
 
 // 后台线程：下载 -> 校验 -> 原子落位。全程只碰 PartFile，失败时不留半个模型
@@ -363,9 +355,9 @@ bool DeleteModel(const std::string &model_id)
         if (it != g_states.end() && it->second.state == DownloadState::Downloading)
             return false;
     }
-    // 当前生效解析的 id 不许删：配置激活值留空时解析为内置推荐包，删掉正在使用的包
-    // 会让整句加成静默失效，输入侧看不到任何报错。
-    if (model_id == ResolvedActiveModelId())
+    // 当前显式激活的包不许删：删掉正在使用的包会让整句加成静默失效，输入侧看不到任何
+    // 报错。激活值留空（未选择）时没有受保护的目标，任何包都可删。
+    if (model_id == GetConfiguredAssocSentenceCollocationModel())
         return false;
     std::error_code error;
     // .gram 与 NOTICE.md 都在这个目录里，整目录删除即卸载；目录不存在时 remove_all

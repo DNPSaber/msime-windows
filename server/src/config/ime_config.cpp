@@ -120,7 +120,7 @@ bool g_assoc_sentence_google = true;
 bool g_assoc_sentence_neural_desktop = false;
 bool g_assoc_sentence_neural_keyboard = true;
 bool g_assoc_sentence_show_next_on_duplicate = false;
-// octagram 语法模型（八股文 .gram）：总开关默认关，模型 id 默认空（空 = 内置推荐包，万象）。
+// octagram 语法模型（八股文 .gram）：总开关默认关；模型 id 默认空（空 = 未选择任何模型）。
 // 权重不进设置页，供配置文件高级调参。
 bool g_assoc_sentence_collocation_enabled = false;
 std::string g_assoc_sentence_collocation_model;

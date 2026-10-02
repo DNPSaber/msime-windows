@@ -230,15 +230,12 @@ std::wstring BuildUiLessCandidatePageW()
 
 namespace
 {
-// octagram 语法模型的徽章按实际加载的模型包派生：id 空回退内置包（与
-// engine_input_session.cpp 的 ResolveCollocationModelPath 同一规则），内置推荐包
-// （万象）显示〔万象〕，手动放置的其他 octagram 模型按机制名显示〔八股〕。
+// octagram 语法模型的徽章按当前显式激活的模型包派生：wanxiang 前缀显示〔万象〕，
+// 其余 octagram 模型显示〔八股〕。激活值留空 = 未选择任何模型，此时不产生整句候选，
+// 徽章分支不会被走到。
 bool CollocationBadgeIsWanxiang()
 {
-    std::string id = GetConfiguredAssocSentenceCollocationModel();
-    if (id.empty())
-        id = collocation::kDefaultModelId;
-    return id.rfind("wanxiang", 0) == 0;
+    return GetConfiguredAssocSentenceCollocationModel().rfind("wanxiang", 0) == 0;
 }
 
 std::string BuildCurrentCandidatePage()

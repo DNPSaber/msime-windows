@@ -823,7 +823,7 @@ end;
 
 function IsCollocationModelDirectory(const FileName: String): Boolean;
 begin
-  { octagram 语法模型包（内置推荐包为万象）在 <数据目录>\models\<id>，是设置页按需下载的
+  { octagram 语法模型包（目录首项为推荐包万象）在 <数据目录>\models\<id>，是设置页按需下载的
     约 390MB，安装包不携带，
     也不是每次安装都会重写的东西。这份名单的语义恰好是「升级保留、卸载删除」——
     IsPreservedAppDataItem 只被 CleanAppDataExceptUserFiles（覆盖安装）与 RemoveDataDir

@@ -24,13 +24,9 @@ let collocationPollTimer: ReturnType<typeof setInterval> | null = null;
 export type CollocationModelStatus = { state?: string; progress?: number; error?: string };
 export type CollocationCatalogEntry = { id: string; displayName?: string; sizeHint?: string; license?: string };
 
-// 内置推荐包 id，与 server 侧 collocation::kDefaultModelId 约定一致：激活值留空即回退到
-// 它（模型缺席时静默降级），所以「切回内置」写空串而不是这个 id。
-const kDefaultModelId = 'wanxiang-lts-zh-hans';
-
-// 整句开关只有在当前生效解析的模型就绪时才有意义：模型缺席时词格会静默降级，开关
-// 开着也看不到任何效果。与智能标点／候选混输的子开关一样，这里只置灰禁用，
-// 不替用户改回勾选状态——他开过但模型没了，得自己看见并决定。
+// 整句开关只有在当前激活的模型就绪时才有意义：模型缺席（包括未选择任何模型）时词格会
+// 静默降级，开关开着也看不到任何效果。与智能标点／候选混输的子开关一样，这里只置灰
+// 禁用，不替用户改回勾选状态——他开过但模型没了，得自己看见并决定。
 const COLLABORATION_TOGGLE_IDS = ['sentenceCollocationToggleBtn'];
 
 function setCollocationTogglesDisabled(disabled: boolean): void {
@@ -52,22 +48,15 @@ function collocationStatusText(status: CollocationModelStatus | undefined): stri
   return '未下载';
 }
 
-// 快照里当前生效解析的模型 id：激活值留空即回退内置推荐包（与 Server/引擎同一语义），
-// 整句开关置灰与删除可见性都按解析后的 id 判定。
-function resolvedCollocationModelId(activeModel: string | undefined): string {
-  return activeModel && activeModel.length > 0 ? activeModel : kDefaultModelId;
-}
-
-// 按 catalog 播种模型列表行：显示名/大小/许可 + 状态文本 + 激活单选/下载/删除。内置推荐
-// 行的激活值是空串（引擎回退语义），其余行写各自 id；行内控件只发消息，状态一律等下一份
-// 快照回放，页面不持本地状态机。
+// 按 catalog 播种模型列表行：显示名/大小/许可 + 状态文本 + 激活单选/下载/删除。每行都是
+// 普通目录条目，激活单选写各自的 id（没有默认/回退行）；行内控件只发消息，状态一律等
+// 下一份快照回放，页面不持本地状态机。
 function seedCollocationRows(catalog: CollocationCatalogEntry[]): void {
   const list = document.getElementById('collocationModelList');
   // 行只播种一次，以容器非空为标志：2 秒轮询期间逐帧重建会把正在点击的按钮从焦点里
   // 换掉，而目录随 Server 版本固定，装载后不会变。
   if (!list || list.children.length > 0 || catalog.length === 0) return;
   for (const entry of catalog) {
-    const builtIn = entry.id === kDefaultModelId;
     const row = document.createElement('div');
     row.className = 'collocation-model-row';
     row.dataset.modelId = entry.id;
@@ -91,7 +80,7 @@ function seedCollocationRows(catalog: CollocationCatalogEntry[]): void {
     const radio = document.createElement('input');
     radio.type = 'radio';
     radio.name = 'collocation-model';
-    radio.value = builtIn ? '' : entry.id;
+    radio.value = entry.id;
     radio.addEventListener('change', () => {
       window.chrome?.webview?.postMessage(serializeHostMessage({
         type: 'configUpdate',
@@ -127,20 +116,20 @@ function seedCollocationRows(catalog: CollocationCatalogEntry[]): void {
 }
 
 // 应用快照里的 association 模型集合：按 catalog 播种行（仅一次），逐行刷新状态文本与
-// 控件可用态；整句开关按「当前生效解析的模型 ready」置灰；任一模型下载中每 2 秒发一次
-// collocationModelStatusRequest 拉新快照，全部离开下载态自停。
+// 控件可用态；整句开关按「当前激活的模型 ready」置灰（未选择任何模型时同样置灰）；任一
+// 模型下载中每 2 秒发一次 collocationModelStatusRequest 拉新快照，全部离开下载态自停。
 export function applyCollocationModelStatus(
   statuses: Record<string, CollocationModelStatus> | undefined,
   catalog: CollocationCatalogEntry[] | undefined,
   activeModel: string | undefined
 ): void {
   seedCollocationRows(catalog ?? []);
-  const activeId = resolvedCollocationModelId(activeModel);
+  // 激活值留空 = 未选择任何模型：没有受保护的包，整句开关保持置灰。
+  const activeId = activeModel ?? '';
   // 单网络槽：同一时刻至多一个下载在飞，宿主对忙碌请求直接拒绝。
   const anyDownloading = Object.values(statuses ?? {}).some((s) => s.state === 'downloading');
   document.querySelectorAll<HTMLElement>('.collocation-model-row').forEach((row) => {
     const id = row.dataset.modelId ?? '';
-    const builtIn = id === kDefaultModelId;
     const status = statuses?.[id];
     const state = status?.state ?? 'absent';
     const text = row.querySelector<HTMLElement>('.collocation-model-status');
@@ -156,8 +145,8 @@ export function applyCollocationModelStatus(
     }
     const radio = row.querySelector<HTMLInputElement>('input[type="radio"]');
     if (radio) {
-      // 内置推荐行未下载也可激活（引擎静默降级）；其他行只有 ready 才可激活。
-      radio.disabled = !builtIn && state !== 'ready';
+      // 只有就绪的包才可激活：激活一个没下载的包只会得到静默降级。
+      radio.disabled = state !== 'ready';
       radio.checked = (activeModel ?? '') === radio.value;
     }
   });

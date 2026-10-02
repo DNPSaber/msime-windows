@@ -1,6 +1,5 @@
 #include "engine_input_session.h"
 #include "config/ime_config.h"
-#include "settings/collocation_model.h"
 #include "engine/common/helpcode_utils.h"
 #include "engine/core/data_path.h"
 #include "engine/core/sentence_association_options.h"
@@ -8,18 +7,21 @@
 
 #include <filesystem>
 
-// 模型包的确定性布局：<resources>/models/<id>/<id>.gram。下载器与手动放置都
+// 模型包的确定性布局：<DataDir>/models/<id>/<id>.gram。下载器与手动放置都
 // 遵守它，解析因此只是一次 stat，不需要目录扫描，也不需要 model.toml。声明在
-// 头文件供测试钉住「空激活回退内置推荐包」的解析语义。
+// 头文件供测试钉住「激活值留空 = 未选择，解析为空」的语义。
 std::string ResolveCollocationModelPath(const std::string &model_id)
 {
-    // 配置键留空即用内置推荐包，设置页「切回内置」也写空串：用户不需要任何一次显式
-    // 写回，包落位自然生效，留空始终是合法稳态。
-    const std::string id = model_id.empty() ? collocation::kDefaultModelId : model_id;
+    // 激活值留空 = 未选择任何模型：解析返回空串，调用方按整句加成全关处理，与模型缺席
+    // 同一条降级路径。不回退到推荐包——把默认做进运行时，只会让推荐包变成删不掉的常住包。
+    if (model_id.empty())
+    {
+        return {};
+    }
     // 与下载器、状态查询、删除守卫共用同一条基准（data_directory() 每次读环境变量）。
     // 会话其余资源仍走 legacy() 快照；模型路径不能跟着走——legacy() 在进程启动时捕获，
     // 生产环境两者相同，但注入环境变量的测试里会分叉。
-    const std::filesystem::path file = metasequoia::data_directory() / "models" / id / (id + ".gram");
+    const std::filesystem::path file = metasequoia::data_directory() / "models" / model_id / (model_id + ".gram");
     std::error_code error;
     if (!std::filesystem::is_regular_file(file, error) || error)
     {
