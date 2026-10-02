@@ -1,4 +1,5 @@
 #include "ai_assistant.h"
+#include "ai_assistant_cache_key.h"
 
 #include <curl/curl.h>
 #include <nlohmann/json.hpp>
@@ -23,13 +24,6 @@ AiAssistant::Request g_latest;
 std::chrono::steady_clock::time_point g_last_input;
 AiAssistant::ApplyCallback g_callback;
 std::unordered_map<std::string, std::string> g_candidate_cache;
-
-std::string BuildCacheKey(const AiAssistant::Request &request)
-{
-    nlohmann::json segments = request.pinyin_segments;
-    return request.config.provider + "\n" + request.config.endpoint + "\n" + request.config.model + "\n" +
-           segments.dump();
-}
 
 size_t WriteResponse(char *data, size_t size, size_t count, void *user)
 {
@@ -135,7 +129,7 @@ void WorkerLoop()
             break;
         observed = g_generation.load();
         auto request = g_latest;
-        const auto cached = g_candidate_cache.find(BuildCacheKey(request));
+        const auto cached = g_candidate_cache.find(AiAssistant::detail::BuildSuggestionCacheKey(request));
         if (!request.identity.empty() && cached != g_candidate_cache.end())
         {
             const std::string candidate = cached->second;
@@ -164,7 +158,7 @@ void WorkerLoop()
         {
             {
                 std::lock_guard cache_lock(g_mutex);
-                g_candidate_cache[BuildCacheKey(request)] = candidate;
+                g_candidate_cache[AiAssistant::detail::BuildSuggestionCacheKey(request)] = candidate;
             }
             (void)0;
             g_callback(candidate, request.identity, observed);
