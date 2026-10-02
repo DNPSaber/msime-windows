@@ -223,19 +223,20 @@ HRESULT CMetasequoiaIME::_HandleEscapeCancel(TfEditCookie ec, _In_ ITfContext *p
 HRESULT CMetasequoiaIME::_HandleToogleIMEMode(TfEditCookie ec, _In_ ITfContext *pContext)
 {
     CStringRange keyStrokebuffer = _pCompositionProcessorEngine->GetKeystrokeBuffer();
-    std::wstring commitString;
+    std::wstring commitString = GlobalIme::word_for_creating_word;
 
     if (keyStrokebuffer.GetLength())
     {
-        commitString.assign(keyStrokebuffer.Get(), keyStrokebuffer.GetLength());
+        commitString.append(keyStrokebuffer.Get(), keyStrokebuffer.GetLength());
     }
     else if (!g_toggleImeFallbackBuffer.empty())
     {
-        commitString = g_toggleImeFallbackBuffer;
+        commitString += g_toggleImeFallbackBuffer;
     }
 
-    // Claim the reading string before ending composition so a second toggle
-    // edit session cannot commit the same text again.
+    // Claim the selected word and reading string before ending composition so a
+    // second toggle edit session cannot commit the same text again
+    GlobalIme::word_for_creating_word.clear();
     _pCompositionProcessorEngine->PurgeVirtualKey();
     g_toggleImeFallbackBuffer.clear();
 
@@ -916,6 +917,7 @@ HRESULT CMetasequoiaIME::_ApplyCreatingWordPayload(TfEditCookie ec, _In_ ITfCont
                                                    const CreatingWordPayload &payload)
 {
     GlobalIme::word_for_creating_word = payload.word;
+    g_toggleImeFallbackBuffer = payload.remaining_raw;
     GlobalIme::pending_create_word_preedit.clear();
     if (GlobalSettings::getTsfPreeditStyle() == GlobalSettings::TsfPreeditStyle::Pinyin)
     {
