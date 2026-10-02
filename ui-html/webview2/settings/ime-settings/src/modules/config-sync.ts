@@ -142,6 +142,9 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (typeof data?.input?.escape_keeps_selected_word === 'boolean') {
     applyToggleState('escapeKeepsSelectedWordToggleBtn', data.input.escape_keeps_selected_word);
   }
+  if (typeof data?.input?.enter_learns_english_word === 'boolean') {
+    applyToggleState('enterLearnsEnglishWordToggleBtn', data.input.enter_learns_english_word);
+  }
   if (typeof data?.quanpin?.autocorrect_transposition === 'boolean') {
     applyToggleState('autocorrectTranspositionToggleBtn', data.quanpin.autocorrect_transposition);
   }

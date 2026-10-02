@@ -732,7 +732,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     const bool shift_only = (Global::ModifiersDown & 0b00000111u) == 0b00000001u;
     const bool chinese_scheme = g_inputSession && (g_inputSession->current_scheme_type() == SchemeType::Quanpin ||
                                                    g_inputSession->current_scheme_type() == SchemeType::Shuangpin);
-    if (Global::Keycode == VK_RETURN && !input_before_key.empty())
+    if (Global::Keycode == VK_RETURN && !input_before_key.empty() && GetConfiguredEnterLearnsEnglishWord())
     {
         std::string english_word;
         const bool shift_letter_special_mode = IsShiftLetterSpecialModeTriggered();

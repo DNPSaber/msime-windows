@@ -127,6 +127,7 @@ extern std::string g_shuangpin_schema;
 extern std::string g_wubi_schema;
 extern bool g_wubi_mixed_pinyin;
 extern bool g_escape_keeps_selected_word;
+extern bool g_enter_learns_english_word;
 extern std::string g_wubi_z_mode;
 extern std::string g_shuangpin_preedit_mode;
 extern std::string g_tsf_preedit_style;

@@ -268,6 +268,21 @@ bool SetConfiguredEscapeKeepsSelectedWord(bool enabled)
     return true;
 }
 
+bool GetConfiguredEnterLearnsEnglishWord()
+{
+    return g_enter_learns_english_word;
+}
+
+bool SetConfiguredEnterLearnsEnglishWord(bool enabled)
+{
+    if (!WriteConfiguredValue("input", "enter_learns_english_word", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_enter_learns_english_word = enabled;
+    return true;
+}
+
 const std::string &GetConfiguredShuangpinPreeditMode()
 {
     return g_shuangpin_preedit_mode;
