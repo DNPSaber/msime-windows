@@ -1,4 +1,5 @@
 #include "ai_assistant.h"
+#include "ai_assistant_cache.h"
 #include "ai_assistant_cache_key.h"
 
 #include <curl/curl.h>
@@ -10,7 +11,6 @@
 #include <condition_variable>
 #include <mutex>
 #include <thread>
-#include <unordered_map>
 
 namespace
 {
@@ -23,7 +23,7 @@ std::atomic<uint64_t> g_generation{0};
 AiAssistant::Request g_latest;
 std::chrono::steady_clock::time_point g_last_input;
 AiAssistant::ApplyCallback g_callback;
-std::unordered_map<std::string, std::string> g_candidate_cache;
+AiAssistant::detail::SuggestionCache g_candidate_cache;
 
 size_t WriteResponse(char *data, size_t size, size_t count, void *user)
 {
@@ -129,15 +129,14 @@ void WorkerLoop()
             break;
         observed = g_generation.load();
         auto request = g_latest;
-        const auto cached = g_candidate_cache.find(AiAssistant::detail::BuildSuggestionCacheKey(request));
-        if (!request.identity.empty() && cached != g_candidate_cache.end())
+        const auto cached = g_candidate_cache.Find(AiAssistant::detail::BuildSuggestionCacheKey(request));
+        if (!request.identity.empty() && cached.has_value())
         {
-            const std::string candidate = cached->second;
             const uint64_t cached_generation = observed;
             lock.unlock();
             (void)0;
             if (g_running && g_generation.load() == cached_generation && g_callback)
-                g_callback(candidate, request.identity, cached_generation);
+                g_callback(*cached, request.identity, cached_generation);
             continue;
         }
         auto target = g_last_input + kIdleDelay;
@@ -158,7 +157,7 @@ void WorkerLoop()
         {
             {
                 std::lock_guard cache_lock(g_mutex);
-                g_candidate_cache[AiAssistant::detail::BuildSuggestionCacheKey(request)] = candidate;
+                g_candidate_cache.Store(AiAssistant::detail::BuildSuggestionCacheKey(request), candidate);
             }
             (void)0;
             g_callback(candidate, request.identity, observed);
@@ -188,7 +187,7 @@ void Stop()
         g_worker.join();
     {
         std::lock_guard lock(g_mutex);
-        g_candidate_cache.clear();
+        g_candidate_cache.Clear();
     }
     curl_global_cleanup();
 }
