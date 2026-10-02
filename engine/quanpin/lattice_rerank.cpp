@@ -54,7 +54,7 @@ LatticeReranker make_neural_reranker(const neural::SentenceModel *model, const s
     };
 }
 
-LatticeReranker make_octagram_reranker(const gram::GramDb *db, double weight)
+LatticeReranker make_octagram_reranker(const std::shared_ptr<const gram::GramDb> &db, double weight)
 {
     if (db == nullptr || !db->valid() || weight == 0.0)
     {

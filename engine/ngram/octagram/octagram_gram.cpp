@@ -326,23 +326,46 @@ double GramDb::query(const std::string &context, const std::string &word, bool i
 
 // ---- 进程内共享 --------------------------------------------------------------
 
-const GramDb *shared_gram_db(const std::filesystem::path &file)
+namespace
 {
-    // 照 ngram::shared_language_model：实例进程生命周期内常驻（故意不释放——
-    // 互斥锁的竞态和析构顺序问题用「永不析构」一并解决），mmap 的物理内存由
-    // 操作系统按命中页回收，真正占住的是地址空间。
+// 缓存的锁与存储提升到文件作用域：shared_gram_db_evict 要在同一把锁下摘引用。
+std::mutex &shared_cache_mutex()
+{
     static std::mutex mutex;
-    static std::unordered_map<std::string, std::unique_ptr<GramDb>> cache;
+    return mutex;
+}
+
+std::unordered_map<std::string, std::shared_ptr<GramDb>> &shared_cache()
+{
+    static std::unordered_map<std::string, std::shared_ptr<GramDb>> cache;
+    return cache;
+}
+} // namespace
+
+std::shared_ptr<const GramDb> shared_gram_db(const std::filesystem::path &file)
+{
+    // 照 ngram::shared_language_model：实例按路径缓存、多会话共享。缓存引用可以
+    // 被 shared_gram_db_evict 摘掉（设置侧删除模型包后），词典在下一次
+    // set_sentence_association 时松手；在飞查询按值持有 shared_ptr 副本，实例的
+    // 析构时机由引用计数兜底——没有「永不析构」，也就没有删不掉的文件。
     const std::string key = file.u8string();
-    std::lock_guard lock(mutex);
+    std::lock_guard lock(shared_cache_mutex());
+    auto &cache = shared_cache();
     auto &slot = cache[key];
     if (!slot)
     {
-        auto db = std::make_unique<GramDb>();
+        auto db = std::make_shared<GramDb>();
         db->open(file);
         slot = std::move(db);
     }
-    return slot.get();
+    return slot;
+}
+
+void shared_gram_db_evict(const std::filesystem::path &file)
+{
+    const std::string key = file.u8string();
+    std::lock_guard lock(shared_cache_mutex());
+    shared_cache().erase(key);
 }
 
 } // namespace gram

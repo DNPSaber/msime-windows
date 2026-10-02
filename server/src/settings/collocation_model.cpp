@@ -69,6 +69,28 @@ std::filesystem::path PartFile(const std::string &model_id)
     return ModelDirectory(model_id) / (model_id + ".gram.part");
 }
 
+// 逻辑删除的清扫：.gram 被引擎的内存映射占着时物理删除会失败，DeleteModel 落下的
+// .trash 标记把目录转成「待清扫」。这里在状态查询与重新下载前重试，映射一旦释放
+// （切换模型或重启 Server）目录就被清干净。
+void PurgeIfTrashed(const std::string &model_id)
+{
+    std::error_code error;
+    const std::filesystem::path trash = ModelDirectory(model_id) / ".trash";
+    if (!std::filesystem::exists(trash, error) || error)
+    {
+        return;
+    }
+    if (std::filesystem::exists(ModelFile(model_id), error) && !error)
+    {
+        std::filesystem::remove(ModelFile(model_id), error);
+        if (error)
+        {
+            return;
+        }
+    }
+    std::filesystem::remove_all(ModelDirectory(model_id), error);
+}
+
 // 目录条目的 host/path 都是 ASCII（域名与仓库路径），NOTICE.md 是 UTF-8 文本，写之前把
 // 宽字符转回来；走 CP_UTF8 而不是逐字节截断，将来条目里出现非 ASCII 也不会产出坏字节。
 std::string Utf8FromWide(const wchar_t *wide)
@@ -297,22 +319,37 @@ std::map<std::string, ModelStatus> GetModelStatuses()
     std::map<std::string, ModelStatus> statuses;
     for (const auto &entry : Catalog())
     {
+        PurgeIfTrashed(entry.id);
+        std::error_code fs_error;
+        // runtime 下载与错误态优先于磁盘：刚失败的落位比「旧的已验证文件还在」更值得
+        // 看见。逻辑已删除（.trash 标记在）一律按未下载呈现，哪怕 .gram 还没物理消失。
+        {
+            std::lock_guard lock(g_mutex);
+            const auto it = g_states.find(entry.id);
+            if (it != g_states.end() && it->second.state == DownloadState::Downloading)
+            {
+                statuses[entry.id] = {"downloading", it->second.progress, {}};
+                continue;
+            }
+            if (it != g_states.end() && it->second.state == DownloadState::Error)
+            {
+                statuses[entry.id] = {"error", 0, it->second.error};
+                continue;
+            }
+        }
+        if (std::filesystem::exists(ModelDirectory(entry.id) / ".trash", fs_error) && !fs_error)
+        {
+            statuses[entry.id] = {"absent", 0, {}};
+            continue;
+        }
         // 落位发生在格式校验之后，所以「文件存在」即代表曾经通过校验。这里不再比对
         // 字节数：钉死它就等于钉死上游的每次重训。
-        std::error_code fs_error;
         if (std::filesystem::exists(ModelFile(entry.id), fs_error) && !fs_error)
         {
             statuses[entry.id] = {"ready", 100, {}};
             continue;
         }
-        std::lock_guard lock(g_mutex);
-        const auto it = g_states.find(entry.id);
-        if (it == g_states.end() || it->second.state == DownloadState::Idle)
-            statuses[entry.id] = {"absent", 0, {}};
-        else if (it->second.state == DownloadState::Downloading)
-            statuses[entry.id] = {"downloading", it->second.progress, {}};
-        else
-            statuses[entry.id] = {"error", 0, it->second.error};
+        statuses[entry.id] = {"absent", 0, {}};
     }
     return statuses;
 }
@@ -322,10 +359,13 @@ bool StartDownload(const std::string &model_id)
     const CatalogEntry *entry = FindEntry(model_id);
     if (entry == nullptr)
         return false;
-    // 已存在且通过格式校验的包不重下：落位只在格式校验之后发生，文件存在即曾通过校验，
-    // 重下只会白白覆盖一份好包。
+    PurgeIfTrashed(model_id);
     std::error_code fs_error;
-    if (std::filesystem::exists(ModelFile(model_id), fs_error) && !fs_error)
+    // 已存在且通过格式校验的包不重下：落位只在格式校验之后发生，文件存在即曾通过校验，
+    // 重下只会白白覆盖一份好包。逻辑已删除（.trash 在）的包不在此列：它们必须允许重新
+    // 下载，哪怕旧 .gram 的物理删除还在等映射释放（落位会在映射释放后成功）。
+    const bool trashed = std::filesystem::exists(ModelDirectory(model_id) / ".trash", fs_error) && !fs_error;
+    if (!trashed && std::filesystem::exists(ModelFile(model_id), fs_error) && !fs_error)
         return true;
     {
         std::lock_guard lock(g_mutex);
@@ -355,15 +395,30 @@ bool DeleteModel(const std::string &model_id)
         if (it != g_states.end() && it->second.state == DownloadState::Downloading)
             return false;
     }
-    // 当前显式激活的包不许删：删掉正在使用的包会让整句加成静默失效，输入侧看不到任何
-    // 报错。激活值留空（未选择）时没有受保护的目标，任何包都可删。
-    if (model_id == GetConfiguredAssocSentenceCollocationModel())
+    PurgeIfTrashed(model_id);
+    // 删的是当前激活的包时先清激活再删文件：清空写入失败就原地返回 false，什么都没
+    // 发生，用户重试即可；反过来先删文件再清空，一次写入失败就会留下「指向已删除包」
+    // 的僵尸选中态。未选择（留空）时没有需要清的目标。
+    if (model_id == GetConfiguredAssocSentenceCollocationModel() && !SetConfiguredAssocSentenceCollocationModel(""))
+    {
         return false;
+    }
     std::error_code error;
     // .gram 与 NOTICE.md 都在这个目录里，整目录删除即卸载；目录不存在时 remove_all
     // 无错返回，删除因此是幂等的。
     std::filesystem::remove_all(ModelDirectory(model_id), error);
-    return !error;
+    if (std::filesystem::exists(ModelFile(model_id), error))
+    {
+        // .gram 还被引擎的内存映射占着（激活后打过字就会映射，句柄不带
+        // FILE_SHARE_DELETE），物理删除要等引用释放。落一个标记把删除降级为逻辑删除：
+        // 状态按未下载呈现、不可选中；下面的 evict 摘掉缓存引用后，词典在下一次应用
+        // 配置时松手，状态查询的重试清扫就能真正删掉文件。
+        std::ofstream trash(ModelDirectory(model_id) / ".trash", std::ios::binary | std::ios::trunc);
+    }
+    // 引擎缓存里这个路径的映射引用摘掉：词典在下一次应用配置（击键）松手后，
+    // 上面的 .trash 清扫就能真正物理删除残留的 .gram（不用等重启）。
+    gram::shared_gram_db_evict(ModelFile(model_id));
+    return true;
 }
 
 } // namespace collocation

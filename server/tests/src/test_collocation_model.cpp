@@ -183,18 +183,24 @@ TEST_CASE(collocation_activation_write_and_delete_guard)
     REQUIRE(SetConfiguredAssocSentenceCollocationModel(""));
     REQUIRE(GetConfiguredAssocSentenceCollocationModel().empty());
 
-    // 未选择时没有受保护目标：推荐包也只是普通目录条目，删掉就是删掉。
+    // 未选择时任何包都可删：目录条目没有受保护的目标。
     SeedModelFile(env.models_dir(), L"wanxiang-lts-zh-hans");
-    SeedModelFile(env.models_dir(), L"zh-moqi");
     REQUIRE(collocation::DeleteModel(collocation::kRecommendedModelId));
     REQUIRE(!std::filesystem::exists(env.models_dir() / L"wanxiang-lts-zh-hans"));
-    REQUIRE(collocation::DeleteModel("zh-moqi"));
-    REQUIRE(!std::filesystem::exists(env.models_dir() / L"zh-moqi"));
 
-    // 显式激活 zh-moqi 后守卫换目标：它不可删，其他包不受影响。
+    // 删除当前激活的包：文件与激活一并清掉——配置指向不存在的包只会留下僵尸选中态。
     SeedModelFile(env.models_dir(), L"zh-moqi");
     REQUIRE(SetConfiguredAssocSentenceCollocationModel("zh-moqi"));
-    REQUIRE(!collocation::DeleteModel("zh-moqi"));
+    REQUIRE(collocation::DeleteModel("zh-moqi"));
+    REQUIRE(!std::filesystem::exists(env.models_dir() / L"zh-moqi"));
+    REQUIRE(GetConfiguredAssocSentenceCollocationModel().empty());
+
+    // 删除非激活的包不动激活值：显式激活 zh-moqi 后删推荐包，激活保持不变。
+    SeedModelFile(env.models_dir(), L"zh-moqi");
+    SeedModelFile(env.models_dir(), L"wanxiang-lts-zh-hans");
+    REQUIRE(SetConfiguredAssocSentenceCollocationModel("zh-moqi"));
+    REQUIRE(collocation::DeleteModel(collocation::kRecommendedModelId));
+    REQUIRE_EQ(GetConfiguredAssocSentenceCollocationModel(), std::string("zh-moqi"));
     REQUIRE(std::filesystem::exists(env.models_dir() / L"zh-moqi" / L"zh-moqi.gram"));
     // 还原激活状态，不把测试残留带给同进程的后续用例。
     REQUIRE(SetConfiguredAssocSentenceCollocationModel(""));

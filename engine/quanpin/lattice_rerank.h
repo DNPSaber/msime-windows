@@ -30,6 +30,6 @@ LatticeReranker make_neural_reranker(const neural::SentenceModel *model, const s
 // with the rear term on the sentence-final word). Empty std::function when db is null or weight is
 // zero — the feature is off, the lattice's own order stands. Synchronous and read-only (mmap'd
 // trie), unlike the neural reranker's background thread.
-LatticeReranker make_octagram_reranker(const gram::GramDb *db, double weight);
+LatticeReranker make_octagram_reranker(const std::shared_ptr<const gram::GramDb> &db, double weight);
 
 } // namespace quanpin

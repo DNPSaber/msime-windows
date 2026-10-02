@@ -139,9 +139,9 @@ export function applyCollocationModelStatus(
     if (download) download.disabled = state === 'downloading' || state === 'ready' || anyDownloading;
     const remove = row.querySelector<HTMLButtonElement>('.collocation-model-delete');
     if (remove) {
-      // 删除守卫在宿主侧再拦一次；这里把明显不可删的藏掉：没下载的、下载中的、
-      // 当前生效解析的包。
-      remove.hidden = state !== 'ready' || id === activeId;
+      // 任何就绪的包都可删（包括当前激活的包）：宿主删除激活包时会一并清空激活值，
+      // 快照回放后该行回到未下载、未选中。
+      remove.hidden = state !== 'ready';
     }
     const radio = row.querySelector<HTMLInputElement>('input[type="radio"]');
     if (radio) {

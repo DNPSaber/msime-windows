@@ -288,13 +288,15 @@ describe('collocation model status gating', () => {
     expect(removeOf(moqi).hidden).toBe(true);
   });
 
-  it('activates a ready model, unguards the toggles, and offers deletion only for inactive rows', () => {
+  it('activates a ready model, unguards the toggles, and offers deletion for every downloaded row', () => {
     applyCollocationModelStatus({ [RECOMMENDED_ID]: { state: 'ready' }, 'zh-moqi': { state: 'ready' } }, CATALOG, 'zh-moqi');
     expect(radioOf(rowById('zh-moqi')).disabled).toBe(false);
     expect(radioOf(rowById('zh-moqi')).checked).toBe(true);
     // 显式激活只选中自己：推荐行不再有「留空回退」的隐式选中。
     expect(radioOf(rowById(RECOMMENDED_ID)).checked).toBe(false);
-    expect(removeOf(rowById('zh-moqi')).hidden).toBe(true);
+    // 删除对每一行就绪包开放（含激活中的行）：宿主删除激活包时会一并清空激活值，
+    // 快照回放后该行回到未下载、未选中。
+    expect(removeOf(rowById('zh-moqi')).hidden).toBe(false);
     expect(removeOf(rowById(RECOMMENDED_ID)).hidden).toBe(false);
     // 生效解析 = zh-moqi 已就绪 → 整句开关解禁。
     for (const id of TOGGLE_IDS) {

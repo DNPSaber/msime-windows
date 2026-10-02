@@ -114,9 +114,17 @@ std::string first_codepoints(std::string_view utf8, size_t n);
 std::string last_codepoints(std::string_view utf8, size_t n);
 
 // 进程内按路径共享的模型，照 ngram::shared_language_model 的范式：查询全是
-// 只读（mmap 页 + const 方法），多会话可同时持有返回的指针；载入失败返回
-// valid() == false 的实例，调用方判空降级。全拼和双拼词典各持一份指针、共享
+// 只读（mmap 页 + const 方法），多会话可同时持有返回的引用；载入失败返回
+// valid() == false 的实例，调用方判空降级。全拼和双拼词典各持一份引用、共享
 // 同一份映射，不重复付 390MB 的物理内存。
-const GramDb *shared_gram_db(const std::filesystem::path &file);
+//
+// 引用是 shared_ptr：查询按值持有副本，在飞查询不受缓存淘汰影响。设置侧删除
+// 模型包后调 shared_gram_db_evict 摘掉缓存引用，词典在下一次
+// set_sentence_association（换路径或留空）时松手，最后一个引用松开才真正
+// unmap，被删的 .gram 随之可以物理删除。
+std::shared_ptr<const GramDb> shared_gram_db(const std::filesystem::path &file);
+
+// 摘掉指定路径的缓存引用（不强制析构：仍有会话持有时由 shared_ptr 兜底）。
+void shared_gram_db_evict(const std::filesystem::path &file);
 
 } // namespace gram

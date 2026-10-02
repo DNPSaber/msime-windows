@@ -59,9 +59,10 @@ std::map<std::string, ModelStatus> GetModelStatuses();
 // false，原因记入该 id 的状态。完成/失败经状态查询可见。
 bool StartDownload(const std::string &model_id);
 
-// 删除已下载的模型目录（.gram 与 NOTICE.md 一并）。守卫：该 id 下载中拒绝；id 为当前显式
-// 激活的包拒绝——删掉正在用的包会让整句加成静默失效。激活值留空（未选择）时没有受保护
-// 的目标。目录里没有的 id 返回 false。
+// 删除已下载的模型目录（.gram 与 NOTICE.md 一并）。守卫：该 id 下载中拒绝。删除当前
+// 激活的包时激活值一并清空（未选择），整句加成随之关闭，重新下载后需重新激活。若 .gram
+// 还被引擎的内存映射占用，物理删除推迟到映射释放（状态查询按未下载呈现，重启 Server
+// 必然清掉）。目录里没有的 id 返回 false。
 bool DeleteModel(const std::string &model_id);
 
 } // namespace collocation
