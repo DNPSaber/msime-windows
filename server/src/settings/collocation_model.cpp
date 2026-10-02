@@ -292,7 +292,12 @@ void DownloadThread(CatalogEntry entry)
     std::filesystem::rename(PartFile(model_id), ModelFile(model_id), rename_error);
     if (rename_error)
     {
+        // 目标 .gram 的旧映射还在（.trash 场景下词典未松手）时 rename 会失败：进
+        // Error 态，等映射释放后重试即可。与其他失败路径一致，.part 不留——重试
+        // 反正会整个重下，留着没有收益。
         SetState(model_id, DownloadState::Error, 0, "模型落位失败");
+        std::error_code cleanup;
+        std::filesystem::remove(PartFile(model_id), cleanup);
         return;
     }
 
@@ -363,7 +368,8 @@ bool StartDownload(const std::string &model_id)
     std::error_code fs_error;
     // 已存在且通过格式校验的包不重下：落位只在格式校验之后发生，文件存在即曾通过校验，
     // 重下只会白白覆盖一份好包。逻辑已删除（.trash 在）的包不在此列：它们必须允许重新
-    // 下载，哪怕旧 .gram 的物理删除还在等映射释放（落位会在映射释放后成功）。
+    // 下载，哪怕旧 .gram 的物理删除还在等映射释放（小包可能在旧映射释放前就下载完，
+    // 落位失败进 Error 态，等映射释放后重试即可成功）。
     const bool trashed = std::filesystem::exists(ModelDirectory(model_id) / ".trash", fs_error) && !fs_error;
     if (!trashed && std::filesystem::exists(ModelFile(model_id), fs_error) && !fs_error)
         return true;
