@@ -130,6 +130,8 @@ extern bool g_escape_keeps_selected_word;
 extern std::string g_wubi_z_mode;
 extern std::string g_shuangpin_preedit_mode;
 extern std::string g_tsf_preedit_style;
+extern bool g_tsf_preedit_shuangpin_quanpin;
+extern bool g_candidate_window_preedit_shuangpin_quanpin;
 extern bool g_shuangpin_helpcode_enabled;
 extern bool g_shuangpin_mid_sentence_helpcode_enabled;
 extern bool g_quanpin_helpcode_enabled;
@@ -220,6 +222,9 @@ extern FrequencyAdjustmentConfig g_frequency_adjustment;
 extern std::filesystem::path g_config_path;
 
 bool IsHelpcodeSchemaAvailable(const std::string &schema);
+// ime_config_input.cpp：按用户选的行内预编辑样式、「双拼显示全拼」开关和当前方案算出 TSF 实际
+// 使用的样式，写进 GlobalSettings。
+void RefreshEffectiveTsfPreeditStyle();
 // ime_config_shuangpin.cpp：内置方案直接返回 true；自定义方案重新读文件、解析并登记给引擎，
 // 文件缺失或写错时返回 false，调用方据此回落到小鹤。
 bool LoadShuangpinSchema(const std::string &schema);

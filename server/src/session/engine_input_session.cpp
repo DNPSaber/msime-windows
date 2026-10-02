@@ -135,6 +135,11 @@ std::string EngineInputSession::get_pinyin_segmentation_with_cases() const
     return session_.get_pinyin_segmentation_with_cases();
 }
 
+IInputSession::ShuangpinPreeditForms EngineInputSession::get_shuangpin_preedit_forms() const
+{
+    return session_.get_shuangpin_preedit_forms();
+}
+
 std::vector<std::size_t> EngineInputSession::segment_raw_boundaries() const
 {
     return session_.segment_raw_boundaries();

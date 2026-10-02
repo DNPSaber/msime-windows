@@ -475,6 +475,17 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                                     PostSettingsConfig();
                                 }
                             }
+                            else if (path == "appearance.tsf_preedit_shuangpin_quanpin")
+                            {
+                                const bool value = json::value_to<bool>(data.at("value"));
+                                if (SetConfiguredTsfPreeditShuangpinQuanpin(value))
+                                {
+                                    BroadcastToTsfWorkerThreadViaNamedpipe(
+                                        Global::DataFromServerMsgTypeToTsfWorkerThread::PagingCommaPeriodChanged,
+                                        FormatPagingCommaPeriodWorkerPayload());
+                                    PostSettingsConfig();
+                                }
+                            }
                             else if (path == "appearance.ui_backend")
                             {
                                 const std::string value = json::value_to<std::string>(data.at("value"));
@@ -523,6 +534,14 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                             {
                                 const std::string value = json::value_to<std::string>(data.at("value"));
                                 if (SetConfiguredCandidateWindowPreeditStyle(value))
+                                {
+                                    PostSettingsConfig();
+                                }
+                            }
+                            else if (path == "appearance.candidate_window_preedit_shuangpin_quanpin")
+                            {
+                                const bool value = json::value_to<bool>(data.at("value"));
+                                if (SetConfiguredCandidateWindowPreeditShuangpinQuanpin(value))
                                 {
                                     PostSettingsConfig();
                                 }
@@ -1481,9 +1500,11 @@ void PostSettingsConfig()
             {"candidate_window_follow_cursor", GetConfiguredCandidateWindowFollowCursor()},
             {"candidate_skin", GetConfiguredCandidateSkin()},
             {"candidate_window_preedit_style", GetConfiguredCandidateWindowPreeditStyle()},
+            {"candidate_window_preedit_shuangpin_quanpin", GetConfiguredCandidateWindowPreeditShuangpinQuanpin()},
             {"candidate_fixed_badge", GetConfiguredCandidateFixedBadge()},
             {"candidate_fixed_badge_style", GetConfiguredCandidateFixedBadgeStyle()},
             {"tsf_preedit_style", GetConfiguredTsfPreeditStyle()},
+            {"tsf_preedit_shuangpin_quanpin", GetConfiguredTsfPreeditShuangpinQuanpin()},
             {"theme_mode", GetConfiguredThemeMode()},
             {"theme_settings", GetConfiguredThemeSettings()},
             {"theme_cand", GetConfiguredThemeCand()},

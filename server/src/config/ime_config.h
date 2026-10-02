@@ -245,6 +245,10 @@ bool SetConfiguredWubiZMode(const std::string &mode);
 const std::string &GetConfiguredShuangpinPreeditMode();
 const std::string &GetConfiguredTsfPreeditStyle();
 bool SetConfiguredTsfPreeditStyle(const std::string &style);
+// 双拼方案下行内预编辑显示转换后的全拼：原始按键样式不带分词符号，拼音分词样式带。
+// 开启后原始按键样式在双拼下由 Server 回包驱动，TSF 实际收到的样式见 GlobalSettings。
+bool GetConfiguredTsfPreeditShuangpinQuanpin();
+bool SetConfiguredTsfPreeditShuangpinQuanpin(bool enabled);
 bool GetConfiguredShuangpinHelpcodeEnabled();
 bool SetConfiguredShuangpinHelpcodeEnabled(bool enabled);
 // 双拼句中辅助码（helpcode.shuangpin_mid_sentence_helpcode），默认关闭。
@@ -453,6 +457,9 @@ const std::string &GetConfiguredCandidateSkin();
 bool SetConfiguredCandidateSkin(const std::string &skin);
 const std::string &GetConfiguredCandidateWindowPreeditStyle();
 bool SetConfiguredCandidateWindowPreeditStyle(const std::string &style);
+// 双拼方案下候选窗预编辑显示转换后的全拼分词。
+bool GetConfiguredCandidateWindowPreeditShuangpinQuanpin();
+bool SetConfiguredCandidateWindowPreeditShuangpinQuanpin(bool enabled);
 const std::string &GetConfiguredThemeMode();
 bool SetConfiguredThemeMode(const std::string &mode);
 const std::string &GetConfiguredThemeSettings();

@@ -15,6 +15,7 @@ class IInputSession
     using SelectionTransition = metasequoia::InputSession::SelectionTransition;
     using CloudQueryState = metasequoia::InputSession::CloudQueryState;
     using CreatingWordProgress = metasequoia::InputSession::CreatingWordProgress;
+    using ShuangpinPreeditForms = metasequoia::InputSession::ShuangpinPreeditForms;
 
     virtual ~IInputSession() = default;
 
@@ -41,6 +42,11 @@ class IInputSession
     virtual const std::string &get_pure_pinyin_sequence() const = 0;
     virtual const std::string &get_pinyin_segmentation() const = 0;
     virtual std::string get_pinyin_segmentation_with_cases() const = 0;
+    // 双拼的原串切分与转换后的全拼切分，语义见 engine 同名方法。默认（非双拼会话）为空。
+    virtual ShuangpinPreeditForms get_shuangpin_preedit_forms() const
+    {
+        return {};
+    }
     // Raw offsets where one input unit starts, for segment deletion. Empty when
     // the scheme or mode has no unit model.
     virtual std::vector<std::size_t> segment_raw_boundaries() const = 0;

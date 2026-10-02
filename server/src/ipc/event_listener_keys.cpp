@@ -940,6 +940,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
         // Keep preedit identical to the typed Y-prefixed English.
         GlobalIme::composition.segmented_pinyin = GlobalIme::composition.raw_input_with_cases;
     }
+    SyncShuangpinPreeditForms();
 
     // 五笔四码唯一自动上屏：敲满四码且码表只给一个候选时，直接走与空格完全相同的提交路径，
     // 用户不必再按一次空格。判定只发生在字母键插入之后（上面的 ApplyCompositionEditKey）：
@@ -1018,6 +1019,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
         g_inputSession->recompute_candidates();
         GlobalIme::composition.raw_input_with_cases = g_inputSession->get_pinyin_sequence_with_cases();
         GlobalIme::composition.segmented_pinyin = g_inputSession->get_pinyin_segmentation_with_cases();
+        SyncShuangpinPreeditForms();
         GlobalIme::composition.caret_position = GlobalIme::composition.raw_input_with_cases.size();
         PrepareCandidateList(client_id, activation_epoch);
         // 组合被提交时 TSF 会送 HideCandidateWnd 把候选窗藏起来；顶字重建的新组合必须
@@ -1050,7 +1052,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
         else if (GlobalSettings::getTsfPreeditStyle() == GlobalSettings::TsfPreeditStyle::Pinyin)
         {
             Global::MsgTypeToTsf = Global::DataFromServerMsgType::Preedit;
-            Global::candidate_ui.selected_text = GetPreedit();
+            Global::candidate_ui.selected_text = GetTsfPreedit();
             SendCurrentDataToClient(client_id, activation_epoch, request_id);
         }
         return;
@@ -1109,7 +1111,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
         {
             if (GlobalSettings::getTsfPreeditStyle() == GlobalSettings::TsfPreeditStyle::Pinyin)
             {
-                std::wstring preedit = GetPreedit();
+                std::wstring preedit = GetTsfPreedit();
                 Global::MsgTypeToTsf = Global::DataFromServerMsgType::Preedit;
                 Global::candidate_ui.selected_text = preedit;
                 SendCurrentDataToClient(client_id, activation_epoch, request_id);
@@ -1167,7 +1169,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
         {
             if (!g_inputSession->get_pinyin_sequence().empty())
             {
-                std::wstring preedit = GetPreedit();
+                std::wstring preedit = GetTsfPreedit();
                 Global::MsgTypeToTsf = Global::DataFromServerMsgType::Preedit;
                 Global::candidate_ui.selected_text = preedit;
                 SendCurrentDataToClient(client_id, activation_epoch, request_id);

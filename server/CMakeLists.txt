@@ -235,6 +235,8 @@ set(SRC_FILES
     "./src/utils/ime_utils.h"
     "./src/utils/serial_task_runner.cpp"
     "./src/utils/serial_task_runner.h"
+    "./src/utils/shuangpin_preedit_display.cpp"
+    "./src/utils/shuangpin_preedit_display.h"
     "./src/utils/webview_utils.cpp"
     "./src/utils/webview_utils.h"
     "./src/utils/window_utils.cpp"
