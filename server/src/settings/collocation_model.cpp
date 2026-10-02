@@ -1,6 +1,7 @@
 #include "collocation_model.h"
 
 #include "engine/core/data_path.h"
+#include "engine/ngram/octagram/octagram_gram.h"
 
 #include <Windows.h>
 #include <bcrypt.h>
@@ -23,14 +24,12 @@ namespace collocation
 namespace
 {
 
-// 模型包的钉死输入。bytes 与 sha256 来自
-// https://github.com/amzxyz/RIME-LMDG/releases/tag/LTS 的资产清单，
-// 与 docs/research/2026-10-01-wanxiang-octagram-model.md 的评测基线同一份字节。
 constexpr const wchar_t *kModelHost = L"github.com";
 constexpr const wchar_t *kModelPath = L"/amzxyz/RIME-LMDG/releases/download/LTS/wanxiang-lts-zh-hans.gram";
-constexpr const char *kModelSha256 = "ae43724a9aa02b4c493c603025549d2cba6fa6a67ae3ae040e55efdfeeaa1183";
-constexpr long long kModelBytes = 409719852LL;
 constexpr const char *kModelId = "wanxiang-lts-zh-hans";
+// 上次评测时的字节摘要，只用于标注「这份评测过」，不参与放行判定——上游重训
+// 就换字节，硬锁会让每次重训都变成一次全用户下载失败，而重训只换权重不换格式。
+constexpr const char *kReviewedSha256 = "ae43724a9aa02b4c493c603025549d2cba6fa6a67ae3ae040e55efdfeeaa1183";
 
 std::filesystem::path ModelDirectory()
 {
@@ -46,6 +45,21 @@ std::filesystem::path PartFile()
 {
     // 同一卷上的临时名，下载完成后原子 rename 到位。
     return metasequoia::data_directory() / "models" / (std::string(kModelId) + ".gram.part");
+}
+
+std::filesystem::path DigestSidecar()
+{
+    // 下载时写下的实际摘要。查询状态要跟着配置快照频繁调用，不能每次重算
+    // 400MB 的 SHA256，所以摘要落盘、状态只读这个几字节的旁挂文件。
+    return ModelDirectory() / (std::string(kModelId) + ".sha256");
+}
+
+std::string ReadRecordedDigest()
+{
+    std::ifstream in(DigestSidecar(), std::ios::binary);
+    std::string digest;
+    std::getline(in, digest);
+    return digest;
 }
 
 std::string Sha256Hex(const std::filesystem::path &file)
@@ -92,6 +106,21 @@ std::string Sha256Hex(const std::filesystem::path &file)
     }
     BCryptCloseAlgorithmProvider(algorithm, 0);
     return result;
+}
+
+// 格式锁：唯一真正拦下坏模型的检查。让引擎读取端自己开一次，Magic 与双数组边界
+// 都在 open() 里，越界在 set_array 之前就被拒，且不按文件自带的长度做堆分配。
+// 刻意用局部实例而不是 shared_gram_db——后者按路径永久缓存，会一直攥着 .part 的
+// 映射，而映射是以 FILE_SHARE_READ 打开的（没有 FILE_SHARE_DELETE），改名将失败。
+bool ValidateFormat(const std::filesystem::path &file, std::string &error)
+{
+    gram::GramDb db;
+    if (db.open(file))
+    {
+        return true;
+    }
+    error = db.error();
+    return false;
 }
 
 enum class DownloadState
@@ -162,6 +191,20 @@ void DownloadThread()
         ok = status == HTTP_STATUS_OK;
     }
 
+    // 总长取响应自己声明的 Content-Length，不再钉死字节数常量：上游重训会让字节数
+    // 变，而这个值顺带充当截断检测的基准（收完比对一次），比钉常量更贴近实际。
+    long long expected = 0;
+    if (ok)
+    {
+        DWORD length = 0;
+        DWORD length_size = sizeof(length);
+        if (WinHttpQueryHeaders(request, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER,
+                                WINHTTP_HEADER_NAME_BY_INDEX, &length, &length_size, WINHTTP_NO_HEADER_INDEX))
+        {
+            expected = length;
+        }
+    }
+
     std::ofstream out;
     if (ok)
     {
@@ -194,10 +237,9 @@ void DownloadThread()
             break;
         }
         received += read;
-        const long long total = kModelBytes;
-        if (total > 0)
+        if (expected > 0)
         {
-            const int progress = static_cast<int>((std::min)(100LL, received * 100LL / total));
+            const int progress = static_cast<int>((std::min)(100LL, received * 100LL / expected));
             SetState(DownloadState::Downloading, progress, {});
         }
     }
@@ -216,39 +258,63 @@ void DownloadThread()
         return;
     }
 
-    // 字节级校验：LTS tag 会被上游原地重传，这一步是防漂移的唯一闸门。
-    if (std::filesystem::file_size(PartFile()) != static_cast<unsigned long long>(kModelBytes))
+    // 传输完整性：收完的字节数必须等于响应声明的 Content-Length。声明缺失时跳过，
+    // 交给下面的格式校验兜底。
+    if (expected > 0 && received != expected)
     {
-        SetState(DownloadState::Error, 0, "下载字节数与锁定值不符");
-        std::error_code cleanup;
-        std::filesystem::remove(PartFile(), cleanup);
-        return;
-    }
-    const std::string digest = Sha256Hex(PartFile());
-    if (digest != kModelSha256)
-    {
-        SetState(DownloadState::Error, 0, "SHA256 与锁定值不符，模型可能已被上游更换");
+        SetState(DownloadState::Error, 0, "下载字节数与响应声明不符");
         std::error_code cleanup;
         std::filesystem::remove(PartFile(), cleanup);
         return;
     }
 
-    std::filesystem::rename(PartFile(), ModelFile(), fs_error);
-    if (fs_error)
+    // 格式锁：唯一真正拦下坏模型的检查。摘要对不上不拦——上游重训就换权重，
+    // 魔数与双数组布局不变，那是「未经评测」而不是「损坏」。
+    std::string format_error;
+    if (!ValidateFormat(PartFile(), format_error))
+    {
+        SetState(DownloadState::Error, 0, "模型格式校验失败（上游可能改了格式）：" + format_error);
+        std::error_code cleanup;
+        std::filesystem::remove(PartFile(), cleanup);
+        return;
+    }
+
+    // ValidateFormat 的局部 GramDb 已析构、映射已解除，否则下面的 rename 会被
+    // 以 FILE_SHARE_READ 打开的旧句柄拒绝。
+    const std::string digest = Sha256Hex(PartFile());
+    std::error_code rename_error;
+    std::filesystem::rename(PartFile(), ModelFile(), rename_error);
+    if (rename_error)
     {
         SetState(DownloadState::Error, 0, "模型落位失败");
         return;
     }
 
-    // CC-BY-4.0 的署名义务随模型走：NOTICE 与模型同目录，注明来源与锁定摘要。
+    // 实际字节的摘要落盘：状态查询要跟着配置快照频繁调用，不能每次重算 400MB 的
+    // 摘要，reviewed 判定读这个几字节的旁挂文件。
+    {
+        std::ofstream recorded(DigestSidecar(), std::ios::binary | std::ios::trunc);
+        if (recorded)
+        {
+            recorded << digest << "\n";
+        }
+    }
+
+    // CC-BY-4.0 的署名义务随模型走：NOTICE 与模型同目录，注明来源与实际摘要。
+    std::error_code size_error;
+    const long long model_bytes = static_cast<long long>(std::filesystem::file_size(ModelFile(), size_error));
     std::ofstream notice(ModelDirectory() / "NOTICE.md", std::ios::binary | std::ios::trunc);
     if (notice)
     {
         notice << "# 万象语法模型（" << kModelId << "）\n\n"
-               << "- 来源：" << "https://github.com/amzxyz/RIME-LMDG/releases/tag/LTS\n"
+               << "- 来源：https://github.com/amzxyz/RIME-LMDG/releases/tag/LTS\n"
                << "- 许可：CC-BY-4.0（© amzxyz / RIME-LMDG 项目）\n"
-               << "- 文件：" << kModelId << ".gram（" << kModelBytes << " 字节）\n"
-               << "- SHA256：" << kModelSha256 << "\n";
+               << "- 文件：" << kModelId << ".gram（" << model_bytes << " 字节）\n"
+               << "- SHA256：" << digest << "\n";
+        if (digest != kReviewedSha256)
+        {
+            notice << "- 备注：这份字节与上次评测的（" << kReviewedSha256 << "）不同，属上游重训，未经重新评测。\n";
+        }
     }
     SetState(DownloadState::Idle, 100, {});
 }
@@ -258,20 +324,21 @@ void DownloadThread()
 ModelStatus GetModelStatus()
 {
     std::error_code fs_error;
-    if (std::filesystem::exists(ModelFile(), fs_error) && !fs_error &&
-        static_cast<long long>(std::filesystem::file_size(ModelFile(), fs_error)) == kModelBytes && !fs_error)
+    // 落位发生在格式校验之后，所以「文件存在」即代表曾经通过校验。这里不再比对
+    // 字节数：钉死它就等于钉死上游的每次重训。
+    if (std::filesystem::exists(ModelFile(), fs_error) && !fs_error)
     {
-        return {"ready", 100, {}};
+        return {"ready", 100, {}, ReadRecordedDigest() == kReviewedSha256};
     }
     std::lock_guard lock(g_mutex);
     switch (g_state)
     {
     case DownloadState::Downloading:
-        return {"downloading", g_progress, {}};
+        return {"downloading", g_progress, {}, false};
     case DownloadState::Error:
-        return {"error", 0, g_error};
+        return {"error", 0, g_error, false};
     default:
-        return {"absent", 0, {}};
+        return {"absent", 0, {}, false};
     }
 }
 

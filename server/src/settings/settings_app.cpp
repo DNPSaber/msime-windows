@@ -512,7 +512,8 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"sentence_collocation_rerank", GetConfiguredAssocSentenceCollocationRerank()},
             {"sentence_collocation_model_status", [] {
                  const auto status = collocation::GetModelStatus();
-                 return nlohmann::json{{"state", status.state}, {"progress", status.progress}, {"error", status.error}};
+                 return nlohmann::json{{"state", status.state}, {"progress", status.progress}, {"error", status.error},
+                                        {"reviewed", status.reviewed}};
              }()}}},
           {"keybindings",
            {{"switch_language_shift", GetConfiguredSwitchLanguageShiftEnabled()},

@@ -90,7 +90,7 @@ sentence_collocation_additive = false
 sentence_collocation_rerank = false
 # 模型包 id，由设置页下载器写回；也可手动放置后填 id（布局 models/<id>/<id>.gram）
 sentence_collocation_model = ""
-# 搭配项的线性权重（log10 域）。取值依据 docs/research 的离线评测扫描；不进设置页
+# 搭配项的线性权重（log10 域），越大越信任搭配表。不进设置页，供配置文件高级调参
 sentence_collocation_weight = 0.1
 sentence_collocation_rerank_weight = 0.05
 

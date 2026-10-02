@@ -21,7 +21,7 @@ export function registerDropdownPreparer(menuId: string, preparer: DropdownPrepa
 
 let collocationPollTimer: ReturnType<typeof setInterval> | null = null;
 
-export type CollocationModelStatus = { state?: string; progress?: number; error?: string };
+export type CollocationModelStatus = { state?: string; progress?: number; error?: string; reviewed?: boolean };
 
 // 两个整句开关只有在 .gram 真的在盘上时才有意义：模型缺席时词格会静默降级，开关
 // 开着也看不到任何效果。与智能标点／候选混输的子开关一样，这里只置灰禁用，
@@ -51,7 +51,9 @@ export function applyCollocationModelStatus(status: CollocationModelStatus | und
   const button = document.getElementById('collocationModelDownloadBtn') as HTMLButtonElement | null;
   if (text) {
     if (state === 'ready') {
-      text.textContent = '模型已就绪';
+      // 摘要对不上评测基线说明上游重训过。放行是刻意的（重训只换权重、不换格式），
+      // 但「未经评测」必须在这里说出口，否则用户无从判断这份模型的可信度。
+      text.textContent = status?.reviewed === false ? '模型已就绪（上游已更新，未经评测）' : '模型已就绪';
     } else if (state === 'downloading') {
       text.textContent = `下载中 ${status?.progress ?? 0}%`;
     } else if (state === 'error') {

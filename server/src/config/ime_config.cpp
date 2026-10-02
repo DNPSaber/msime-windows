@@ -121,7 +121,7 @@ bool g_assoc_sentence_neural_desktop = false;
 bool g_assoc_sentence_neural_keyboard = true;
 bool g_assoc_sentence_show_next_on_duplicate = false;
 // 万象语法模型（octagram .gram）：两个机制默认全关，模型 id 默认空（未下载/未选）。
-// 权重不进设置页，供配置文件高级调参；取值依据 docs/research 的离线评测扫描。
+// 权重不进设置页，供配置文件高级调参。
 bool g_assoc_sentence_collocation_additive = false;
 bool g_assoc_sentence_collocation_rerank = false;
 std::string g_assoc_sentence_collocation_model;

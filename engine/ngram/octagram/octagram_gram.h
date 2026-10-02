@@ -9,8 +9,7 @@
 // non_collocation_penalty。词表零耦合——我们词库里没有的词只是拿不到加成，
 // 不会报错。双数组实现在同目录 darts.h（rime/librime 同款，BSD）。
 //
-// 与评测版（原 tests/src/gram_reader）的差别只在装载方式：整文件 ReadFile 换成
-// Win32 内存映射，RSS 只随命中的页增长；查询路径完全一致。
+// 装载方式用 Win32 内存映射而非整文件 ReadFile，RSS 只随命中的页增长。
 
 #include <cstdint>
 #include <filesystem>
@@ -62,7 +61,8 @@ class GramDb
     // mmap 只读打开，校验 "Rime::Grammar/" 魔数与双数组镜像边界；失败返回
     // false，error() 给出原因。映射与句柄随对象存活——共享实例进程内常驻，
     // 与 kenlm 的共享模型同一条生命线。db_checksum 沿袭 octagram 的 Load()
-    // 不校验：格式魔数加边界检查已足够，摘要校验在下载侧做。
+    // 不校验：魔数加边界检查已足够。文件来源与字节摘要由下载器记录，见
+    // server/src/settings/collocation_model.cpp。
     bool open(const std::filesystem::path &file);
 
     bool valid() const

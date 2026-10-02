@@ -66,8 +66,7 @@ LatticeReranker make_octagram_reranker(const gram::GramDb *db, double weight)
             return false;
         }
         // 整句搭配分 = 相邻词对的搭配项之和（词对i的上下文取其前全部词的文本，
-        // .gram 查询自己截尾窗），句尾词吃 rear 项。与评测工具 eval_lm_compare 的
-        // 接入点 B 同一公式。
+        // .gram 查询自己截尾窗），句尾词吃 rear 项。
         std::vector<double> scores(paths.size());
         for (size_t p = 0; p < paths.size(); ++p)
         {

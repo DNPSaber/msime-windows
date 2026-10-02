@@ -236,4 +236,15 @@ describe('collocation model status gating', () => {
       expect(toggles[id].getAttribute('aria-disabled')).toBe('true');
     }
   });
+
+  it('marks a ready model whose digest differs from the reviewed one', () => {
+    applyCollocationModelStatus({ state: 'ready', reviewed: false });
+    expect(statusText.textContent).toBe('模型已就绪（上游已更新，未经评测）');
+    for (const id of TOGGLE_IDS) {
+      expect(toggles[id].getAttribute('aria-disabled')).toBe('false');
+    }
+
+    applyCollocationModelStatus({ state: 'ready', reviewed: true });
+    expect(statusText.textContent).toBe('模型已就绪');
+  });
 });
