@@ -43,7 +43,10 @@ list(FILTER METASEQUOIA_IME_KENLM_SOURCES EXCLUDE REGEX "_main\\.cc$")
 
 add_library(metasequoia_ime_ngram STATIC
     ${METASEQUOIA_IME_KENLM_SOURCES}
-    "${CMAKE_CURRENT_SOURCE_DIR}/language_model.cpp")
+    "${CMAKE_CURRENT_SOURCE_DIR}/language_model.cpp"
+    # 万象语法模型（octagram .gram）的读取端，与 kenlm 同库：它和语言模型封装
+    # 一样是「引擎其余部分只看头文件」的独立模块，Win32 mmap 的实现细节留在 cpp 里。
+    "${CMAKE_CURRENT_SOURCE_DIR}/octagram/octagram_gram.cpp")
 
 # PUBLIC 指向仓库根，这样调用方按 AGENTS.md 的约定写
 # #include "engine/ngram/language_model.h"。kenlm 的头保持 PRIVATE。
