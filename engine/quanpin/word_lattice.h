@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace quanpin
@@ -80,6 +81,12 @@ struct LatticePath
     std::vector<std::string> words;
 };
 
+// 字级搭配打分函数。context_tail 是路径已累计词文本的尾部（解码器截到
+// kCollocationTailCodepoints 个码点），word 是候选词，is_rear 标记该词是句子的
+// 最后一个词。见 WordLatticeOptions::collocation_scorer。
+using LatticeCollocationScorer =
+    std::function<double(std::string_view context_tail, std::string_view word, bool is_rear)>;
+
 struct WordLatticeOptions
 {
     int beam = 32;
@@ -127,6 +134,14 @@ struct WordLatticeOptions
     // 就截掉了 span_limit 之外的行，ji 这种几百个字的音节，辅助码要找的生僻字早被截没了。
     // 为空时退回普通 lookup。
     WordLatticeLookup constrained_lookup;
+    // 字级搭配加成：给「前文尾部字符 + 当前词」的字符级搭配打一个加成分，乘以
+    // collocation_weight 后叠加到该边的路径分上。为 octagram（.gram）这类与词表
+    // 零耦合的语法模型预留——它们只认字符搭配，不认词表 id，我们词库里没有的词
+    // 查不到就返回常数惩罚，不伤害只错过。返回值域由实现决定，weight 负责把它
+    // 缩放到与主打分同域；那是校准参数，不是格式转换。空函数（默认）= 关闭。
+    LatticeCollocationScorer collocation_scorer;
+    // 搭配项的线性权重；0 = 关闭（scorer 非空也不生效）。
+    double collocation_weight = 0.0;
 };
 
 // Optional second opinion on the decoded n-best, applied before the paths become candidates.

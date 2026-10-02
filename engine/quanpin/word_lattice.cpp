@@ -130,6 +130,9 @@ struct Hyp
     // Trailing n-gram context of this path. Unused (and left zeroed) when
     // decoding with the heuristic.
     ngram::State state;
+    // 路径已累计词文本的尾部（至多 kCollocationTailCodepoints 个码点），供字级
+    // 搭配打分用。关闭搭配项时保持为空，不为每个假设白付一次字符串拼接。
+    std::string collocation_tail;
 };
 
 void keep_beam(std::vector<Hyp> &column, int beam)
@@ -234,6 +237,28 @@ size_t utf8_codepoints(const std::string &text)
     return n;
 }
 
+// 搭配打分的上下文窗口：.gram 的查询键最多编入 8 个码点，尾窗留 8 个足够。
+constexpr size_t kCollocationTailCodepoints = 8;
+
+// 保留字符串末尾至多 n 个 UTF-8 码点。假设 text 是合法 UTF-8（词库行不保证，
+// 但搭配查询遇到乱码最多损失一次命中，不值得为它做完整校验）。
+std::string tail_codepoints(const std::string &text, size_t n)
+{
+    const size_t total = utf8_codepoints(text);
+    if (total <= n)
+        return text;
+    size_t skip = total - n;
+    size_t i = 0;
+    while (i < text.size() && skip > 0)
+    {
+        ++i;
+        --skip;
+        while (i < text.size() && (static_cast<unsigned char>(text[i]) & 0xC0) == 0x80)
+            ++i;
+    }
+    return text.substr(i);
+}
+
 bool covers_all_syllables(const WordItem &item, size_t n_syllables)
 {
     if (n_syllables == 0)
@@ -307,6 +332,14 @@ std::vector<LatticePath> decode_word_lattice(const Segments &syllables, const Wo
                 next.score = hyp.score + edge.base_score;
                 if (model)
                     next.score += model->score(hyp.state, edge.index, next.state);
+                if (options.collocation_scorer && options.collocation_weight > 0.0)
+                {
+                    // 句尾词把 is_rear 置真：.gram 的「词+$」rear 项据此参与打分。
+                    next.score += options.collocation_weight *
+                                  options.collocation_scorer(hyp.collocation_tail, edge.word, edge.end == n);
+                    next.collocation_tail =
+                        tail_codepoints(hyp.collocation_tail + edge.word, kCollocationTailCodepoints);
+                }
                 next.prev_pos = static_cast<int>(pos);
                 next.prev_idx = hi;
                 next.word = edge.word;
