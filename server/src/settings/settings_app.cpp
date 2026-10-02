@@ -508,8 +508,7 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"sentence_neural_keyboard", GetConfiguredAssocSentenceNeuralKeyboard()},
             {"sentence_show_next_on_duplicate", GetConfiguredAssocSentenceShowNextOnDuplicate()},
             {"sentence_source_badge", GetConfiguredAssocSentenceSourceBadge()},
-            {"sentence_collocation_additive", GetConfiguredAssocSentenceCollocationAdditive()},
-            {"sentence_collocation_rerank", GetConfiguredAssocSentenceCollocationRerank()},
+            {"sentence_collocation_enabled", GetConfiguredAssocSentenceCollocationEnabled()},
             {"sentence_collocation_model_status", [] {
                  const auto status = collocation::GetModelStatus();
                  return nlohmann::json{{"state", status.state}, {"progress", status.progress}, {"error", status.error},
@@ -888,10 +887,8 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredAssocSentenceShowNextOnDuplicate(json::value_to<bool>(data.at("value")));
     if (path == "association.sentence_source_badge")
         return SetConfiguredAssocSentenceSourceBadge(json::value_to<bool>(data.at("value")));
-    if (path == "association.sentence_collocation_additive")
-        return SetConfiguredAssocSentenceCollocationAdditive(json::value_to<bool>(data.at("value")));
-    if (path == "association.sentence_collocation_rerank")
-        return SetConfiguredAssocSentenceCollocationRerank(json::value_to<bool>(data.at("value")));
+    if (path == "association.sentence_collocation_enabled")
+        return SetConfiguredAssocSentenceCollocationEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.unicode_mode")
         return SetConfiguredUnicodeModeEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.quick_phrase")

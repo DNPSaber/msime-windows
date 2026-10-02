@@ -26,10 +26,7 @@ export type CollocationModelStatus = { state?: string; progress?: number; error?
 // 两个整句开关只有在 .gram 真的在盘上时才有意义：模型缺席时词格会静默降级，开关
 // 开着也看不到任何效果。与智能标点／候选混输的子开关一样，这里只置灰禁用，
 // 不替用户改回勾选状态——他开过但模型没了，得自己看见并决定。
-const COLLABORATION_TOGGLE_IDS = [
-  'sentenceCollocationAdditiveToggleBtn',
-  'sentenceCollocationRerankToggleBtn'
-];
+const COLLABORATION_TOGGLE_IDS = ['sentenceCollocationToggleBtn'];
 
 function setCollocationTogglesDisabled(disabled: boolean): void {
   for (const id of COLLABORATION_TOGGLE_IDS) {

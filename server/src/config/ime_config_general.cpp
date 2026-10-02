@@ -208,31 +208,19 @@ bool SetConfiguredAssocSentenceNeuralKeyboard(bool enabled)
     return true;
 }
 
-bool GetConfiguredAssocSentenceCollocationAdditive()
+// 万象总开关。开启时解码期叠加字级搭配分，并在 n-best 上重排出〔万象〕来源行。
+// 引擎侧加成没有独立开关——它由 collocation_model 非空隐含开启，所以单个键就够。
+bool GetConfiguredAssocSentenceCollocationEnabled()
 {
-    return g_assoc_sentence_collocation_additive;
+    return g_assoc_sentence_collocation_enabled;
 }
-bool SetConfiguredAssocSentenceCollocationAdditive(bool enabled)
+bool SetConfiguredAssocSentenceCollocationEnabled(bool enabled)
 {
-    if (!WriteConfiguredValue("association", "sentence_collocation_additive", enabled ? "true" : "false"))
+    if (!WriteConfiguredValue("association", "sentence_collocation_enabled", enabled ? "true" : "false"))
     {
         return false;
     }
-    g_assoc_sentence_collocation_additive = enabled;
-    return true;
-}
-
-bool GetConfiguredAssocSentenceCollocationRerank()
-{
-    return g_assoc_sentence_collocation_rerank;
-}
-bool SetConfiguredAssocSentenceCollocationRerank(bool enabled)
-{
-    if (!WriteConfiguredValue("association", "sentence_collocation_rerank", enabled ? "true" : "false"))
-    {
-        return false;
-    }
-    g_assoc_sentence_collocation_rerank = enabled;
+    g_assoc_sentence_collocation_enabled = enabled;
     return true;
 }
 

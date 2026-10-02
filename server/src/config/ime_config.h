@@ -363,10 +363,8 @@ bool GetConfiguredAssocSentenceSourceBadge();
 bool SetConfiguredAssocSentenceSourceBadge(bool enabled);
 // 万象语法模型（[association] 段）：两个机制开关进设置页，模型 id 留空即用内置包，
 // 权重是配置文件里的高级调参项，不进设置页。
-bool GetConfiguredAssocSentenceCollocationAdditive();
-bool SetConfiguredAssocSentenceCollocationAdditive(bool enabled);
-bool GetConfiguredAssocSentenceCollocationRerank();
-bool SetConfiguredAssocSentenceCollocationRerank(bool enabled);
+bool GetConfiguredAssocSentenceCollocationEnabled();
+bool SetConfiguredAssocSentenceCollocationEnabled(bool enabled);
 bool GetConfiguredAssocSentenceCollocationRerankWeight();
 std::string GetConfiguredAssocSentenceCollocationModel();
 double GetConfiguredAssocSentenceCollocationWeight();

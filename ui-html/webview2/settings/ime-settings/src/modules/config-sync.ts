@@ -218,11 +218,8 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
     applyToggleState('sentenceSourceBadgeToggleBtn', data.association.sentence_source_badge);
   }
   applyCollocationModelStatus(data?.association?.sentence_collocation_model_status);
-  if (typeof data?.association?.sentence_collocation_additive === 'boolean') {
-    applyToggleState('sentenceCollocationAdditiveToggleBtn', data.association.sentence_collocation_additive);
-  }
-  if (typeof data?.association?.sentence_collocation_rerank === 'boolean') {
-    applyToggleState('sentenceCollocationRerankToggleBtn', data.association.sentence_collocation_rerank);
+  if (typeof data?.association?.sentence_collocation_enabled === 'boolean') {
+    applyToggleState('sentenceCollocationToggleBtn', data.association.sentence_collocation_enabled);
   }
   if (typeof data?.utility?.unicode_mode === 'boolean') {
     applyToggleState('unicodeModeToggleBtn', data.utility.unicode_mode);

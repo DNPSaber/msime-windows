@@ -72,18 +72,15 @@ void EngineInputSession::ApplyConfiguration()
     association.neural_desktop = GetConfiguredAssocSentenceNeuralDesktop();
     association.neural_keyboard = GetConfiguredAssocSentenceNeuralKeyboard();
     association.show_next_on_duplicate = GetConfiguredAssocSentenceShowNextOnDuplicate();
-    // 万象语法模型：两个机制共用一份模型包。模型 id 按 <resources>/models/<id>/<id>.gram
-    // 解析成路径（下载器与手动放置都遵守这个命名）；开关开着但文件不在就等于关，词格
-    // 静默降级。解析是一次 stat，按键路径上可忽略。
-    association.collocation_model = ResolveCollocationModelPath(GetConfiguredAssocSentenceCollocationModel());
+    // 万象总开关：开关关时连模型路径都不解析。引擎侧的加成分由 collocation_model
+    // 非空隐含开启，没有独立开关，所以路径空即全部能力关闭；模型缺席时同样置空重排，
+    // 免得词典层拿空路径做无谓解析。
+    const bool collocation_enabled = GetConfiguredAssocSentenceCollocationEnabled();
+    association.collocation_model =
+        collocation_enabled ? ResolveCollocationModelPath(GetConfiguredAssocSentenceCollocationModel()) : std::string();
     association.collocation_weight = GetConfiguredAssocSentenceCollocationWeight();
-    association.collocation_rerank = GetConfiguredAssocSentenceCollocationRerank();
+    association.collocation_rerank = collocation_enabled && !association.collocation_model.empty();
     association.collocation_rerank_weight = GetConfiguredAssocSentenceCollocationRerankWeight();
-    if (association.collocation_model.empty())
-    {
-        // 模型缺席时连开关一起置空，避免词典层拿空路径做无谓解析。
-        association.collocation_rerank = false;
-    }
     session_.set_sentence_association(association);
     session_.set_shuangpin_preedit_uses_raw(GetConfiguredShuangpinPreeditMode() == "shuangpin");
     // 五笔拼音混输与 z 键角色是两个独立设置：混输是「同时给五笔和拼音候选」，z 键角色只管

@@ -150,7 +150,7 @@ it('allows the item after the host clears its disabled state', () => {
 });
 
 describe('collocation model status gating', () => {
-  const TOGGLE_IDS = ['sentenceCollocationAdditiveToggleBtn', 'sentenceCollocationRerankToggleBtn'];
+  const TOGGLE_IDS = ['sentenceCollocationToggleBtn'];
 
   // 只实现 shared.ts 实际用到的那几个成员，避免继承 MenuElement 时和它的
   // classList mock 打架。

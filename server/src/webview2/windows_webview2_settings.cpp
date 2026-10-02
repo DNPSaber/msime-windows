@@ -1063,18 +1063,10 @@ HRESULT OnControllerCreatedSettingsWnd(            //
                                     PostSettingsConfig();
                                 }
                             }
-                            else if (path == "association.sentence_collocation_additive")
+                            else if (path == "association.sentence_collocation_enabled")
                             {
                                 const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredAssocSentenceCollocationAdditive(value))
-                                {
-                                    PostSettingsConfig();
-                                }
-                            }
-                            else if (path == "association.sentence_collocation_rerank")
-                            {
-                                const bool value = json::value_to<bool>(data.at("value"));
-                                if (SetConfiguredAssocSentenceCollocationRerank(value))
+                                if (SetConfiguredAssocSentenceCollocationEnabled(value))
                                 {
                                     PostSettingsConfig();
                                 }
@@ -1502,8 +1494,7 @@ void PostSettingsConfig()
             {"sentence_neural_keyboard", GetConfiguredAssocSentenceNeuralKeyboard()},
             {"sentence_show_next_on_duplicate", GetConfiguredAssocSentenceShowNextOnDuplicate()},
             {"sentence_source_badge", GetConfiguredAssocSentenceSourceBadge()},
-            {"sentence_collocation_additive", GetConfiguredAssocSentenceCollocationAdditive()},
-            {"sentence_collocation_rerank", GetConfiguredAssocSentenceCollocationRerank()},
+            {"sentence_collocation_enabled", GetConfiguredAssocSentenceCollocationEnabled()},
             {"sentence_collocation_model_status",
              [] {
                  const auto status = collocation::GetModelStatus();
