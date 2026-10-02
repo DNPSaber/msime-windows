@@ -364,6 +364,9 @@ export function setupInput(): void {
   setupToggleButton('escapeKeepsSelectedWordToggleBtn', (active) => {
     updateConfig('input.escape_keeps_selected_word', active);
   });
+  setupToggleButton('enterLearnsEnglishWordToggleBtn', (active) => {
+    updateConfig('input.enter_learns_english_word', active);
+  });
   setupToggleButton('candidateTranslationsToggleBtn', (active) => {
     syncCandidateTranslationOptions(active);
     updateConfig('general.candidate_translations', active);

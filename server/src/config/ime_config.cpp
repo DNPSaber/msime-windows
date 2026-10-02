@@ -72,6 +72,8 @@ std::string g_wubi_schema = "wubi86";
 bool g_wubi_mixed_pinyin = false;
 // 造词时 Esc 只清掉还没选的拼音、保留已选的词（小狼毫风格），第二次 Esc 才整体取消。默认关闭。
 bool g_escape_keeps_selected_word = false;
+// 回车上屏英文时顺带写入英文词库。默认开启，保持原有行为。
+bool g_enter_learns_english_word = true;
 // 五笔 z 键角色两态：off | wildcard。非法值回落 off（升级用户零变化）。
 std::string g_wubi_z_mode = "off";
 std::string g_shuangpin_preedit_mode = "quanpin";
@@ -399,6 +401,7 @@ bool LoadImeConfig()
         g_wubi_schema = tbl["input"]["wubi_schema"].value_or(std::string("wubi86"));
         g_wubi_mixed_pinyin = tbl["input"]["wubi_mixed_pinyin"].value_or(false);
         g_escape_keeps_selected_word = tbl["input"]["escape_keeps_selected_word"].value_or(false);
+        g_enter_learns_english_word = tbl["input"]["enter_learns_english_word"].value_or(true);
         const std::string z_mode = tbl["input"]["wubi_z_mode"].value_or(std::string("off"));
         g_wubi_z_mode = z_mode == "wildcard" ? "wildcard" : "off";
         g_shuangpin_preedit_mode = tbl["input"]["shuangpin_preedit_mode"].value_or(std::string("quanpin"));
