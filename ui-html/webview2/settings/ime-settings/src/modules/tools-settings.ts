@@ -149,6 +149,9 @@ function setupMixedCandidatesSection(): void {
   setupToggleButton('dateTimeCandidatesToggleBtn', (active) => {
     updateConfig('utility.date_time_candidates', active);
   });
+  setupToggleButton('dateTimeMenuToggleBtn', (active) => {
+    updateConfig('utility.date_time_menu', active);
+  });
   const expand = document.getElementById('mixedCandidatesExpand');
   const details = document.getElementById('mixedCandidatesDetails');
   expand?.addEventListener('click', () => {

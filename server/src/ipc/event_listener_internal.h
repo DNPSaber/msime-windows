@@ -50,6 +50,10 @@ constexpr size_t kMaxCandidateTranslationGlosses = 2048;
 extern std::unordered_map<std::string, std::string> g_candidate_translation_glosses;
 extern std::string g_candidate_translation_signature;
 extern bool g_translation_candidates_active;
+// 日期页：选中混输里的「📅日期」入口后，候选框换成整组日期时间格式。和译文页一样不动输入串，
+// 两者互斥，共用下面这份保存的候选与页码，退出时原样放回。
+extern bool g_date_time_page_active;
+extern std::string g_date_time_page_keyword;
 extern std::vector<WordItem> g_translation_saved_items;
 extern int g_translation_saved_page_index;
 extern int g_translation_saved_selected_index;
@@ -57,6 +61,8 @@ extern bool g_dedicated_english_answer_pending;
 extern int g_authoritative_cn_mode;
 
 std::string TranslationIdentity(const EnglishIme::TranslationQuery &query);
+// 译文页或日期页正占着候选框：items 不是这次输入的候选，异步结果不能往里合并，也不能按会话扩展。
+bool IsCandidateSubPageActive();
 bool IsUiLessMode();
 void ApplyUiLessFromPacket(const FanyImeNamedpipeData &pipe_data);
 void RequestShowCandidateWindow();
@@ -186,6 +192,16 @@ void EnqueueLearnQuickPhraseOrderTask(const std::string &code, const std::string
 // 否则越过了英文选了 selected_index 处的候选，英文后退一位。
 void EnqueueLearnEnglishSlotTask(const std::string &code, int english_index, std::optional<int> selected_index,
                                  uint64_t client_id, uint64_t activation_epoch);
+// 日期时间格式的调频：选中了 format_id（WordItem::pinyin）那种格式。
+void EnqueueLearnDateTimeOrderTask(const std::string &format_id, uint64_t client_id, uint64_t activation_epoch);
+
+// event_listener_keys.cpp
+// 把译文页或日期页换回进入之前的那一屏；都没打开时什么都不做。
+void ExitCandidateSubPage();
+// 选中「📅日期」入口：候选框换成 keyword 这组的全部格式。查不到格式时返回 false，候选框不动。
+bool EnterDateTimeCandidatePage(const std::string &keyword);
+// 日期页上置顶、固定位置之后按新顺序重查，页码和高亮位留在原处。
+void RebuildDateTimeCandidatePage();
 
 // event_listener.cpp
 bool SendUiLessCompositionToClient(uint64_t client_id, uint64_t activation_epoch, uint64_t request_id);

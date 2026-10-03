@@ -547,7 +547,8 @@ const MIXED_CANDIDATE_OPTION_IDS = [
   'kaomojiMixedInputToggleBtn',
   'quickPhraseCandidatesToggleBtn',
   'quickPhraseFrequencyToggleBtn',
-  'dateTimeCandidatesToggleBtn'
+  'dateTimeCandidatesToggleBtn',
+  'dateTimeMenuToggleBtn'
 ];
 
 export function setMixedCandidateOptionsDisabled(disabled: boolean): void {

@@ -372,6 +372,21 @@ bool SetConfiguredDateTimeCandidatesEnabled(bool enabled)
     return true;
 }
 
+bool GetConfiguredDateTimeMenuEnabled()
+{
+    return g_date_time_menu_enabled;
+}
+
+bool SetConfiguredDateTimeMenuEnabled(bool enabled)
+{
+    if (!WriteConfiguredValue("utility", "date_time_menu", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_date_time_menu_enabled = enabled;
+    return true;
+}
+
 bool GetConfiguredDateTimeModeEnabled()
 {
     return g_date_time_mode_enabled;

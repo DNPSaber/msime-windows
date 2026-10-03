@@ -201,6 +201,7 @@ set(SRC_FILES
     "./src/ipc/voice_composition_pipe.h"
     "./src/ipc/voice_control_dispatch.cpp"
     "./src/ipc/voice_control_dispatch.h"
+    "./src/mixed/date_time_candidates.h"
     "./src/mixed/mixed_candidates.cpp"
     "./src/mixed/mixed_candidates.h"
     "./src/log/fanylog.cpp"

@@ -245,6 +245,9 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (typeof data?.utility?.date_time_candidates === 'boolean') {
     applyToggleState('dateTimeCandidatesToggleBtn', data.utility.date_time_candidates);
   }
+  if (typeof data?.utility?.date_time_menu === 'boolean') {
+    applyToggleState('dateTimeMenuToggleBtn', data.utility.date_time_menu);
+  }
   if (typeof data?.utility?.date_time_mode === 'boolean') {
     applyToggleState('dateTimeModeToggleBtn', data.utility.date_time_mode);
   }

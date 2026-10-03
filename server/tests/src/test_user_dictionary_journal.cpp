@@ -1,5 +1,6 @@
 #include "tests/includes/test_framework.h"
 #include "tests/includes/test_utf8_path.h"
+#include "engine/local_modes/date_time_query.h"
 #include "engine/user_dictionary/user_dictionary_journal.h"
 
 #include <sqlite3.h>
@@ -803,5 +804,76 @@ TEST_CASE(UserDictionaryWubiPromoteUpdatesWubiTable)
                    1);
         REQUIRE_EQ(user_db.scalar_int("SELECT COUNT(*) FROM user_dictionary_operations WHERE dictionary='pinyin'"), 0);
     }
+    std::filesystem::remove_all(directory);
+}
+
+// 日期时间格式按格式 ID 调频：日期文本每天都变，学到的顺序和固定位置都不能按文字记。
+TEST_CASE(DateTimeFormatOrderIsLearnedPinnedAndFixedByFormatId)
+{
+    const auto directory =
+        std::filesystem::temp_directory_path() / ("msime-date-time-order-" + std::to_string(GetCurrentProcessId()));
+    std::filesystem::remove_all(directory);
+    std::filesystem::create_directories(directory);
+    const std::string user_path = test::Utf8(directory / "msime_user.db");
+    const metasequoia::local_modes::LocalDateTime now{2026, 8, 9, 0, 14, 30, 0};
+    const auto default_ids = metasequoia::local_modes::date_time_format_ids("rq");
+    const auto ordered = [&](const char *keyword, bool learned_order = true) {
+        auto items = metasequoia::local_modes::query_date_time(keyword, &now);
+        user_dictionary::apply_date_time_order(user_path, metasequoia::local_modes::date_time_category(keyword), items,
+                                               learned_order);
+        return items;
+    };
+    // REQUIRE_EQ 按引用接住参数，取首位 ID 要按值返回，不能引用临时列表里的元素。
+    const auto first = [&](const char *keyword, bool learned_order = true) {
+        return ordered(keyword, learned_order)[0].pinyin;
+    };
+    const auto index_of = [](const std::vector<WordItem> &items, const std::string &format_id) {
+        return static_cast<size_t>(
+            std::find_if(items.begin(), items.end(), [&](const WordItem &item) { return item.pinyin == format_id; }) -
+            items.begin());
+    };
+
+    REQUIRE_EQ(first("rq"), std::string("date:ymd_cn"));
+
+    // 已在首位的格式没有可学的；第二位的按 pin 模式一次到顶。
+    REQUIRE(user_dictionary::learn_date_time_selection(user_path, "date", default_ids, "date:ymd_cn", "pin", 1, 1));
+    REQUIRE_EQ(first("rq"), std::string("date:ymd_cn"));
+    REQUIRE(user_dictionary::learn_date_time_selection(user_path, "date", default_ids, "date:ymd_dash", "pin", 1, 1));
+    auto items = ordered("rq");
+    REQUIRE_EQ(items[0].pinyin, std::string("date:ymd_dash"));
+    REQUIRE_EQ(items[0].word, std::string("2026-08-09"));
+    REQUIRE_EQ(items[1].pinyin, std::string("date:ymd_cn"));
+    // rq / riqi / date 共用一份顺序，时间那组不受影响。
+    REQUIRE_EQ(first("riqi"), std::string("date:ymd_dash"));
+    REQUIRE_EQ(first("sj"), std::string("time:hm"));
+
+    // 计数到 trigger_count 才挪，linear 每次前移 linear_step 位。
+    const size_t lunar = index_of(ordered("rq"), "date:lunar");
+    REQUIRE(user_dictionary::learn_date_time_selection(user_path, "date", default_ids, "date:lunar", "linear", 3, 2));
+    REQUIRE_EQ(index_of(ordered("rq"), "date:lunar"), lunar);
+    REQUIRE(user_dictionary::learn_date_time_selection(user_path, "date", default_ids, "date:lunar", "linear", 3, 2));
+    REQUIRE_EQ(index_of(ordered("rq"), "date:lunar"), lunar - 3);
+
+    // 调频关闭时不学，也不用学到的顺序。
+    REQUIRE(user_dictionary::learn_date_time_selection(user_path, "date", default_ids, "date:md_cn", "disabled", 1, 1));
+    REQUIRE_EQ(first("rq"), std::string("date:ymd_dash"));
+    REQUIRE_EQ(first("rq", false), std::string("date:ymd_cn"));
+
+    // 置顶不计数。
+    REQUIRE(user_dictionary::pin_date_time_format(user_path, "date", default_ids, "date:md_cn"));
+    REQUIRE_EQ(first("rq"), std::string("date:md_cn"));
+
+    // 固定位置按格式 ID 摆，压过学到的顺序；取消后回到学到的顺序。
+    const std::string context = user_dictionary::date_time_fixed_position_context("date");
+    REQUIRE(user_dictionary::set_fixed_position(user_path, context, "date:ymd_slash", "date:ymd_slash", 1));
+    items = ordered("rq");
+    REQUIRE_EQ(items[0].pinyin, std::string("date:ymd_slash"));
+    REQUIRE_EQ(items[0].fixed_position, 1);
+    REQUIRE_EQ(items[1].pinyin, std::string("date:md_cn"));
+    REQUIRE_EQ(items.size(), default_ids.size());
+    REQUIRE(user_dictionary::clear_fixed_position(user_path, context, "date:ymd_slash", "date:ymd_slash"));
+    REQUIRE_EQ(first("rq"), std::string("date:md_cn"));
+    items = ordered("rq");
+    REQUIRE_EQ(items[0].fixed_position, 0);
     std::filesystem::remove_all(directory);
 }

@@ -69,7 +69,8 @@ it('reports every mixed candidate switch to its config path', () => {
     ['kaomojiMixedInputToggleBtn', 'general.kaomoji_mixed_input'],
     ['quickPhraseCandidatesToggleBtn', 'utility.quick_phrase_candidates'],
     ['quickPhraseFrequencyToggleBtn', 'utility.quick_phrase_frequency'],
-    ['dateTimeCandidatesToggleBtn', 'utility.date_time_candidates']
+    ['dateTimeCandidatesToggleBtn', 'utility.date_time_candidates'],
+    ['dateTimeMenuToggleBtn', 'utility.date_time_menu']
   ];
   for (const [id, path] of options) {
     toggles.get(id)?.(true);

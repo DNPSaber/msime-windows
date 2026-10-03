@@ -396,6 +396,9 @@ bool SetConfiguredMixedCandidatesEnabled(bool enabled);
 // 全拼/双拼里输入 rq / sj / xq 等唤醒词时，把当前日期、时间、星期混进候选。
 bool GetConfiguredDateTimeCandidatesEnabled();
 bool SetConfiguredDateTimeCandidatesEnabled(bool enabled);
+// 日期时间混入候选时，第三位的「📅日期」入口：选中后候选框换成全部日期格式。依附 date_time_candidates。
+bool GetConfiguredDateTimeMenuEnabled();
+bool SetConfiguredDateTimeMenuEnabled(bool enabled);
 bool GetConfiguredDateTimeModeEnabled();
 bool SetConfiguredDateTimeModeEnabled(bool enabled);
 bool GetConfiguredEmojiModeEnabled();

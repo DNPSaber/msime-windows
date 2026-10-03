@@ -237,31 +237,42 @@ std::string lunar_date(const LocalDateTime &now)
            chinese_number(month) + "月" + chinese_number(remaining + 1) + "日";
 }
 
-std::vector<std::string> date_candidates(const LocalDateTime &now)
+// 一种格式：稳定的 ID 加上按此刻算出的文本。文本为空表示这种格式此刻给不出（农历越出表的范围、
+// 星期天之外的「星期天」），候选里跳过它，ID 仍然留在格式表里，学到的顺序不会因此错位。
+struct DateTimeFormat
+{
+    const char *id;
+    std::string text;
+};
+
+std::vector<DateTimeFormat> date_candidates(const LocalDateTime &now)
 {
     const unsigned weekday = weekday_index(now);
     return {
-        format("%u年%u月%u日", now.year, now.month, now.day),
-        format("%04u-%02u-%02u", now.year, now.month, now.day),
-        format("%04u/%02u/%02u", now.year, now.month, now.day),
-        format("%04u.%02u.%02u", now.year, now.month, now.day),
-        format("%04u%02u%02u", now.year, now.month, now.day),
-        format("%02u年%u月%u日", now.year % 100, now.month, now.day),
-        format("%u月%u日", now.month, now.day),
-        format("%02u-%02u", now.month, now.day),
-        format("%02u%02u", now.month, now.day),
-        format("%u年%u月%u日 ", now.year, now.month, now.day) + kWeekdays[weekday],
-        format("%u月%u日 ", now.month, now.day) + kShortWeekdays[weekday],
-        format("%04u-%02u-%02u ", now.year, now.month, now.day) + kEnglishWeekdays[weekday],
-        format("%04u-%02u-%02u ", now.year, now.month, now.day) + format("%02u:%02u", now.hour, now.minute),
-        format("%u月%u日 ", now.month, now.day) + format("%02u:%02u", now.hour, now.minute),
-        chinese_digits(now.year) + "年" + chinese_number(now.month) + "月" + chinese_number(now.day) + "日",
-        financial_digits(now.year) + "年" + financial_digits(now.month) + "月" + financial_digits(now.day, 2) + "日",
-        lunar_date(now),
+        {"date:ymd_cn", format("%u年%u月%u日", now.year, now.month, now.day)},
+        {"date:ymd_dash", format("%04u-%02u-%02u", now.year, now.month, now.day)},
+        {"date:ymd_slash", format("%04u/%02u/%02u", now.year, now.month, now.day)},
+        {"date:ymd_dot", format("%04u.%02u.%02u", now.year, now.month, now.day)},
+        {"date:ymd_compact", format("%04u%02u%02u", now.year, now.month, now.day)},
+        {"date:yy_md_cn", format("%02u年%u月%u日", now.year % 100, now.month, now.day)},
+        {"date:md_cn", format("%u月%u日", now.month, now.day)},
+        {"date:md_dash", format("%02u-%02u", now.month, now.day)},
+        {"date:md_compact", format("%02u%02u", now.month, now.day)},
+        {"date:ymd_cn_week", format("%u年%u月%u日 ", now.year, now.month, now.day) + kWeekdays[weekday]},
+        {"date:md_cn_week", format("%u月%u日 ", now.month, now.day) + kShortWeekdays[weekday]},
+        {"date:ymd_dash_week", format("%04u-%02u-%02u ", now.year, now.month, now.day) + kEnglishWeekdays[weekday]},
+        {"date:ymd_dash_hm",
+         format("%04u-%02u-%02u ", now.year, now.month, now.day) + format("%02u:%02u", now.hour, now.minute)},
+        {"date:md_cn_hm", format("%u月%u日 ", now.month, now.day) + format("%02u:%02u", now.hour, now.minute)},
+        {"date:ymd_chinese",
+         chinese_digits(now.year) + "年" + chinese_number(now.month) + "月" + chinese_number(now.day) + "日"},
+        {"date:ymd_financial",
+         financial_digits(now.year) + "年" + financial_digits(now.month) + "月" + financial_digits(now.day, 2) + "日"},
+        {"date:lunar", lunar_date(now)},
     };
 }
 
-std::vector<std::string> time_candidates(const LocalDateTime &now)
+std::vector<DateTimeFormat> time_candidates(const LocalDateTime &now)
 {
     const unsigned hour12 = now.hour % 12 == 0 ? 12 : now.hour % 12;
     const std::string period = now.hour < 12 ? "上午" : "下午";
@@ -271,34 +282,45 @@ std::vector<std::string> time_candidates(const LocalDateTime &now)
     const std::string colloquial_minutes =
         now.minute == 0 ? "" : (now.minute == 30 ? "半" : chinese_number(now.minute) + "分");
     return {
-        format("%02u:%02u", now.hour, now.minute),
-        format("%02u:%02u:%02u", now.hour, now.minute, now.second),
-        format("%02u%02u", now.hour, now.minute),
-        format("%02u%02u%02u", now.hour, now.minute, now.second),
-        period + format("%u:%02u", hour12, now.minute),
-        period + format("%u点%02u分", hour12, now.minute),
-        period + colloquial_hour + "点" + colloquial_minutes,
-        format("%u:%02u ", hour12, now.minute) + meridiem_upper,
-        format("%u:%02u", hour12, now.minute) + meridiem_lower,
-        format("%02u:%02u:%02u ", hour12, now.minute, now.second) + meridiem_upper,
-        format("%04u-%02u-%02u ", now.year, now.month, now.day) +
-            format("%02u:%02u:%02u", now.hour, now.minute, now.second),
-        format("%u年%u月%u日 ", now.year, now.month, now.day) + format("%02u:%02u", now.hour, now.minute),
-        format("%u月%u日 ", now.month, now.day) + period + format("%u:%02u", hour12, now.minute),
+        {"time:hm", format("%02u:%02u", now.hour, now.minute)},
+        {"time:hms", format("%02u:%02u:%02u", now.hour, now.minute, now.second)},
+        {"time:hm_compact", format("%02u%02u", now.hour, now.minute)},
+        {"time:hms_compact", format("%02u%02u%02u", now.hour, now.minute, now.second)},
+        {"time:period_hm", period + format("%u:%02u", hour12, now.minute)},
+        {"time:period_hm_cn", period + format("%u点%02u分", hour12, now.minute)},
+        {"time:period_colloquial", period + colloquial_hour + "点" + colloquial_minutes},
+        {"time:hm_meridiem", format("%u:%02u ", hour12, now.minute) + meridiem_upper},
+        {"time:hm_meridiem_lower", format("%u:%02u", hour12, now.minute) + meridiem_lower},
+        {"time:hms_meridiem", format("%02u:%02u:%02u ", hour12, now.minute, now.second) + meridiem_upper},
+        {"time:ymd_hms", format("%04u-%02u-%02u ", now.year, now.month, now.day) +
+                             format("%02u:%02u:%02u", now.hour, now.minute, now.second)},
+        {"time:ymd_cn_hm",
+         format("%u年%u月%u日 ", now.year, now.month, now.day) + format("%02u:%02u", now.hour, now.minute)},
+        {"time:md_cn_period_hm",
+         format("%u月%u日 ", now.month, now.day) + period + format("%u:%02u", hour12, now.minute)},
     };
 }
 
-std::vector<std::string> week_candidates(const LocalDateTime &now)
+std::vector<DateTimeFormat> week_candidates(const LocalDateTime &now)
 {
     const unsigned weekday = weekday_index(now);
-    std::vector<std::string> results = {kWeekdays[weekday]};
-    if (weekday == 0)
-    {
-        results.emplace_back("星期天");
-    }
-    results.emplace_back(kEnglishFullWeekdays[weekday]);
-    results.emplace_back(kEnglishWeekdays[weekday]);
-    return results;
+    return {
+        {"week:cn", kWeekdays[weekday]},
+        {"week:cn_sunday", weekday == 0 ? "星期天" : ""},
+        {"week:en_full", kEnglishFullWeekdays[weekday]},
+        {"week:en", kEnglishWeekdays[weekday]},
+    };
+}
+
+std::vector<DateTimeFormat> formats_for(const std::string &keyword, const LocalDateTime &now)
+{
+    if (is_date_keyword(keyword))
+        return date_candidates(now);
+    if (is_time_keyword(keyword))
+        return time_candidates(now);
+    if (is_week_keyword(keyword))
+        return week_candidates(now);
+    return {};
 }
 } // namespace
 
@@ -333,17 +355,58 @@ std::vector<WordItem> query_date_time(const std::string &keyword, const LocalDat
     }
 
     const LocalDateTime current = now == nullptr ? current_local_date_time() : *now;
-    const std::vector<std::string> candidates =
-        is_date_keyword(keyword) ? date_candidates(current)
-                                 : (is_time_keyword(keyword) ? time_candidates(current) : week_candidates(current));
+    std::vector<DateTimeFormat> candidates = formats_for(keyword, current);
+    candidates.erase(std::remove_if(candidates.begin(), candidates.end(),
+                                    [](const DateTimeFormat &candidate) { return candidate.text.empty(); }),
+                     candidates.end());
     const std::size_t result_count = std::min(candidates.size(), static_cast<std::size_t>(limit));
     std::vector<WordItem> results;
     results.reserve(result_count);
     for (std::size_t index = 0; index < result_count; ++index)
     {
-        results.emplace_back("", candidates[index], static_cast<std::int64_t>(result_count - index),
-                             CandidateSource::Generated);
+        results.emplace_back(candidates[index].id, std::move(candidates[index].text),
+                             static_cast<std::int64_t>(result_count - index), CandidateSource::Generated);
     }
     return results;
+}
+
+std::string date_time_category(const std::string &keyword)
+{
+    if (is_date_keyword(keyword))
+        return "date";
+    if (is_time_keyword(keyword))
+        return "time";
+    if (is_week_keyword(keyword))
+        return "week";
+    return {};
+}
+
+std::vector<std::string> date_time_format_ids(const std::string &keyword)
+{
+    std::vector<std::string> ids;
+    for (const auto &candidate : formats_for(keyword, LocalDateTime{2000, 1, 1, 6, 0, 0, 0}))
+        ids.emplace_back(candidate.id);
+    return ids;
+}
+
+WordItem date_time_menu_item(const std::string &keyword)
+{
+    const std::string category = date_time_category(keyword);
+    // 📅 / 🕒：和候选里的日期文本区分开，一眼看得出这是展开更多格式的入口，不是要上屏的字。
+    const char *label = category == "time"   ? "\xF0\x9F\x95\x92时间"
+                        : category == "week" ? "\xF0\x9F\x93\x85星期"
+                                             : "\xF0\x9F\x93\x85日期";
+    return WordItem(kDateTimeMenuPrefix + keyword, label, 0, CandidateSource::DateTime);
+}
+
+bool is_date_time_menu_item(const WordItem &item)
+{
+    return item.source == CandidateSource::DateTime && item.pinyin.rfind(kDateTimeMenuPrefix, 0) == 0;
+}
+
+std::string date_time_menu_keyword(const WordItem &item)
+{
+    return is_date_time_menu_item(item) ? item.pinyin.substr(std::char_traits<char>::length(kDateTimeMenuPrefix))
+                                        : std::string{};
 }
 } // namespace metasequoia::local_modes

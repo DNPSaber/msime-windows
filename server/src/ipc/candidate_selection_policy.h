@@ -1,6 +1,7 @@
 #pragma once
 
 #include "engine/core/word_item.h"
+#include "engine/local_modes/date_time_query.h"
 
 #include <algorithm>
 #include <optional>
@@ -139,7 +140,7 @@ inline std::optional<size_t> SlottedEnglishIndex(const std::vector<WordItem> &it
 //   cloud only:       Chinese, cloud, English, emoji, kaomoji
 //   base:             Chinese, English, emoji, kaomoji
 // 日期时间只在 rq / sj / xq 这类唤醒词上出现，用户打它就是要日期，所以它排在所有异步候选前面，
-// 紧跟首个中文候选：Chinese, date/time, cloud, ...
+// 紧跟首个中文候选，展开全部格式的入口紧跟在它后面：Chinese, date/time, 📅日期, cloud, ...
 // The learned English slot (EnglishPlacement) moves the English candidate away
 // from that default afterwards, and explicit English ranking choices are
 // reapplied last.
@@ -151,6 +152,7 @@ inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t lo
     std::vector<WordItem> emoji_candidates;
     std::vector<WordItem> kaomoji_candidates;
     std::vector<WordItem> date_time_candidates;
+    std::optional<WordItem> date_time_menu;
     std::optional<WordItem> cloud_candidate;
     std::optional<WordItem> ai_candidate;
     local_candidates.reserve(items.size());
@@ -177,7 +179,10 @@ inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t lo
             kaomoji_candidates.push_back(std::move(item));
             break;
         case CandidateSource::DateTime:
-            date_time_candidates.push_back(std::move(item));
+            if (!metasequoia::local_modes::is_date_time_menu_item(item))
+                date_time_candidates.push_back(std::move(item));
+            else if (!date_time_menu)
+                date_time_menu = std::move(item);
             break;
         default:
             local_candidates.push_back(std::move(item));
@@ -209,6 +214,8 @@ inline void NormalizeMixedCandidateOrder(std::vector<WordItem> &items, size_t lo
     {
         insert_at(slot++, std::move(date_time_candidates.front()));
         date_time_candidates.erase(date_time_candidates.begin());
+        if (date_time_menu)
+            insert_at(slot++, std::move(*date_time_menu));
     }
     if (cloud_candidate)
     {

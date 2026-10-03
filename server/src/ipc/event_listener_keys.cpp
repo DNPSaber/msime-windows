@@ -18,6 +18,7 @@
 #include "utils/ime_utils.h"
 #include "config/ime_config.h"
 #include "session/session_factory.h"
+#include "mixed/date_time_candidates.h"
 #include "log/candidate_diag_log.h"
 
 using namespace event_listener_detail;
@@ -465,16 +466,18 @@ struct ScopedServerKeyLatency
     }
 };
 
-// 把候选框换回 Ctrl+Enter 之前的那一屏。译文页期间输入串一个字都没动，session 里的候选
-// 还是原来那批，所以这里直接把存下来的 items / 页码 / 高亮位放回去即可；随后这颗按键继续
-// 走它本来的流程，就像译文页从来没出现过一样。
-void ExitTranslationCandidateMode()
+// 把候选框换回 Ctrl+Enter 或选中「📅日期」之前的那一屏。子页期间输入串一个字都没动，session
+// 里的候选还是原来那批，所以这里直接把存下来的 items / 页码 / 高亮位放回去即可；随后这颗按键
+// 继续走它本来的流程，就像子页从来没出现过一样。
+void ExitCandidateSubPage()
 {
-    if (!g_translation_candidates_active)
+    if (!IsCandidateSubPageActive())
     {
         return;
     }
     g_translation_candidates_active = false;
+    g_date_time_page_active = false;
+    g_date_time_page_keyword.clear();
     auto &ui = Global::candidate_ui;
     ui.set_items(std::move(g_translation_saved_items));
     g_translation_saved_items.clear();
@@ -485,6 +488,48 @@ void ExitTranslationCandidateMode()
     RefreshCandidatePageUi(false);
 }
 
+// 混输里的「📅日期」入口：把候选框换成这组的全部格式（顺序与 Shift+T 模式同一份），空格/数字键
+// 照常选一条上屏，其它键先换回原来那一屏（见 HandleImeKey）。
+bool EnterDateTimeCandidatePage(const std::string &keyword)
+{
+    if (IsCandidateSubPageActive())
+    {
+        return false;
+    }
+    auto items = OrderedDateTimeCandidates(keyword);
+    if (items.empty())
+    {
+        return false;
+    }
+    auto &ui = Global::candidate_ui;
+    g_translation_saved_items = ui.items;
+    g_translation_saved_page_index = ui.page_index;
+    g_translation_saved_selected_index = ui.selected_index_in_page;
+    ui.set_items(std::move(items));
+    g_date_time_page_active = true;
+    g_date_time_page_keyword = keyword;
+    RefreshCandidatePageUi(true);
+    return true;
+}
+
+void RebuildDateTimeCandidatePage()
+{
+    if (!g_date_time_page_active)
+    {
+        return;
+    }
+    auto &ui = Global::candidate_ui;
+    const int page_index = ui.page_index;
+    const int selected_index = ui.selected_index_in_page;
+    ui.set_items(OrderedDateTimeCandidates(g_date_time_page_keyword));
+    if (page_index > 0 && page_index * ui.page_size < static_cast<int>(ui.items.size()))
+    {
+        ui.page_index = page_index;
+    }
+    ui.selected_index_in_page = selected_index;
+    RefreshCandidatePageUi(true);
+}
+
 // Ctrl+Enter：上屏高亮候选右边的那条译文（副候选）。只有一条译义就直接上屏；有多条时把
 // 候选框整个换成这几条译义，空格/数字键照常选一条上屏（见 ProcessSelectionKey 的译文分支）。
 void HandleTranslationCommitKey(uint64_t client_id, uint64_t activation_epoch, uint64_t request_id)
@@ -493,7 +538,7 @@ void HandleTranslationCommitKey(uint64_t client_id, uint64_t activation_epoch, u
     // 而且这条回复既不上屏也不给 wch 补标点。
     Global::MsgTypeToTsf = Global::DataFromServerMsgType::NavigationIgnored;
     const bool japanese = g_inputSession && g_inputSession->current_scheme_type() == SchemeType::JapaneseRomaji;
-    if (g_translation_candidates_active || IsUiLessMode() || japanese || !GetConfiguredCandidateTranslationsEnabled() ||
+    if (IsCandidateSubPageActive() || IsUiLessMode() || japanese || !GetConfiguredCandidateTranslationsEnabled() ||
         Global::candidate_ui.items.empty())
     {
         SendCurrentDataToClient(client_id, activation_epoch, request_id);
@@ -712,17 +757,16 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
         HandleTranslationCommitKey(client_id, activation_epoch, request_id);
         return;
     }
-    // 译文页只认选词和翻页/移动高亮。其它任何键都先把候选框换回原来那一屏，然后照常处理，
-    // 所以退格、字母、回车、标点在译文页上的表现和没按过 Ctrl+Enter 时完全一致。
-    if (g_translation_candidates_active)
+    // 译文页、日期页只认选词和翻页/移动高亮。其它任何键都先把候选框换回原来那一屏，然后照常处理，
+    // 所以退格、字母、回车、标点在子页上的表现和没打开过它时完全一致。
+    if (IsCandidateSubPageActive())
     {
         // Shift 放行是给 Shift+Tab 上一页留的；Ctrl/Alt 组合一律退出。
-        const bool stays_on_translation_page =
-            (Global::ModifiersDown & 0b00000110u) == 0 &&
-            (IsSelectionKey(Global::Keycode) || IsCandidateNavigationKey(Global::Keycode));
-        if (!stays_on_translation_page)
+        const bool stays_on_sub_page = (Global::ModifiersDown & 0b00000110u) == 0 &&
+                                       (IsSelectionKey(Global::Keycode) || IsCandidateNavigationKey(Global::Keycode));
+        if (!stays_on_sub_page)
         {
-            ExitTranslationCandidateMode();
+            ExitCandidateSubPage();
         }
     }
 
@@ -847,7 +891,13 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
             ui.selected_text = FanyImeIpc::HighlightedCandidateText(ui.page_words, ui.selected_index_in_page);
 
             WordItem highlighted_item;
-            if (word_character_direction != 0 && ResolveCandidateItem(ui.selected_index_in_page + 1, highlighted_item))
+            const bool highlighted_resolved = ResolveCandidateItem(ui.selected_index_in_page + 1, highlighted_item);
+            if (highlighted_resolved && metasequoia::local_modes::is_date_time_menu_item(highlighted_item))
+            {
+                // 「📅日期」入口不是要上屏的字：高亮停在它上面时，标点带出本页首个候选。
+                ui.selected_text = FanyImeIpc::HighlightedCandidateText(ui.page_words, 0);
+            }
+            else if (word_character_direction != 0 && highlighted_resolved)
             {
                 const auto edge = word_character_direction < 0 ? FanyImeIpc::HanCharacterEdge::First
                                                                : FanyImeIpc::HanCharacterEdge::Last;

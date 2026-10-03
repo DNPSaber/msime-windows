@@ -932,6 +932,14 @@ static void ApplyUtilitySubkey(const std::string &path, const json::object &data
             PostSettingsConfig();
         }
     }
+    if (path == "utility.date_time_menu")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredDateTimeMenuEnabled(value))
+        {
+            PostSettingsConfig();
+        }
+    }
     if (path == "utility.date_time_mode")
     {
         const bool value = json::value_to<bool>(data.at("value"));
@@ -1625,6 +1633,7 @@ void PostSettingsConfig()
             {"quick_phrase_frequency", GetConfiguredQuickPhraseFrequencyEnabled()},
             {"mixed_candidates", GetConfiguredMixedCandidatesEnabled()},
             {"date_time_candidates", GetConfiguredDateTimeCandidatesEnabled()},
+            {"date_time_menu", GetConfiguredDateTimeMenuEnabled()},
             {"date_time_mode", GetConfiguredDateTimeModeEnabled()},
             {"emoji_mode", GetConfiguredEmojiModeEnabled()},
             {"kaomoji_mode", GetConfiguredKaomojiModeEnabled()},

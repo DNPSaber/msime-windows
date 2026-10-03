@@ -138,6 +138,7 @@ bool g_quick_phrase_candidates_enabled = false;
 bool g_quick_phrase_frequency_enabled = true;
 bool g_mixed_candidates_enabled = true;
 bool g_date_time_candidates_enabled = false;
+bool g_date_time_menu_enabled = true;
 bool g_date_time_mode_enabled = true;
 bool g_emoji_mode_enabled = true;
 bool g_kaomoji_mode_enabled = true;
@@ -517,6 +518,7 @@ bool LoadImeConfig()
         g_quick_phrase_frequency_enabled = tbl["utility"]["quick_phrase_frequency"].value_or(true);
         g_mixed_candidates_enabled = tbl["utility"]["mixed_candidates"].value_or(true);
         g_date_time_candidates_enabled = tbl["utility"]["date_time_candidates"].value_or(false);
+        g_date_time_menu_enabled = tbl["utility"]["date_time_menu"].value_or(true);
         g_date_time_mode_enabled = tbl["utility"]["date_time_mode"].value_or(true);
         g_emoji_mode_enabled = tbl["utility"]["emoji_mode"].value_or(true);
         g_kaomoji_mode_enabled = tbl["utility"]["kaomoji_mode"].value_or(true);

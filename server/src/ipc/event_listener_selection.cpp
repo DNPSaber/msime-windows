@@ -12,6 +12,7 @@
 #include "utils/common_utils.h"
 #include "global/globals.h"
 #include "config/ime_config.h"
+#include "engine/local_modes/date_time_query.h"
 #include "engine/local_modes/quick_phrase_query.h"
 #include "log/candidate_diag_log.h"
 
@@ -222,6 +223,16 @@ void ProcessSelectionKey(UINT keycode, uint64_t client_id, uint64_t activation_e
                                     index >= 0 && static_cast<size_t>(index) < Global::candidate_ui.page_words.size() &&
                                     ResolveCandidateItem(index + 1, curWordItem);
 
+    if (is_valid_selection && metasequoia::local_modes::is_date_time_menu_item(curWordItem))
+    {
+        // 「📅日期」入口不上屏：候选框换成整组日期格式，组合原样留着。回 OutofRange，TSF 收到它
+        // 什么都不做（数字键、空格、鼠标点选三条路径都是），候选框由这边刷新。
+        EnterDateTimeCandidatePage(metasequoia::local_modes::date_time_menu_keyword(curWordItem));
+        Global::candidate_ui.selected_text = L"OutofRange";
+        Global::MsgTypeToTsf = Global::DataFromServerMsgType::OutofRange;
+        return;
+    }
+
     if (is_valid_selection)
     {
         // Capture ranking keys before reset_state()/composition advance clears the
@@ -287,6 +298,12 @@ void ProcessSelectionKey(UINT keycode, uint64_t client_id, uint64_t activation_e
             {
                 EnqueueAdjustCandidateRankingTask(/*english=*/true, /*wubi=*/false, EnglishRankingContextKey(),
                                                   curWordItem.pinyin, curWordItem.word, client_id, activation_epoch);
+            }
+            // 日期时间按格式调频：Shift+T 模式、日期页和混输选中哪种格式，都往同一份顺序里记。
+            // 已经排在首位的格式由引擎侧直接跳过，所以这里不看 isNeedUpdateWeight。
+            if (curWordItem.source == CandidateSource::DateTime)
+            {
+                EnqueueLearnDateTimeOrderTask(curWordItem.pinyin, client_id, activation_epoch);
             }
             UpdateCloudInput("");
             UpdateEnglishInput("");
