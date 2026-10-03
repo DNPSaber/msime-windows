@@ -220,22 +220,34 @@ HRESULT CMetasequoiaIME::_HandleEscapeCancel(TfEditCookie ec, _In_ ITfContext *p
     return _HandleCancel(ec, pContext);
 }
 
+// Drops the selected-word prefix and the toggle fallback spelling. Exits that
+// end the composition without going through _HandleComplete / _HandleCancel
+// (a host-forced termination) must call this, or the next mode toggle would
+// commit the stale word and spelling at the new caret.
+void CMetasequoiaIME::_ClearCreatingWordState()
+{
+    g_toggleImeFallbackBuffer.clear();
+    GlobalIme::word_for_creating_word.clear();
+    GlobalIme::pending_create_word_preedit.clear();
+}
+
 HRESULT CMetasequoiaIME::_HandleToogleIMEMode(TfEditCookie ec, _In_ ITfContext *pContext)
 {
     CStringRange keyStrokebuffer = _pCompositionProcessorEngine->GetKeystrokeBuffer();
-    std::wstring commitString;
+    std::wstring commitString = GlobalIme::word_for_creating_word;
 
     if (keyStrokebuffer.GetLength())
     {
-        commitString.assign(keyStrokebuffer.Get(), keyStrokebuffer.GetLength());
+        commitString.append(keyStrokebuffer.Get(), keyStrokebuffer.GetLength());
     }
     else if (!g_toggleImeFallbackBuffer.empty())
     {
-        commitString = g_toggleImeFallbackBuffer;
+        commitString += g_toggleImeFallbackBuffer;
     }
 
-    // Claim the reading string before ending composition so a second toggle
-    // edit session cannot commit the same text again.
+    // Claim the selected word and reading string before ending composition so a
+    // second toggle edit session cannot commit the same text again
+    GlobalIme::word_for_creating_word.clear();
     _pCompositionProcessorEngine->PurgeVirtualKey();
     g_toggleImeFallbackBuffer.clear();
 
@@ -917,6 +929,7 @@ HRESULT CMetasequoiaIME::_ApplyCreatingWordPayload(TfEditCookie ec, _In_ ITfCont
                                                    const CreatingWordPayload &payload)
 {
     GlobalIme::word_for_creating_word = payload.word;
+    g_toggleImeFallbackBuffer = payload.remaining_raw;
     GlobalIme::pending_create_word_preedit.clear();
     if (GlobalSettings::getTsfPreeditStyle() == GlobalSettings::TsfPreeditStyle::Pinyin)
     {
