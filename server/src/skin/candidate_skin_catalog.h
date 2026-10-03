@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -56,6 +57,8 @@ struct Package
     std::string version;
     std::string author;
     std::string description;
+    // 总是内置皮肤 ID。清单的 base 也可以写跨平台客户端的全局主题（system、shuishan、light、paper、night、ink），Load
+    // 会把它换算成 fluent，并按主题补齐配色。
     std::string base = "fluent";
     std::vector<std::string> layouts;
     std::vector<std::string> themes;
@@ -111,6 +114,8 @@ struct DefaultSkin
 
 // 默认皮肤清单所在的子目录名，Scan 跳过它，外部皮肤也不能占用这个 ID。
 inline constexpr const char *kDefaultSkinsFolder = "default";
+// skin.toml 的大小上限，与跨平台客户端一致。
+inline constexpr std::uintmax_t kMaxManifestBytes = 65536;
 // 默认皮肤清单缺失或没写 page_arrows 时的取值，与出厂清单一致：翻页箭头默认关闭。
 inline constexpr bool kDefaultPageArrows = false;
 
