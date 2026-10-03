@@ -67,6 +67,14 @@ std::optional<std::vector<std::size_t>> RescoreWorker::order_for(const SentenceM
         {
             return found->second;
         }
+        const auto active = active_keys_.find(&model);
+        if (active != active_keys_.end() && active->second == key)
+        {
+            // 正在算的就是这一批，算完自会进表并回调。这也是该模型最新的请求，排在它后面的旧待办
+            // 已经没人要了（用户打出去又退了回来），一并丢掉。
+            pending_.erase(&model);
+            return std::nullopt;
+        }
         Job job;
         job.model = &model;
         job.key = std::move(key);
@@ -124,7 +132,7 @@ void RescoreWorker::run()
                 std::unique_lock<std::mutex> lock(mutex_);
                 wake_.wait(lock, [this] {
                     return stopping_ || std::any_of(pending_.begin(), pending_.end(), [this](const auto &item) {
-                               return active_models_.find(item.first) == active_models_.end();
+                               return active_keys_.find(item.first) == active_keys_.end();
                            });
                 });
                 if (stopping_)
@@ -132,14 +140,14 @@ void RescoreWorker::run()
                     return;
                 }
                 auto next = std::find_if(pending_.begin(), pending_.end(), [this](const auto &item) {
-                    return active_models_.find(item.first) == active_models_.end();
+                    return active_keys_.find(item.first) == active_keys_.end();
                 });
                 job = std::move(next->second);
                 pending_.erase(next);
-                // insert 是这三行里唯一可抛的（set 节点要分配，会抛 bad_alloc），必须走在凭据前
-                // 面：它一抛，busy_model 还是空，整轮跳过收尾，busy_workers_ 压根没加过。反过来
-                // 先置凭据，一次分配失败就会让收尾去减一个没加过的计数，shutdown() 等不到归零。
-                active_models_.insert(job.model);
+                // emplace 是这三行里唯一可抛的（map 节点和键的副本要分配，会抛 bad_alloc），必须走
+                // 在凭据前面：它一抛，busy_model 还是空，整轮跳过收尾，busy_workers_ 压根没加过。反
+                // 过来先置凭据，一次分配失败就会让收尾去减一个没加过的计数，shutdown() 等不到归零。
+                active_keys_.emplace(job.model, job.key);
                 busy_model = job.model;
                 ++busy_workers_;
             }
@@ -177,7 +185,7 @@ void RescoreWorker::run()
         if (busy_model != nullptr)
         {
             std::lock_guard<std::mutex> lock(mutex_);
-            active_models_.erase(busy_model);
+            active_keys_.erase(busy_model);
             --busy_workers_;
         }
         wake_.notify_all();

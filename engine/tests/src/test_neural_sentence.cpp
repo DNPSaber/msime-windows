@@ -28,6 +28,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace
@@ -340,6 +341,72 @@ int run_test()
                "the desktop result should remain in its own cache entry");
         expect(worker.order_for(*model, "我今天想去", sentences, flat, {}).has_value(),
                "the keyboard result should remain in its own cache entry");
+        worker.set_ready_callback(nullptr);
+        worker.clear();
+    }
+
+    // ---- 正在算的那一批，重查时不能再排一份 ----
+    //
+    // 回调触发的重查会问到「刚排上、已被后台取走、还没算完」的这一批：表里没有、待办位空着。用户连
+    // 续打字时这正是常态，不拦就是每个回调白算一次。先用第一批的回调卡住执行槽，让目标批次排在后
+    // 面；放开后它一进入计算就去重查，之后只能再等到它自己那一次回调。
+    {
+        const std::string context = "今天下午的会议讨论了输入法的排序问题，大家觉得整句转换还可以再准一些，";
+        const std::vector<std::string> blocker = {"伤害", "上海"};
+        const std::vector<std::string> target = {"我们明天再讨论一下", "我们明天在讨论一下", "我们名天再讨论一下",
+                                                 "我门明天再讨论一下", "我们明天再讨论以下", "我们明天再讨论一夏",
+                                                 "我们明天再讨论一吓", "我们明天再讨论议下", "我们明天在讨论以下",
+                                                 "我们名天在讨论一下", "我们明天再讨论一霞", "我们明天再讨论一侠"};
+        const std::vector<double> blocker_scores(blocker.size(), -5.0);
+        const std::vector<double> target_scores(target.size(), -5.0);
+        std::mutex mutex;
+        std::condition_variable changed;
+        int fired = 0;
+        bool released = false;
+        neural::RescoreWorker &worker = neural::RescoreWorker::instance();
+        worker.clear();
+        worker.set_ready_callback([&] {
+            std::unique_lock<std::mutex> lock(mutex);
+            ++fired;
+            changed.notify_all();
+            changed.wait(lock, [&] { return released; });
+        });
+
+        expect(!worker.order_for(*model, "门卫", blocker, blocker_scores, {}).has_value(),
+               "the blocking batch should be enqueued");
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            expect(changed.wait_for(lock, std::chrono::seconds(30), [&] { return fired >= 1; }),
+                   "the blocking batch should reach its callback");
+        }
+        // 执行槽还被第一批的回调占着，这一批只能排队。
+        const auto request_started = std::chrono::steady_clock::now();
+        expect(!worker.order_for(*model, context, target, target_scores, {}).has_value(),
+               "the target batch should be enqueued behind the blocker");
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            released = true;
+            changed.notify_all();
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        const bool requery_missed = !worker.order_for(*model, context, target, target_scores, {}).has_value();
+        {
+            std::unique_lock<std::mutex> lock(mutex);
+            expect(changed.wait_for(lock, std::chrono::seconds(30), [&] { return fired >= 2; }),
+                   "the target batch should finish and call back");
+        }
+        const auto target_ms =
+            std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - request_started).count();
+        if (requery_missed)
+        {
+            // 若重查又排了一份，它会在大约一次打分的时间后回调。多等几倍，确认没有第三次。
+            const auto extra = std::chrono::milliseconds(static_cast<long long>(target_ms * 3) + 50);
+            std::unique_lock<std::mutex> lock(mutex);
+            expect(!changed.wait_for(lock, extra, [&] { return fired >= 3; }),
+                   "a requery while the batch is being scored must not enqueue it again");
+        }
+        expect(worker.order_for(*model, context, target, target_scores, {}).has_value(),
+               "the in-flight batch should land in the result table");
         worker.set_ready_callback(nullptr);
         worker.clear();
     }

@@ -9,6 +9,10 @@
 // 「每个模型最新的赢」：用户还在打字时，同一模型前几次请求的结果已经没人要，所以新请求直接盖掉
 // 该模型的旧待办。不同模型各有一个待办位和独立执行槽，速度优先不会排在效果优先后面等待。
 //
+// 正在算的那一批不再排第二份：回调一路走到重查，重查又会调 order_for，而前一批收尾到这次重查之间，
+// 后台线程可能已经取走了刚排上的这一批。表里还没结果、待办位也空着，不拦的话同一批会再算一遍——
+// 用户连续打字时每个回调都可能白算一次。
+//
 // 结果表按 (模型, 前文, 候选列表) 做键，不含静态分：同一批候选的静态分来自同一次词格解码，
 // 必然相同。模型必须入键，否则两个模型会误读彼此的排序结果。
 
@@ -21,7 +25,6 @@
 #include <map>
 #include <mutex>
 #include <optional>
-#include <set>
 #include <string>
 #include <thread>
 #include <vector>
@@ -83,7 +86,7 @@ class RescoreWorker
     std::size_t busy_workers_ = 0;
     bool stopping_ = false;
     std::map<const SentenceModel *, Job> pending_;
-    std::set<const SentenceModel *> active_models_;
+    std::map<const SentenceModel *, std::string> active_keys_; // 每个模型正在算的那一批的键
     std::map<std::string, std::vector<std::size_t>> done_;
     Ready ready_;
 };
