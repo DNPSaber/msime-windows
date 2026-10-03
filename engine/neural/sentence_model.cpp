@@ -849,7 +849,22 @@ std::vector<float> SentenceModel::target_log_probs(const std::vector<float> &hid
 {
     const std::size_t n_embd = config_.n_embd;
     const std::size_t vocab = config_.vocab;
-    std::vector<float> logits(rows * vocab, 0.0f);
+    std::vector<std::size_t> active_rows;
+    active_rows.reserve(rows);
+    for (std::size_t row = 0; row < rows; ++row)
+    {
+        if (targets[row] != kNoTarget)
+        {
+            active_rows.push_back(row);
+        }
+    }
+    std::vector<float> out(rows, 0.0f);
+    if (active_rows.empty())
+    {
+        return out;
+    }
+
+    std::vector<float> logits(active_rows.size() * vocab, 0.0f);
     // Output-major over the vocabulary, and widening each row's int8 once, for the same reasons as
     // linear(): the tied embedding table is the single largest matrix in the model.
     std::vector<float> scratch(token_.quantized ? n_embd : 0, 0.0f);
@@ -871,20 +886,17 @@ std::vector<float> SentenceModel::target_log_probs(const std::vector<float> &hid
         {
             weights = &token_.floats[id * n_embd];
         }
-        for (std::size_t row = 0; row < rows; ++row)
+        for (std::size_t slot = 0; slot < active_rows.size(); ++slot)
         {
-            logits[row * vocab + id] = dot(&hidden[row * n_embd], weights, n_embd) * scale;
+            const std::size_t row = active_rows[slot];
+            logits[slot * vocab + id] = dot(&hidden[row * n_embd], weights, n_embd) * scale;
         }
     }
 
-    std::vector<float> out(rows, 0.0f);
-    for (std::size_t row = 0; row < rows; ++row)
+    for (std::size_t slot = 0; slot < active_rows.size(); ++slot)
     {
-        if (targets[row] == kNoTarget)
-        {
-            continue;
-        }
-        const float *source = &logits[row * vocab];
+        const std::size_t row = active_rows[slot];
+        const float *source = &logits[slot * vocab];
         float highest = -std::numeric_limits<float>::infinity();
         for (std::size_t id = 0; id < vocab; ++id)
         {
@@ -953,12 +965,17 @@ std::vector<double> SentenceModel::score_sentences(const std::string &context,
         longest = std::max(longest, ids.size());
         tails.push_back(std::move(ids));
     }
-    const std::size_t width = longest + 1; // the shared leading token, then the longest candidate
+    if (longest == 0)
+    {
+        return std::vector<double>(texts.size(), 0.0);
+    }
+    // The last candidate token is a target only. Its hidden state predicts no scored character.
+    const std::size_t width = longest;
 
     const std::uint32_t last = full.back();
     std::vector<std::uint32_t> head(full.begin(), full.end() - 1);
-    // Head plus the widest row must fit the position table; the oldest context goes first.
-    const std::size_t room = limit > width ? limit - width : 0;
+    // Keep the old context limit so removing the unused final token does not change scores.
+    const std::size_t room = limit > longest + 1 ? limit - (longest + 1) : 0;
     if (head.size() > room)
     {
         head.erase(head.begin(), head.begin() + static_cast<std::ptrdiff_t>(head.size() - room));
@@ -973,9 +990,12 @@ std::vector<double> SentenceModel::score_sentences(const std::string &context,
         flat[row * width] = last;
         for (std::size_t i = 0; i < tails[row].size(); ++i)
         {
-            flat[row * width + 1 + i] = tails[row][i];
             // Position i predicts token i+1, so the leading token's slot carries the first character.
             targets[row * width + i] = tails[row][i];
+            if (i + 1 < tails[row].size())
+            {
+                flat[row * width + 1 + i] = tails[row][i];
+            }
         }
     }
 
