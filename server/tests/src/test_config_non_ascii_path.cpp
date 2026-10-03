@@ -204,6 +204,52 @@ TEST_CASE(ai_provider_configuration_round_trips_without_mixing_credentials)
     fs::remove_all(unique_root, ec);
 }
 
+TEST_CASE(ai_provider_default_values_are_not_pinned_into_slots)
+{
+    namespace fs = std::filesystem;
+    const fs::path unique_root = MakeProfileRoot() / L"ai-provider-defaults";
+    const fs::path data_dir = unique_root / L"metasequoiaime";
+    std::error_code ec;
+    fs::remove_all(unique_root, ec);
+    SeedTemplate(data_dir);
+    WriteText(data_dir / L"config.toml", "[ai_assistant]\nprovider = \"openai\"\nendpoint = \"\"\n"
+                                         "model = \"custom-openai\"\n");
+    {
+        ScopedConfigLocation location(unique_root);
+        const AiAssistantConfig defaults;
+        const auto stored = [&](const char *key) {
+            return toml::parse(ReadText(data_dir / L"config.toml"))["ai_assistant"][key].value_or(std::string("?"));
+        };
+        InitImeConfig();
+        // 空的旧版 endpoint 表示默认值，不能把请求地址读成空串。
+        REQUIRE_EQ(GetConfiguredAiAssistant().endpoint, defaults.endpoints.at("openai"));
+        REQUIRE_EQ(GetConfiguredAiAssistant().model, std::string("custom-openai"));
+
+        // 来回切换：没改过的默认值写成空串，改过的值照常保留。
+        REQUIRE(SetConfiguredAiAssistantString("provider", "deepseek"));
+        REQUIRE_EQ(stored("endpoint_openai"), std::string());
+        REQUIRE_EQ(stored("model_openai"), std::string("custom-openai"));
+        REQUIRE_EQ(stored("endpoint"), std::string());
+        REQUIRE_EQ(stored("model"), std::string());
+        REQUIRE_EQ(GetConfiguredAiAssistant().endpoint, defaults.endpoints.at("deepseek"));
+        REQUIRE(SetConfiguredAiAssistantString("provider", "openai"));
+        REQUIRE_EQ(stored("endpoint_deepseek"), std::string());
+        REQUIRE_EQ(stored("model_deepseek"), std::string());
+        REQUIRE_EQ(stored("model"), std::string("custom-openai"));
+
+        // 手动填回默认值或清空，都按默认值处理并且不落盘。
+        REQUIRE(SetConfiguredAiAssistantString("model", defaults.models.at("openai")));
+        REQUIRE_EQ(stored("model_openai"), std::string());
+        REQUIRE(SetConfiguredAiAssistantString("endpoint", ""));
+        REQUIRE_EQ(GetConfiguredAiAssistant().endpoint, defaults.endpoints.at("openai"));
+        REQUIRE_EQ(GetConfiguredAiAssistant().endpoints.at("openai"), defaults.endpoints.at("openai"));
+        InitImeConfig();
+        REQUIRE_EQ(GetConfiguredAiAssistant().endpoint, defaults.endpoints.at("openai"));
+        REQUIRE_EQ(GetConfiguredAiAssistant().model, defaults.models.at("openai"));
+    }
+    fs::remove_all(unique_root, ec);
+}
+
 TEST_CASE(config_recovers_unparseable_file_and_saves)
 {
     namespace fs = std::filesystem;

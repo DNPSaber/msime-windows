@@ -364,6 +364,27 @@ bool SetConfiguredNetworkString(const std::string &key, const std::string &value
     return true;
 }
 
+// endpoint/model 落盘时只记用户改过的值：留空或等于提供商默认值都写空串，读回时再补默认值，
+// 这样以后调整默认值，没改过的用户能跟着更新，而不是被切换提供商时顺手写进去的旧默认值钉住。
+static std::string AiAssistantDefaultValue(const std::string &key, const std::string &provider)
+{
+    static const AiAssistantConfig defaults;
+    const auto &slots = key == "endpoint" ? defaults.endpoints : defaults.models;
+    const auto found = slots.find(provider);
+    return found != slots.end() ? found->second : std::string();
+}
+
+static std::string AiAssistantStoredValue(const std::string &key, const std::string &provider, const std::string &value)
+{
+    return value == AiAssistantDefaultValue(key, provider) ? std::string() : value;
+}
+
+static std::string AiAssistantEffectiveValue(const std::string &key, const std::string &provider,
+                                             const std::string &value)
+{
+    return value.empty() ? AiAssistantDefaultValue(key, provider) : value;
+}
+
 bool SetConfiguredAiAssistantString(const std::string &key, const std::string &value)
 {
     if (key == "prompt_id" && value != "custom_1" && value != "custom_2" && value != "custom_3")
@@ -373,17 +394,21 @@ bool SetConfiguredAiAssistantString(const std::string &key, const std::string &v
         const std::string provider = VoiceInput::NormalizeProviderId(value);
         if (AiAssistantTokenSlotKey(provider).empty())
             return false;
+        const std::string previous = g_ai_assistant.provider;
         const std::string token = g_ai_assistant.tokens[provider];
-        const std::string endpoint = g_ai_assistant.endpoints[provider];
-        const std::string model = g_ai_assistant.models[provider];
+        const std::string endpoint =
+            AiAssistantEffectiveValue("endpoint", provider, g_ai_assistant.endpoints[provider]);
+        const std::string model = AiAssistantEffectiveValue("model", provider, g_ai_assistant.models[provider]);
+        const auto stored = [](const std::string &field, const std::string &id, const std::string &text) {
+            return EscapeTomlBasicString(AiAssistantStoredValue(field, id, text));
+        };
         if (!WriteConfiguredValues(
-                {{"ai_assistant", "endpoint_" + g_ai_assistant.provider,
-                  EscapeTomlBasicString(g_ai_assistant.endpoint)},
-                 {"ai_assistant", "model_" + g_ai_assistant.provider, EscapeTomlBasicString(g_ai_assistant.model)},
+                {{"ai_assistant", "endpoint_" + previous, stored("endpoint", previous, g_ai_assistant.endpoint)},
+                 {"ai_assistant", "model_" + previous, stored("model", previous, g_ai_assistant.model)},
                  {"ai_assistant", "provider", EscapeTomlBasicString(provider)},
                  {"ai_assistant", "token", EscapeTomlBasicString(token)},
-                 {"ai_assistant", "endpoint", EscapeTomlBasicString(endpoint)},
-                 {"ai_assistant", "model", EscapeTomlBasicString(model)}}))
+                 {"ai_assistant", "endpoint", stored("endpoint", provider, endpoint)},
+                 {"ai_assistant", "model", stored("model", provider, model)}}))
             return false;
         g_ai_assistant.provider = provider;
         g_ai_assistant.token = token;
@@ -393,13 +418,15 @@ bool SetConfiguredAiAssistantString(const std::string &key, const std::string &v
     }
     if (key == "endpoint" || key == "model")
     {
-        const std::string escaped = EscapeTomlBasicString(value);
+        const std::string effective = AiAssistantEffectiveValue(key, g_ai_assistant.provider, value);
+        const std::string escaped =
+            EscapeTomlBasicString(AiAssistantStoredValue(key, g_ai_assistant.provider, effective));
         if (!WriteConfiguredValues(
                 {{"ai_assistant", key, escaped}, {"ai_assistant", key + "_" + g_ai_assistant.provider, escaped}}))
             return false;
         auto &slots = key == "endpoint" ? g_ai_assistant.endpoints : g_ai_assistant.models;
-        slots[g_ai_assistant.provider] = value;
-        (key == "endpoint" ? g_ai_assistant.endpoint : g_ai_assistant.model) = value;
+        slots[g_ai_assistant.provider] = effective;
+        (key == "endpoint" ? g_ai_assistant.endpoint : g_ai_assistant.model) = effective;
         return true;
     }
     const auto persist = [](const std::string &toml_key, const std::string &toml_value, std::string &target) {

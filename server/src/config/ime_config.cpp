@@ -782,9 +782,10 @@ bool LoadImeConfig()
             const std::string id(provider);
             const auto load_slot = [&](const std::string &key, const std::string &legacy, std::string &target) {
                 const std::string stored = tbl["ai_assistant"][key + "_" + id].value_or(std::string());
+                // 空的旧版 endpoint/model 和空槽位一样表示「用默认值」。
                 if (!stored.empty())
                     target = stored;
-                else if (id == g_ai_assistant.provider)
+                else if (id == g_ai_assistant.provider && !legacy.empty())
                     target = legacy;
             };
             load_slot("endpoint", g_ai_assistant.endpoint, g_ai_assistant.endpoints[id]);

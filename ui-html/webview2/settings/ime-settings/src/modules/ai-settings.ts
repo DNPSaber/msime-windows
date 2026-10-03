@@ -40,9 +40,10 @@ function applyProviderFields(provider: string): void {
   if (!defaults) return;
   const endpoint = document.getElementById('aiEndpoint') as HTMLInputElement | null;
   const model = document.getElementById('aiModel') as HTMLInputElement | null;
-  if (endpoint) endpoint.value = endpoints[provider] ?? defaults.endpoint;
+  // 空值和 Server 一致地表示提供商默认值
+  if (endpoint) endpoint.value = endpoints[provider] || defaults.endpoint;
   if (model) {
-    model.value = models[provider] ?? defaults.model;
+    model.value = models[provider] || defaults.model;
     model.placeholder = defaults.model;
   }
 }
@@ -125,6 +126,10 @@ export function setupAiSettings(): void {
         return;
       }
       updateConfig(`ai_assistant.${key}`, element.value);
+      if (!element.value) {
+        const defaults = PROVIDER_DEFAULTS[currentProvider];
+        if (defaults) element.value = defaults[key as keyof ProviderDefaults];
+      }
     });
   });
   const limit = document.getElementById('aiCandidateLimit') as HTMLInputElement | null;

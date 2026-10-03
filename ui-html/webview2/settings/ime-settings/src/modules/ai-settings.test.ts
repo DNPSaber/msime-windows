@@ -68,6 +68,27 @@ it('keeps legacy custom values with their provider and uses defaults for an unco
   expect(elements.get('aiModel')!.value).toBe('legacy-model');
 });
 
+it('treats empty endpoints and models as provider defaults', () => {
+  applyAiConfig({
+    provider: 'deepseek', endpoint: '', model: '',
+    endpoints: { deepseek: '', openai: '' }, models: { deepseek: '', openai: '' }
+  });
+  elements.get('aiProviderMenu')!.select('openai');
+  expect(elements.get('aiEndpoint')!.value).toBe('https://api.openai.com/v1/chat/completions');
+  expect(elements.get('aiModel')!.value).toBe('gpt-4o-mini');
+
+  const endpoint = elements.get('aiEndpoint')!;
+  endpoint.value = '';
+  endpoint.listeners.get('change')?.({});
+  expect(updateConfig).toHaveBeenCalledWith('ai_assistant.endpoint', '');
+  expect(endpoint.value).toBe('https://api.openai.com/v1/chat/completions');
+
+  endpoint.value = '';
+  elements.get('aiProviderMenu')!.select('deepseek');
+  elements.get('aiProviderMenu')!.select('openai');
+  expect(endpoint.value).toBe('https://api.openai.com/v1/chat/completions');
+});
+
 it('reloads provider-specific values from a new config snapshot', () => {
   applyAiConfig({
     provider: 'openai', endpoint: 'https://openai.example.test/v1/chat/completions', model: 'custom-openai',
