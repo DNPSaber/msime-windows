@@ -75,6 +75,25 @@ bool learn_english_slot_bypass(const std::string &user_db_path, const std::strin
                                int selected_index, const std::string &mode, int linear_step, int trigger_count,
                                int max_slot);
 
+// 日期时间格式（rq / sj / xq 那几组）的调频状态。日期文本每天都变，不能按文字记，所以按格式 ID
+// （WordItem::pinyin，见 local_modes::query_date_time）记一份整组的顺序，category 是
+// local_modes::date_time_category 的分组名。Shift+T 模式和混输共用这一份：混输取的就是排第一的格式。
+// default_ids 是这组格式的出厂顺序（local_modes::date_time_format_ids），后来新增的格式按它插回去。
+//
+// 按学到的顺序重排一组日期时间候选（learned_order 为 false 时跳过，调频关闭时用），再按固定位置摆放
+// （fixed_position 置为固定的位置）。
+void apply_date_time_order(const std::string &user_db_path, const std::string &category,
+                           std::vector<WordItem> &candidates, bool learned_order = true);
+// 用户选中了 format_id。累计到 trigger_count 次后按调频模式把它往前挪，mode 为 "disabled" 时什么都不做。
+bool learn_date_time_selection(const std::string &user_db_path, const std::string &category,
+                               const std::vector<std::string> &default_ids, const std::string &format_id,
+                               const std::string &mode, int linear_step, int trigger_count);
+// 用户显式置顶：直接挪到首位，不走计数。
+bool pin_date_time_format(const std::string &user_db_path, const std::string &category,
+                          const std::vector<std::string> &default_ids, const std::string &format_id);
+// 固定位置写进 fixed_candidate_positions 用的 context_key，entry_key 与 value 都写格式 ID。
+std::string date_time_fixed_position_context(const std::string &category);
+
 struct ReplayResult
 {
     int applied = 0;

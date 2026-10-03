@@ -1,5 +1,6 @@
 #include "mixed/mixed_candidates.h"
 
+#include "mixed/date_time_candidates.h"
 #include "engine/core/data_path.h"
 #include "engine/english/english_dictionary.h"
 #include "engine/local_modes/date_time_query.h"
@@ -20,7 +21,7 @@ constexpr std::size_t kEnglishCandidateLimit = 5;
 // emoji 和颜文字从第二个字母起才查，单独一个首字母匹配面太大，会把候选刷满。
 constexpr std::size_t kExpressiveMinimumPrefixLength = 2;
 constexpr int kExpressiveCandidateLimit = 3;
-constexpr int kDateTimeCandidateLimit = 3;
+constexpr std::size_t kDateTimeCandidateLimit = 3;
 
 std::mutex g_mutex;
 std::condition_variable g_cv;
@@ -79,10 +80,17 @@ void WorkerLoop()
         MixedCandidates::Result result;
         if (!request.date_time_keyword.empty())
         {
-            result.date_time =
-                metasequoia::local_modes::query_date_time(request.date_time_keyword, nullptr, kDateTimeCandidateLimit);
+            // 和 Shift+T 模式同一份顺序，混进来的就是那里排第一的格式。固定位置说的是日期页里的位置，
+            // 在普通候选里不作数，所以清掉，免得混输里的日期也挂上固定徽标。
+            result.date_time = OrderedDateTimeCandidates(request.date_time_keyword);
+            if (result.date_time.size() > kDateTimeCandidateLimit)
+                result.date_time.resize(kDateTimeCandidateLimit);
             for (auto &item : result.date_time)
-                item.source = CandidateSource::DateTime;
+                item.fixed_position = 0;
+            if (!result.date_time.empty())
+                result.date_time.push_back(metasequoia::local_modes::date_time_menu_item(request.date_time_keyword));
+            if (IsStale(observed_generation))
+                continue;
         }
         if (request.english)
         {

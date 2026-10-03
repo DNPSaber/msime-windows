@@ -1,7 +1,9 @@
 #include "tests/includes/test_framework.h"
 #include "engine/local_modes/date_time_query.h"
 
+#include <algorithm>
 #include <array>
+#include <string>
 
 namespace
 {
@@ -112,6 +114,36 @@ TEST_CASE(date_time_query_accepts_all_week_wake_words)
     REQUIRE_EQ(results.size(), expected.size());
     for (size_t index = 0; index < expected.size(); ++index)
         REQUIRE_EQ(results[index].word, std::string(expected[index]));
+}
+
+// 调频、置顶、固定位置都按格式 ID 记，ID 必须稳定、各组内不重复，且跟着候选走。
+TEST_CASE(date_time_query_tags_each_candidate_with_a_stable_format_id)
+{
+    const LocalDateTime now = SampleTime();
+    for (const char *keyword : std::array<const char *, 3>{"rq", "sj", "xq"})
+    {
+        const auto ids = metasequoia::local_modes::date_time_format_ids(keyword);
+        const std::string category = metasequoia::local_modes::date_time_category(keyword);
+        for (size_t index = 0; index < ids.size(); ++index)
+        {
+            REQUIRE_EQ(ids[index].rfind(category + ":", 0), static_cast<size_t>(0));
+            REQUIRE(std::count(ids.begin(), ids.end(), ids[index]) == 1);
+        }
+        const auto results = metasequoia::local_modes::query_date_time(keyword, &now);
+        for (const auto &result : results)
+            REQUIRE(std::find(ids.begin(), ids.end(), result.pinyin) != ids.end());
+    }
+    REQUIRE_EQ(metasequoia::local_modes::date_time_category("riqi"), std::string("date"));
+    REQUIRE_EQ(metasequoia::local_modes::date_time_category("time"), std::string("time"));
+    REQUIRE(metasequoia::local_modes::date_time_category("today").empty());
+
+    // 星期天之外没有「星期天」这一条，ID 仍留在格式表里。
+    LocalDateTime monday = SampleTime();
+    monday.weekday = 1;
+    const auto week = metasequoia::local_modes::query_date_time("xq", &monday);
+    REQUIRE_EQ(week.size(), static_cast<size_t>(3));
+    REQUIRE_EQ(week[1].pinyin, std::string("week:en_full"));
+    REQUIRE_EQ(metasequoia::local_modes::date_time_format_ids("xq").size(), static_cast<size_t>(4));
 }
 
 TEST_CASE(date_time_query_rejects_unknown_words_and_honors_limit)

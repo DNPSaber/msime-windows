@@ -91,10 +91,11 @@ it('backfills the focus announcement switch only from a boolean', () => {
 
 it('greys out the mixed candidate sub-switches when the master switch is off', () => {
   const snapshot = handlers.get('configSnapshot')!;
-  snapshot({ data: { utility: { mixed_candidates: false, date_time_candidates: true } } });
+  snapshot({ data: { utility: { mixed_candidates: false, date_time_candidates: true, date_time_menu: false } } });
   expect(applyToggleState).toHaveBeenCalledWith('mixedCandidatesToggleBtn', false);
   expect(setMixedCandidateOptionsDisabled).toHaveBeenCalledWith(true);
   expect(applyToggleState).toHaveBeenCalledWith('dateTimeCandidatesToggleBtn', true);
+  expect(applyToggleState).toHaveBeenCalledWith('dateTimeMenuToggleBtn', false);
   snapshot({ data: { utility: { mixed_candidates: true } } });
   expect(setMixedCandidateOptionsDisabled).toHaveBeenLastCalledWith(false);
 });

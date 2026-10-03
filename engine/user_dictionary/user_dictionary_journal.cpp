@@ -151,7 +151,10 @@ bool ensure_schema(sqlite3 *db)
         "CREATE TABLE IF NOT EXISTS quick_phrase_slots("
         "code TEXT PRIMARY KEY,slot INTEGER NOT NULL CHECK(slot>=0));"
         "CREATE TABLE IF NOT EXISTS english_slots("
-        "code TEXT PRIMARY KEY,slot INTEGER NOT NULL CHECK(slot>=0));";
+        "code TEXT PRIMARY KEY,slot INTEGER NOT NULL CHECK(slot>=0));"
+        "CREATE TABLE IF NOT EXISTS date_time_format_order("
+        "category TEXT NOT NULL,format TEXT NOT NULL,position INTEGER NOT NULL CHECK(position>=0),"
+        "PRIMARY KEY(category,format));";
     if (sqlite3_exec(db, sql, nullptr, nullptr, nullptr) != SQLITE_OK)
         return false;
 
@@ -1095,6 +1098,174 @@ bool learn_english_slot_bypass(const std::string &user_db_path, const std::strin
     return count_and_write_english_slot(user_db_path, code, "bypass", trigger_count, [&](sqlite3 *db) {
         return write_english_slot(db, code, (std::min)(english_index + 1, max_slot));
     });
+}
+
+namespace
+{
+const std::string kDateTimeSelectionContext = "date_time_order:";
+
+// 学到的顺序合进出厂顺序：表里记过的按记下的先后排，没记过的（后来新增的格式）插回它出厂时的下标。
+// 表里有、default_ids 里没有的（已经删掉的格式）直接丢掉。
+bool read_date_time_order(sqlite3 *db, const std::string &category, const std::vector<std::string> &default_ids,
+                          std::vector<std::string> &order)
+{
+    order.clear();
+    auto stmt = prepare(db, "SELECT format FROM date_time_format_order WHERE category=?1 ORDER BY position");
+    if (!stmt || !bind_text(stmt.get(), 1, category))
+        return false;
+    int status;
+    while ((status = sqlite3_step(stmt.get())) == SQLITE_ROW)
+    {
+        const unsigned char *format = sqlite3_column_text(stmt.get(), 0);
+        if (format == nullptr)
+            continue;
+        std::string id(reinterpret_cast<const char *>(format));
+        if (std::find(default_ids.begin(), default_ids.end(), id) != default_ids.end() &&
+            std::find(order.begin(), order.end(), id) == order.end())
+            order.push_back(std::move(id));
+    }
+    if (status != SQLITE_DONE)
+        return false;
+    for (size_t index = 0; index < default_ids.size(); ++index)
+    {
+        if (std::find(order.begin(), order.end(), default_ids[index]) == order.end())
+            order.insert(order.begin() + static_cast<std::ptrdiff_t>((std::min)(index, order.size())),
+                         default_ids[index]);
+    }
+    return true;
+}
+
+bool write_date_time_order(sqlite3 *db, const std::string &category, const std::vector<std::string> &order)
+{
+    auto clear = prepare(db, "DELETE FROM date_time_format_order WHERE category=?1");
+    if (!clear || !bind_text(clear.get(), 1, category) || sqlite3_step(clear.get()) != SQLITE_DONE)
+        return false;
+    auto insert = prepare(db, "INSERT INTO date_time_format_order(category,format,position) VALUES(?1,?2,?3)");
+    if (!insert)
+        return false;
+    for (size_t index = 0; index < order.size(); ++index)
+    {
+        sqlite3_reset(insert.get());
+        if (!bind_text(insert.get(), 1, category) || !bind_text(insert.get(), 2, order[index]) ||
+            sqlite3_bind_int(insert.get(), 3, static_cast<int>(index)) != SQLITE_OK ||
+            sqlite3_step(insert.get()) != SQLITE_DONE)
+            return false;
+    }
+    return true;
+}
+
+// force_top 置顶：不计数，直接挪到首位。否则按调频模式从它此刻的名次算目标位置，计数到 trigger_count 才挪。
+bool move_date_time_format(const std::string &user_db_path, const std::string &category,
+                           const std::vector<std::string> &default_ids, const std::string &format_id,
+                           const std::string &mode, int linear_step, int trigger_count, bool force_top)
+{
+    if (category.empty() || format_id.empty())
+        return false;
+    if (!force_top && mode == "disabled")
+        return true;
+    UserDatabase db(user_db_path);
+    if (!db || !execute_sql(db.get(), "BEGIN IMMEDIATE"))
+        return false;
+    const auto rollback = [&]() {
+        (void)execute_sql(db.get(), "ROLLBACK");
+        return false;
+    };
+    const auto commit = [&]() { return execute_sql(db.get(), "COMMIT") || rollback(); };
+    std::vector<std::string> order;
+    if (!read_date_time_order(db.get(), category, default_ids, order))
+        return rollback();
+    const auto selected = std::find(order.begin(), order.end(), format_id);
+    // 已经在首位就是默认上屏的那一个，没有可学的。
+    if (selected == order.end() || selected == order.begin())
+        return commit();
+    const size_t rank = static_cast<size_t>(selected - order.begin());
+    if (!force_top)
+    {
+        bool reached = false;
+        if (!count_slot_selection(db.get(), "", kDateTimeSelectionContext, format_id, "promote", trigger_count,
+                                  reached))
+            return rollback();
+        if (!reached)
+            return commit();
+    }
+    const size_t target = ranking_target(rank, mode, (std::max)(1, linear_step), force_top);
+    std::string moved = std::move(order[rank]);
+    order.erase(order.begin() + static_cast<std::ptrdiff_t>(rank));
+    order.insert(order.begin() + static_cast<std::ptrdiff_t>((std::min)(target, order.size())), std::move(moved));
+    if (!write_date_time_order(db.get(), category, order))
+        return rollback();
+    return commit();
+}
+} // namespace
+
+std::string date_time_fixed_position_context(const std::string &category)
+{
+    return "date_time:" + category;
+}
+
+void apply_date_time_order(const std::string &user_db_path, const std::string &category,
+                           std::vector<WordItem> &candidates, bool learned_order)
+{
+    if (category.empty() || candidates.empty())
+        return;
+    UserDatabase db(user_db_path);
+    if (!db)
+        return;
+    std::vector<std::string> default_ids;
+    default_ids.reserve(candidates.size());
+    for (const auto &candidate : candidates)
+        default_ids.push_back(candidate.pinyin);
+    std::vector<std::string> order;
+    if (learned_order && read_date_time_order(db.get(), category, default_ids, order))
+    {
+        const auto rank = [&](const WordItem &item) {
+            return std::find(order.begin(), order.end(), item.pinyin) - order.begin();
+        };
+        std::stable_sort(candidates.begin(), candidates.end(),
+                         [&](const WordItem &left, const WordItem &right) { return rank(left) < rank(right); });
+    }
+
+    // 固定位置借用 fixed_candidate_positions，entry_key 和 value 都写格式 ID：apply_fixed_positions
+    // 按文字认候选，日期文本每天都变，所以这里按格式 ID 自己摆。
+    auto fixed = prepare(db.get(), "SELECT entry_key,position FROM fixed_candidate_positions WHERE context_key=?1"
+                                   " ORDER BY position");
+    if (!fixed || !bind_text(fixed.get(), 1, date_time_fixed_position_context(category)))
+        return;
+    std::vector<WordItem> rows;
+    while (sqlite3_step(fixed.get()) == SQLITE_ROW)
+    {
+        const unsigned char *key = sqlite3_column_text(fixed.get(), 0);
+        if (key == nullptr)
+            continue;
+        const std::string format_id(reinterpret_cast<const char *>(key));
+        const auto existing = std::find_if(candidates.begin(), candidates.end(),
+                                           [&](const WordItem &item) { return item.pinyin == format_id; });
+        if (existing == candidates.end())
+            continue;
+        WordItem item = std::move(*existing);
+        candidates.erase(existing);
+        item.fixed_position = sqlite3_column_int(fixed.get(), 1);
+        rows.push_back(std::move(item));
+    }
+    for (auto &row : rows)
+    {
+        const size_t index = (std::min)(static_cast<size_t>((std::max)(row.fixed_position, 1) - 1), candidates.size());
+        candidates.insert(candidates.begin() + static_cast<std::ptrdiff_t>(index), std::move(row));
+    }
+}
+
+bool learn_date_time_selection(const std::string &user_db_path, const std::string &category,
+                               const std::vector<std::string> &default_ids, const std::string &format_id,
+                               const std::string &mode, int linear_step, int trigger_count)
+{
+    return move_date_time_format(user_db_path, category, default_ids, format_id, mode, linear_step, trigger_count,
+                                 false);
+}
+
+bool pin_date_time_format(const std::string &user_db_path, const std::string &category,
+                          const std::vector<std::string> &default_ids, const std::string &format_id)
+{
+    return move_date_time_format(user_db_path, category, default_ids, format_id, "pin", 1, 1, true);
 }
 
 bool learn_entered_english_word(const std::string &english_db_path, const std::string &user_db_path,

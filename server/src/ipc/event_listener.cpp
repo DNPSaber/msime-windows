@@ -65,6 +65,8 @@ std::string g_candidate_translation_signature;
 // 数字键像选普通候选一样选一条上屏。输入串一个字都没动，所以退出这个子模式时把原来的
 // items / 页码 / 高亮位原样放回去就行，不需要重新查词。
 bool g_translation_candidates_active = false;
+bool g_date_time_page_active = false;
+std::string g_date_time_page_keyword;
 std::vector<WordItem> g_translation_saved_items;
 int g_translation_saved_page_index = 0;
 int g_translation_saved_selected_index = 0;
@@ -73,6 +75,11 @@ std::string TranslationIdentity(const EnglishIme::TranslationQuery &query)
 {
     return GetConfiguredTencentTmt().target_language + ":" +
            (query.direction == EnglishIme::TranslationDirection::EnglishToChinese ? "e:" : "z:") + query.key;
+}
+
+bool IsCandidateSubPageActive()
+{
+    return g_translation_candidates_active || g_date_time_page_active;
 }
 
 bool IsUiLessMode()
@@ -140,7 +147,7 @@ bool IsDedicatedEnglishAnswerPending()
     // ApplyEnglishCandidates refuses answers in these states, so nothing
     // would ever release the show.
     return g_dedicated_english_answer_pending && !GlobalIme::composition.creating_word.active &&
-           !g_translation_candidates_active;
+           !IsCandidateSubPageActive();
 }
 } // namespace
 
@@ -679,6 +686,8 @@ void ClearState()
     // same common words, and its first frame should already carry them.
     g_candidate_translation_signature.clear();
     g_translation_candidates_active = false;
+    g_date_time_page_active = false;
+    g_date_time_page_keyword.clear();
     g_translation_saved_items.clear();
     g_translation_saved_page_index = 0;
     g_translation_saved_selected_index = 0;

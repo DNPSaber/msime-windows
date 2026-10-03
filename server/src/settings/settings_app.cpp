@@ -545,6 +545,7 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"quick_phrase_frequency", GetConfiguredQuickPhraseFrequencyEnabled()},
             {"mixed_candidates", GetConfiguredMixedCandidatesEnabled()},
             {"date_time_candidates", GetConfiguredDateTimeCandidatesEnabled()},
+            {"date_time_menu", GetConfiguredDateTimeMenuEnabled()},
             {"date_time_mode", GetConfiguredDateTimeModeEnabled()},
             {"emoji_mode", GetConfiguredEmojiModeEnabled()},
             {"kaomoji_mode", GetConfiguredKaomojiModeEnabled()},
@@ -920,6 +921,8 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredMixedCandidatesEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.date_time_candidates")
         return SetConfiguredDateTimeCandidatesEnabled(json::value_to<bool>(data.at("value")));
+    if (path == "utility.date_time_menu")
+        return SetConfiguredDateTimeMenuEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.date_time_mode")
         return SetConfiguredDateTimeModeEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.emoji_mode")

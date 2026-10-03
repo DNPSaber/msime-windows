@@ -29,6 +29,7 @@
 #include "engine/local_modes/kaomoji_query.h"
 #include "engine/local_modes/jianpin_query.h"
 #include "engine/shuangpin/shuangpin_profile.h"
+#include "mixed/date_time_candidates.h"
 #include "log/candidate_diag_log.h"
 
 using namespace event_listener_detail;
@@ -353,9 +354,9 @@ void PrepareCandidateTranslationRequest()
     const bool japanese = g_inputSession && g_inputSession->current_scheme_type() == SchemeType::JapaneseRomaji;
     const bool enabled = GetConfiguredCandidateTranslationsEnabled() && !IsUiLessMode() && !japanese;
     auto &ui = Global::candidate_ui;
-    if (g_translation_candidates_active)
+    if (IsCandidateSubPageActive())
     {
-        // 译文页不再查译文。已经取出的 glosses 也不能清，退出子模式后原候选还要用。
+        // 译文页、日期页不再查译文。已经取出的 glosses 也不能清，退出子模式后原候选还要用。
         return;
     }
     if (!enabled)
@@ -518,10 +519,9 @@ FanyImeIpc::EnglishPlacement CurrentEnglishPlacement(const std::vector<WordItem>
 bool ExpandCandidatesKeepingPagePosition()
 {
     auto &ui = Global::candidate_ui;
-    // 译文页是一份固定的列表，session 里再多的候选也不属于它。
-    if (g_translation_candidates_active ||
-        IsSpecialModeCompositionActive(GlobalIme::composition.raw_input_with_cases) || !g_inputSession ||
-        !g_inputSession->expand_initial_candidates())
+    // 译文页、日期页是一份固定的列表，session 里再多的候选也不属于它。
+    if (IsCandidateSubPageActive() || IsSpecialModeCompositionActive(GlobalIme::composition.raw_input_with_cases) ||
+        !g_inputSession || !g_inputSession->expand_initial_candidates())
     {
         return false;
     }
@@ -636,6 +636,13 @@ void PrepareCandidateList(uint64_t client_id, uint64_t activation_epoch)
     double fixedPosMs = 0;
 
     auto &ui = Global::candidate_ui;
+    // 日期页的列表是选中入口时另查的，按会话重新组页就说明已经回到了普通候选。
+    if (g_date_time_page_active)
+    {
+        g_date_time_page_active = false;
+        g_date_time_page_keyword.clear();
+        g_translation_saved_items.clear();
+    }
     std::string pinyin = wstring_to_string(Global::PinyinString);
     const std::string current_input = g_inputSession->get_pinyin_sequence_with_cases();
     std::vector<WordItem> items;
@@ -654,7 +661,7 @@ void PrepareCandidateList(uint64_t client_id, uint64_t activation_epoch)
     }
     else if (IsDateTimeInput(current_input))
     {
-        items = metasequoia::local_modes::query_date_time(current_input.substr(1));
+        items = OrderedDateTimeCandidates(current_input.substr(1));
     }
     else if (IsEmojiInput(current_input))
     {

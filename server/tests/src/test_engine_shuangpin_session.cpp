@@ -505,6 +505,21 @@ TEST_CASE(DateTimeMixedCandidateLeadsAsyncCandidates)
     FanyImeIpc::NormalizeMixedCandidateOrder(items);
     REQUIRE_EQ(items[1].source, CandidateSource::QuickPhrase);
     REQUIRE_EQ(items[2].source, CandidateSource::DateTime);
+
+    // 展开全部格式的入口紧跟日期，落在第三位，云、英文在它后面。
+    const WordItem menu = metasequoia::local_modes::date_time_menu_item("rq");
+    REQUIRE(metasequoia::local_modes::is_date_time_menu_item(menu));
+    REQUIRE_EQ(metasequoia::local_modes::date_time_menu_keyword(menu), std::string("rq"));
+    REQUIRE(!metasequoia::local_modes::is_date_time_menu_item(date("2026年10月2日")));
+    items = {local("日期"), english(), cloud(), date("2026年10月2日"), date("2026-10-02"), menu, local("日起")};
+    FanyImeIpc::NormalizeMixedCandidateOrder(items);
+    REQUIRE_EQ(items[0].word, std::string("日期"));
+    REQUIRE_EQ(items[1].word, std::string("2026年10月2日"));
+    REQUIRE(metasequoia::local_modes::is_date_time_menu_item(items[2]));
+    REQUIRE_EQ(items[3].source, CandidateSource::CloudSuggestion);
+    REQUIRE_EQ(items[4].source, CandidateSource::EnglishDictionary);
+    REQUIRE_EQ(items[5].word, std::string("日起"));
+    REQUIRE_EQ(items.back().word, std::string("2026-10-02"));
 }
 
 TEST_CASE(QuickPhraseGroupStaysWholeAndAheadOfAsyncCandidates)

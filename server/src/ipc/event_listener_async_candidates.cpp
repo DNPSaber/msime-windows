@@ -32,7 +32,7 @@ void ApplyCloudCandidate(const std::string &candidate, const std::string &pinyin
         return;
     // A callback can become stale after enqueueing, while earlier key tasks run.
     // 译文页占用着同一份 items，异步候选必须等它退出再合并，否则会把译文冲掉。
-    if (FindCloudRequestOrigin(pinyin, generation).client_id == 0 || !g_inputSession || g_translation_candidates_active)
+    if (FindCloudRequestOrigin(pinyin, generation).client_id == 0 || !g_inputSession || IsCandidateSubPageActive())
         return;
 
     if (candidate.empty())
@@ -96,7 +96,7 @@ void ApplyCloudCandidate(const std::string &candidate, const std::string &pinyin
 // 序有没有真的变：没变就一个字节都不动 UI。这既挡掉了过期结果，也挡掉了模型弃权的情况。
 void ApplyRescoredOrder()
 {
-    if (!g_inputSession || g_translation_candidates_active)
+    if (!g_inputSession || IsCandidateSubPageActive())
         return;
     // 造词界面和译文页各自占着 items，重排不该去动它们。
     if (GlobalIme::composition.creating_word.active)
@@ -150,7 +150,7 @@ void ApplyAiCandidate(const std::string &candidate, const std::string &identity,
     const bool helpcode_active = has_session && g_inputSession->has_active_helpcode();
     const std::string current_identity = has_session ? g_inputSession->get_pinyin_segmentation() : std::string{};
     if (!enabled || candidate.empty() || !has_session || non_pinyin || !complete || helpcode_active ||
-        GlobalIme::composition.creating_word.active || current_identity != identity || g_translation_candidates_active)
+        GlobalIme::composition.creating_word.active || current_identity != identity || IsCandidateSubPageActive())
     {
         (void)0;
         return;
@@ -198,7 +198,7 @@ void ApplyEnglishCandidates(std::vector<WordItem> candidates, const std::string 
     const bool dedicated_mode = g_english_input_mode || y_mode;
     const std::string expected_input = y_mode ? session_input.substr(1) : session_input;
     if (!dedicated_mode || !EnglishIme::IsCurrent(input, generation, dedicated_mode) || g_inputSession == nullptr ||
-        expected_input != input || GlobalIme::composition.creating_word.active || g_translation_candidates_active)
+        expected_input != input || GlobalIme::composition.creating_word.active || IsCandidateSubPageActive())
     {
         return;
     }
@@ -244,7 +244,7 @@ void ApplyEnglishCandidates(std::vector<WordItem> candidates, const std::string 
 void ApplyCandidateTranslations(std::vector<EnglishIme::TranslationResult> results, uint64_t generation, bool merge)
 {
     if (!EnglishIme::IsTranslationCurrent(generation) || !GetConfiguredCandidateTranslationsEnabled() ||
-        IsUiLessMode() || g_candidate_translation_signature.empty() || g_translation_candidates_active ||
+        IsUiLessMode() || g_candidate_translation_signature.empty() || IsCandidateSubPageActive() ||
         (g_inputSession && g_inputSession->current_scheme_type() == SchemeType::JapaneseRomaji))
         return;
 
@@ -330,7 +330,7 @@ void InsertFirstAndAppendRest(std::vector<WordItem> &items, std::vector<WordItem
 void ApplyMixedCandidates(MixedCandidates::Result result, const std::string &input, uint64_t generation)
 {
     if (!GetConfiguredMixedCandidatesEnabled() || !MixedCandidates::IsCurrent(input, generation) ||
-        g_inputSession == nullptr || g_english_input_mode || g_translation_candidates_active ||
+        g_inputSession == nullptr || g_english_input_mode || IsCandidateSubPageActive() ||
         (g_inputSession->current_scheme_type() != SchemeType::Quanpin &&
          g_inputSession->current_scheme_type() != SchemeType::Shuangpin) ||
         g_inputSession->get_pinyin_sequence_with_cases() != input || GlobalIme::composition.creating_word.active)
@@ -344,6 +344,14 @@ void ApplyMixedCandidates(MixedCandidates::Result result, const std::string &inp
 
     if (GetConfiguredDateTimeCandidatesEnabled())
     {
+        // 「📅日期」入口有自己的开关。UILess 宿主自己画候选，日期页是这边刷新候选窗换出来的，
+        // 宿主那边看不到，入口点了也没反应，所以那里也不放。
+        if (IsUiLessMode() || !GetConfiguredDateTimeMenuEnabled())
+            result.date_time.erase(std::remove_if(result.date_time.begin(), result.date_time.end(),
+                                                  [](const WordItem &item) {
+                                                      return metasequoia::local_modes::is_date_time_menu_item(item);
+                                                  }),
+                                   result.date_time.end());
         auto date_time = ReplaceSourceAndDeduplicate(items, CandidateSource::DateTime, std::move(result.date_time));
         changed = changed || !date_time.empty();
         InsertFirstAndAppendRest(items, std::move(date_time), 1);

@@ -16,6 +16,7 @@
 #include <utf8.h>
 #include "global/globals.h"
 #include "engine/user_dictionary/user_dictionary_journal.h"
+#include "mixed/date_time_candidates.h"
 #include "window/caret_state_indicator_policy.h"
 #include "english/english_ime.h"
 #include "config/ime_config.h"
@@ -71,6 +72,33 @@ void PostHideCaretState()
 {
     if (const HWND hwnd = ::global_hwnd_caret_state)
         PostMessage(hwnd, WM_HIDE_CARET_STATE, 0, 0);
+}
+
+// 日期时间候选的右键操作按格式 ID（item.pinyin）记，不按文字：日期文本每天都变。置顶挪进学到的
+// 顺序，固定位置借用 fixed_candidate_positions；删除没有意义（格式不是词库里的行），不做。
+void ApplyDateTimeCandidateUiAction(FanyNamedPipe::TaskType type, const WordItem &item, int fixed_position)
+{
+    const std::string keyword = DateTimeKeywordForFormat(item.pinyin);
+    const std::string category = metasequoia::local_modes::date_time_category(keyword);
+    if (category.empty())
+        return;
+    const std::string user_db_path = user_dictionary::default_user_db_path();
+    const std::string context_key = user_dictionary::date_time_fixed_position_context(category);
+    switch (type)
+    {
+    case FanyNamedPipe::TaskType::UiPinCandidate:
+        (void)user_dictionary::pin_date_time_format(
+            user_db_path, category, metasequoia::local_modes::date_time_format_ids(keyword), item.pinyin);
+        break;
+    case FanyNamedPipe::TaskType::UiFixCandidatePosition:
+        (void)user_dictionary::set_fixed_position(user_db_path, context_key, item.pinyin, item.pinyin, fixed_position);
+        break;
+    case FanyNamedPipe::TaskType::UiClearCandidatePosition:
+        (void)user_dictionary::clear_fixed_position(user_db_path, context_key, item.pinyin, item.pinyin);
+        break;
+    default:
+        break;
+    }
 }
 
 // The pipe server accepts clients before the candidate window exists, so an
@@ -588,10 +616,26 @@ void WorkerThread()
         case TaskType::UiFixCandidatePosition:
         case TaskType::UiClearCandidatePosition: {
             WordItem item;
-            if (!ResolveCandidateItem(task.candidate_one_based_index, item) ||
-                item.source == CandidateSource::QuickPhrase || item.source == CandidateSource::Emoji ||
-                item.source == CandidateSource::Kaomoji || item.source == CandidateSource::DateTime ||
-                item.source == CandidateSource::Generated)
+            if (!ResolveCandidateItem(task.candidate_one_based_index, item))
+            {
+                break;
+            }
+            if (metasequoia::local_modes::is_date_time_menu_item(item))
+            {
+                break;
+            }
+            if (item.source == CandidateSource::DateTime)
+            {
+                ApplyDateTimeCandidateUiAction(task.type, item, task.fixed_position);
+                if (g_date_time_page_active)
+                    RebuildDateTimeCandidatePage();
+                else
+                    PrepareCandidateList(task.client_id, task.activation_epoch);
+                RequestShowCandidateWindow();
+                break;
+            }
+            if (item.source == CandidateSource::QuickPhrase || item.source == CandidateSource::Emoji ||
+                item.source == CandidateSource::Kaomoji || item.source == CandidateSource::Generated)
             {
                 break;
             }
@@ -1006,6 +1050,24 @@ void EnqueueLearnEnglishSlotTask(const std::string &code, int english_index, std
         }
         (void)user_dictionary::learn_english_slot_selection(user_dictionary::default_user_db_path(), code,
                                                             english_index, mode, linear_step, trigger_count);
+    });
+}
+
+// 日期时间格式的顺序同样每次现查，写完不用清缓存。
+void EnqueueLearnDateTimeOrderTask(const std::string &format_id, uint64_t client_id, uint64_t activation_epoch)
+{
+    static FanyImeIpc::SelectionRankingReplayGuard replay_guard;
+    const std::string keyword = DateTimeKeywordForFormat(format_id);
+    if (keyword.empty() ||
+        !replay_guard.should_apply("d\x1f" + format_id, client_id, activation_epoch, GetTickCount64()))
+        return;
+    const auto &frequency = GetConfiguredFrequencyAdjustment();
+    DictionaryWriter().Post([format_id, category = metasequoia::local_modes::date_time_category(keyword),
+                             default_ids = metasequoia::local_modes::date_time_format_ids(keyword),
+                             mode = frequency.mode, linear_step = frequency.linear_step,
+                             trigger_count = frequency.trigger_count] {
+        (void)user_dictionary::learn_date_time_selection(user_dictionary::default_user_db_path(), category, default_ids,
+                                                         format_id, mode, linear_step, trigger_count);
     });
 }
 
