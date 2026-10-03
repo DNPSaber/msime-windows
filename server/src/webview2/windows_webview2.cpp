@@ -17,7 +17,9 @@
 #include "utils/window_utils.h"
 #include <WebView2EnvironmentOptions.h>
 #include <algorithm>
+#include <atomic>
 #include <cmath>
+#include <thread>
 #include "webview2/windows_webview2_internal.h"
 
 #pragma comment(lib, "dcomp.lib")
@@ -421,10 +423,57 @@ void ScheduleSmallWindowWebviewRetry(DWORD delay_ms)
     SetTimer(timer_hwnd, kRetrySmallWindowWebviewTimerId, delay_ms, SmallWindowWebviewRetryTimerProc);
 }
 
-void ScheduleSmallWindowRetryWithBackoff()
+// The WebView trace is compiled out in this translation unit (see
+// windows_webview2_internal.h) because it drowns the input-latency trace. A failed start-up is
+// rare and terminal, and it is the one thing the user cannot see at all, so it goes to the unified
+// diagnostic log regardless of that.
+void TraceSmallWindowWebview(const std::wstring &line)
+{
+    if (::DiagnosticLog::IsEnabled())
+    {
+        ::DiagnosticLog::Write(line);
+    }
+}
+
+// The three small windows are shown DWM-cloaked and only uncloaked once the WebView2 controller has
+// painted, so a start-up that never completes looks exactly like a broken engine: no candidate
+// window, no error, nothing on screen. Once the retry budget is spent it will not fix itself, so
+// stop being silent.
+// The host windows are parked off-screen, and a box owned by one of them is centred on an invisible
+// window — use an ownerless box. It is modal and this runs on the Server message thread, so it goes
+// out on its own thread.
+void ReportSmallWindowWebviewUnavailable(HRESULT last_hr)
+{
+    static std::atomic<bool> reported{false};
+    if (reported.exchange(true))
+    {
+        return;
+    }
+    TraceSmallWindowWebview(
+        fmt::format(L"edge webview unavailable: gave up after {}/{} attempts, last hr={:#x}; the candidate, "
+                    L"floating-toolbar and tray-menu hosts stay cloaked",
+                    smallWindowInitAttempts, kMaxSmallWindowInitAttempts, static_cast<unsigned>(last_hr)));
+
+    const std::wstring message =
+        fmt::format(L"水杉输入法没能启动 WebView2 运行时，候选窗、悬浮工具栏和托盘菜单都不会出现。\r\n"
+                    L"Metasequoia IME could not start the WebView2 Runtime, so the candidate window, the "
+                    L"floating toolbar and the tray menu will not appear.\r\n\r\n"
+                    L"请安装或修复 Microsoft Edge WebView2 Runtime 后重新登录：\r\n"
+                    L"Install or repair the Microsoft Edge WebView2 Runtime, then sign in again:\r\n"
+                    L"https://developer.microsoft.com/microsoft-edge/webview2/\r\n\r\n"
+                    L"错误码 / error: {:#x}",
+                    static_cast<unsigned>(last_hr));
+    std::thread([message]() {
+        MessageBoxW(nullptr, message.c_str(), L"水杉输入法 / Metasequoia IME",
+                    MB_OK | MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST);
+    }).detach();
+}
+
+void ScheduleSmallWindowRetryWithBackoff(HRESULT hr)
 {
     if (smallWindowInitAttempts >= kMaxSmallWindowInitAttempts)
     {
+        ReportSmallWindowWebviewUnavailable(hr);
         return;
     }
     // 1s, 2s, 4s, 8s capped at 10s: covers user-data-folder locks left by
@@ -434,13 +483,16 @@ void ScheduleSmallWindowRetryWithBackoff()
     ScheduleSmallWindowWebviewRetry(delay_ms);
 }
 
-// The HRESULT is part of the callback contract but the retry path is the same for every failure
-// code, so it is only reported by the caller's own logging.
-void OnSmallWindowWebviewInitFailed(HRESULT /*hr*/)
+// The retry path is the same for every failure code, so the HRESULT is only useful for the trace —
+// but until now nothing wrote it anywhere.
+void OnSmallWindowWebviewInitFailed(HRESULT hr)
 {
     smallWindowInitState = SmallWindowInitState::Failed;
     smallWindowWebviewEnvironment.Reset();
-    ScheduleSmallWindowRetryWithBackoff();
+    TraceSmallWindowWebview(fmt::format(L"edge webview environment create failed hr={:#x} attempt={}/{}",
+                                        static_cast<unsigned>(hr), smallWindowInitAttempts,
+                                        kMaxSmallWindowInitAttempts));
+    ScheduleSmallWindowRetryWithBackoff(hr);
 }
 
 void MaybeFlushPendingTrayMenuShow()
@@ -541,7 +593,7 @@ void RequestNextSmallWindowController()
         smallWindowControllerRequestInFlight = false;
         lastFailedSmallWindowHostIndex = chosen;
         ++smallWindowInitAttempts;
-        ScheduleSmallWindowRetryWithBackoff();
+        ScheduleSmallWindowRetryWithBackoff(hr);
     }
 }
 } // namespace
@@ -557,7 +609,7 @@ void OnSmallWindowControllerSettled(HRESULT hr)
     {
         lastFailedSmallWindowHostIndex = currentSmallWindowHostIndex;
         ++smallWindowInitAttempts;
-        ScheduleSmallWindowRetryWithBackoff();
+        ScheduleSmallWindowRetryWithBackoff(hr);
         return;
     }
     // Forward progress: give the remaining hosts a full attempt budget.
