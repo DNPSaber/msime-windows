@@ -50,8 +50,9 @@ cd "$project_root"
 #     are upstream copies, so none of them is ours to reformat; same for
 #     */third_party/ (miniaudio).
 #   - The four generated headers are emitted from JSON by
-#     contracts/{assets,dictionary,punctuation,webview}/generate.py, and CI
-#     re-runs each generator with --check. Reformatting the checked-in copy
+#     contracts/{assets,dictionary,punctuation,webview}/generate.py. No CI job
+#     re-runs those generators; after editing the JSON, run each generate.py
+#     yourself (all of them take --check). Reformatting the checked-in copy
 #     would only make it disagree with what the generator produces.
 #   - ngram/octagram/darts.h is darts-clone itself, listed by exact path rather
 #     than by directory the way the other copies are: its siblings in that

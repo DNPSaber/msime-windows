@@ -14,7 +14,7 @@ CI 刻意构建到 `build-release` 而不是 `build`，为的就是让这条不�
 
 ## 测试跑在真实词库上，本地要先备好数据
 
-`tests/CMakeLists.txt` 构建 `MetasequoiaImeServerTests`，`tests/src/` 下有 34 个测试源文件。根 `CMakeLists.txt:8` 的 `include(CTest)` 让 `BUILD_TESTING` 默认为 ON，`:420` 据此 `add_subdirectory(tests)`，而 `tests/CMakeLists.txt:78` 用 `add_test` 注册了一条同名用例。
+`tests/CMakeLists.txt` 构建 `MetasequoiaImeServerTests`，`tests/src/` 下的测试源文件规模持续增长（引用具体数字前先数一遍）。本目录 `CMakeLists.txt:25` 的 `include(CTest)` 让 `BUILD_TESTING` 默认为 ON，`:556` 据此 `add_subdirectory(tests)`，而 `tests/CMakeLists.txt:169` 用 `add_test` 注册同名用例。
 
 CI 现在会真的跑它：根 `.github/workflows/ci.yml` 的 Server job 在 Build 之后执行 `scripts/ci/test-server.ps1`，那个脚本按 `product-lock.json` 取词库、备好数据根目录，再跑 `ctest --test-dir server/build-release -C Release --timeout 120`。断言失败会让 CI 变红，不再是编译通过就算数。
 
