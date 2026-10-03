@@ -190,16 +190,11 @@
       clip-path: inset(0 round var(--wg-radius));
       letter-spacing: -0.31em;
     }
-    .container.preedit-hidden:has(> .pinyin + .row-wrapper > .first) {
-      background-image: linear-gradient(to right, var(--wg-hilite), var(--wg-hilite));
-      background-position: left;
-      background-size: var(--wg-radius) 100%;
-    }
-    .container:has(> .row-wrapper:is(:last-child, .last-visible) > .first) {
-      background-image: linear-gradient(to left, var(--wg-hilite), var(--wg-hilite));
-      background-position: right;
-      background-size: var(--wg-radius) 100%;
-    }
+    /* The first/last end-cap bands are gone. The selected row's own background already reaches
+       the frame edge -- measured gap 0 on both sides -- and the 9px corners come from
+       .container's clip-path, so a band adds no coverage. The right-hand one had
+       background-size 100% tall, which also painted the preedit row and left a green edge at
+       the card's top-right corner (#462). */
     .container.preedit-hidden:has(> .pinyin + .row-wrapper > .first):has(> .row-wrapper:is(:last-child, .last-visible) > .first) {
       background-color: var(--wg-hilite);
       background-image: none;
