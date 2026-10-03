@@ -132,6 +132,9 @@ void RescoreWorker::run()
             Job job;
             {
                 std::unique_lock<std::mutex> lock(mutex_);
+                // 这里按模型判「有没有空槽」就够，不必比键：待办是在下面取走的那一刻才从表里 erase 的，
+                // 在那之前同一个模型的键只挂在 active_keys_ 上，两张表不可能记着同一个模型同一批——否则
+                // 这个谓词会把正在算的那一批重排一遍。按键去重的那一层判断在 order_for 里。
                 wake_.wait(lock, [this] {
                     return stopping_ || std::any_of(pending_.begin(), pending_.end(), [this](const auto &item) {
                                return active_keys_.find(item.first) == active_keys_.end();
