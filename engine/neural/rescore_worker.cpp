@@ -70,9 +70,11 @@ std::optional<std::vector<std::size_t>> RescoreWorker::order_for(const SentenceM
         const auto active = active_keys_.find(&model);
         if (active != active_keys_.end() && active->second == key)
         {
-            // 正在算的就是这一批，算完自会进表并回调。这也是该模型最新的请求，排在它后面的旧待办
-            // 已经没人要了（用户打出去又退了回来），一并丢掉。
-            pending_.erase(&model);
+            // 正在算的就是这一批，算完自会进表并回调，所以不必再排一份。
+            // 刻意不碰 pending_：这一批在算的这些工夫里，用户完全可能已经打到了更新的输入，
+            // pending_ 里那个才是当前请求。抹掉它就再没有人排它了——本次调用拿到 nullopt 也
+            // 不会有回调，失败模式是那次重排永久缺失，而不只是延迟。pending_ 按模型留一格、
+            // 下次 order_for 直接覆盖，本来就不需要这里清理。
             return std::nullopt;
         }
         Job job;
