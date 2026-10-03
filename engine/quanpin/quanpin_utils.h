@@ -78,6 +78,14 @@ inline constexpr int kAutocorrectDeletionWeight = 11;
 inline constexpr int kAutocorrectInsertionWeight = 12;
 inline constexpr int kAutocorrectNeighborWeight = 13;
 
+// Out-of-table generated shapes (non-neighbor substitutions / arbitrary-letter
+// insertions, see CorrectionTarget::generated): fixed expensive-tier weight.
+// These slips are rarer than any in-table shape, and the ranking contract
+// requires them to never displace a table hit on the same wrong key. ponytail:
+// flat constant; calibration path = user_journal confusion priors (direction
+// task phase 3).
+inline constexpr int kAutocorrectGeneratedShapeWeight = 15;
+
 // One segment of an autocorrect-aware cut. syllable is the canonical (possibly
 // table-corrected) text used for dictionary lookups; raw_text/start describe the
 // original letters the segment consumed so the preedit can keep showing what the
@@ -104,6 +112,11 @@ struct AutocorrectCut
     // (neighbor gau -> gai, weight 13) regardless of dictionary frequency.
     size_t edge_count = 0;
     int weight = 0;
+    // True when any edge of this cut is an out-of-table generated pair. The
+    // search itself drops generated-containing cuts whenever a pure-static cut
+    // tops the ranking, so in-table inputs consume exactly the baseline cut
+    // set.
+    bool has_generated = false;
 
     bool empty() const
     {
@@ -134,7 +147,12 @@ Segments autocorrect_cut(const std::string &pinyin, unsigned autocorrect_types);
 // graph and gating as autocorrect_cut, but keeping ambiguous table entries
 // alive as parallel hypotheses. Ranking key: (corrected edge count, summed
 // edge weight, generation order = table order); hypotheses explaining the same
-// syllable sequence are deduplicated, keeping the best-ranked one. Every
+// syllable sequence are deduplicated, keeping the best-ranked one. Static
+// priority: generated-containing hypotheses rank behind every static one, and
+// when the top cut is pure static all generated cuts are dropped before
+// returning -- in-table inputs get exactly the pre-generated-space cut set,
+// and out-of-table shapes surface only when no static cut explains the input.
+// Every
 // returned cut contains at least one corrected edge, so a fully legal input
 // with no correction reading yields an empty vector (the caller owns the plain
 // segmentation). This is the query-time disambiguation surface of CN 101133411

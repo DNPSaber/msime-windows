@@ -411,6 +411,96 @@ void run_autocorrect_context_ranking_tests(const std::filesystem::path &data_dir
     }
 }
 
+// 阶段 2 生成式纠错空间（任务 quanpin-autocorrect-generated-space）：静态表
+// 形状之外的单编辑手误由生成式索引兜底，权重落贵档（15）。隔离 fixture：
+// - shatg = shang 的 n→t（t 非邻键，远键替换）
+// - zthou = zhou 的 z/h 之间插 t（t 不在静态覆盖集，远键插入）
+// - chng 同键双读：chng→chang（静态漏字 11）与 chng→cang（生成 15），
+//   静态最优时生成切分整体丢弃——静态优先语义的判别性断言
+// - shatngzh = head shatng + 简拼尾 zh：head 组合路径同享静态优先
+void run_autocorrect_generated_space_tests(const std::filesystem::path &data_directory)
+{
+    const std::filesystem::path directory = data_directory / "autocorrect-generated";
+    std::filesystem::create_directories(directory);
+    {
+        Database database(directory / "msime.db");
+        database.execute("CREATE TABLE tbl_1_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_s VALUES('shang', 's', '上', 900);");
+        database.execute("CREATE TABLE tbl_1_z(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_z VALUES('zhou', 'z', '周', 900);");
+        database.execute("CREATE TABLE tbl_1_c(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_c VALUES('chang', 'c', '长', 900);"
+                         "INSERT INTO tbl_1_c VALUES('cang', 'c', '仓', 5000);");
+        database.execute("CREATE TABLE tbl_2_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_s VALUES('shang''zh', 'sz', '上周', 900);");
+        database.execute("CREATE TABLE tbl_3_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_3_s VALUES('sha''tang''zh', 'stz', '沙汤扎', 900);");
+    }
+
+    metasequoia::RuntimePaths paths;
+    paths.resources = directory;
+    paths.user_data = directory;
+    paths.cache = directory;
+    paths.dictionaries = directory;
+    const unsigned both = quanpin::kAutocorrectTransposition | quanpin::kAutocorrectNeighbor;
+
+    // 远键替换：shatg → shang（生成对，贵档 15）。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "shatg");
+        const auto found = find_candidate_index(session, "上");
+        require(found < session.candidates().size() && session.candidates()[found].corrected_from == "shatg",
+                "A far-substitution typo must be corrected to 上 with the typed letters recorded.");
+    }
+
+    // 远键插入（词中位）：zthou → zhou（t 不在 z/h 的覆盖集）。fixture 特意
+    // 选无竞争切分的输入：zhwou 这类插入位会拼出 [zha(w 邻键替换)+ou] 等更
+    // 便宜的合法切分（权重 13 < 15），生成读法按契约排后被前缀候选遮蔽——
+    // 那是排序语义，不是生成类失效。zthou 无任何竞争切分，唯一读即纠错读法。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "zthou");
+        const auto found = find_candidate_index(session, "周");
+        require(found < session.candidates().size() && session.candidates()[found].corrected_from == "zthou",
+                "A far-insertion typo must be corrected to 周 with the typed letters recorded.");
+    }
+
+    // 静态优先语义：chng = chang 漏 a。读法竞争——chng→chang（静态漏字 11）与
+    // chng→cang（生成远键替换 h→a，15）。最优切分为纯静态时生成切分整体丢弃：
+    // 仓不出现（混表加权仲裁依赖训练权重，方向阶段 3），长照常领衔。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "chng");
+        require(candidate_index(session, "长") == 0, "The in-table cheaper deletion reading must lead for chng.");
+        require(
+            find_candidate_index(session, "仓") == session.candidates().size(),
+            "Static-priority semantics: the generated cang reading must not surface when a static cut tops the input.");
+    }
+
+    // head+简拼尾组合路径的静态优先：shatngzh 在整串 k-best 上无解（尾部 zh 非
+    // 完整音节），走 head 重试。head shatng 的读法竞争——sha+tng→tang（静态漏字
+    // 11）与 shatng→shang（生成插入 15）。丢弃规则由 k-best 搜索自身执行，head
+    // 路径同享：静态读法的沙汤扎（sha'tang'zh 精确键）在场，上周（shang+zh 生成
+    // 读法经 costlier 档，表内输入的基线里不存在）不得出现。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "shatngzh");
+        require(find_candidate_index(session, "沙汤扎") < session.candidates().size(),
+                "The head-composition path must still correct shatng to sha+tang.");
+        require(find_candidate_index(session, "上周") == session.candidates().size(),
+                "Static priority must hold on the head path: the generated shang+zh reading must not surface.");
+    }
+
+    // 守卫与合法输入：尾位插入（shangv 类）受简拼尾守卫——纠错不触发由
+    // test_pinyin 的 zheg 用例与输入门不变式覆盖，此处不重复；合法拼写原样直出。
+    {
+        metasequoia::InputSession legal(SchemeType::Quanpin, both, true, true, true, paths);
+        type(legal, "shang");
+        require(candidate_index(legal, "上") == 0 && legal.candidates()[0].corrected_from.empty(),
+                "A legal spelling must stay uncorrected.");
+    }
+}
+
 void run_caret_prefix_session_tests(const std::filesystem::path &data_directory)
 {
     const std::filesystem::path directory = data_directory / "caret-prefix";
@@ -1317,6 +1407,7 @@ int run_test()
     run_umlaut_alias_session_tests(data_directory);
     run_caret_prefix_session_tests(data_directory);
     run_autocorrect_context_ranking_tests(data_directory);
+    run_autocorrect_generated_space_tests(data_directory);
 #endif
 
 #ifndef METASEQUOIA_SKIP_FREQUENCY_TESTS

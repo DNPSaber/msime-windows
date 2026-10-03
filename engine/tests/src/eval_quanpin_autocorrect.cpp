@@ -89,6 +89,7 @@ enum class ErrorModel
     Deletion,
     Ambiguous,
     Insertion,
+    Outside,
 };
 
 enum class ErrorKind
@@ -97,6 +98,8 @@ enum class ErrorKind
     Neighbor,
     Deletion,
     Insertion,
+    FarSubstitution,
+    FarInsertion,
 };
 
 struct Options
@@ -120,7 +123,7 @@ void usage_exit(const std::string &message)
         std::cerr << "ERROR: " << message << "\n";
     }
     std::cerr << "usage: eval_quanpin_autocorrect --db <msime.db> [--samples N] [--seed S]\n"
-              << "           [--rates 10,25,50,100] [--model mixed|deletion|ambiguous|insertion]\n"
+              << "           [--rates 10,25,50,100] [--model mixed|deletion|ambiguous|insertion|outside]\n"
               << "           [--resource <dir>] [--csv <path>] [--seeds-file <path>] [--dump N]\n";
     std::exit(2);
 }
@@ -215,6 +218,10 @@ Options parse_options(int argc, char *argv[])
             else if (options.model_name == "insertion")
             {
                 options.model = ErrorModel::Insertion;
+            }
+            else if (options.model_name == "outside")
+            {
+                options.model = ErrorModel::Outside;
             }
             else
             {
@@ -434,7 +441,7 @@ std::vector<std::string> raw_variants(ErrorKind kind, const std::string &syllabl
             out.push_back(syllable.substr(0, i) + syllable.substr(i + 1));
         }
     }
-    else
+    else if (kind == ErrorKind::Insertion)
     {
         // 插入：与生成器 insertion_variants 同款约束——位置锚定串首（参照右
         // 邻）、串尾（参照左邻）、中间（参照任一侧），插入字母必须是相邻键的
@@ -472,6 +479,69 @@ std::vector<std::string> raw_variants(ErrorKind kind, const std::string &syllabl
             }
         }
     }
+    else if (kind == ErrorKind::FarSubstitution)
+    {
+        // 表外形状：非相邻键替换（替换键不是原键也不是其 QWERTY 邻键）。与
+        // 静态表替换形状构造性不相交，用于度量生成式纠错空间的覆盖增益。
+        for (size_t i = 0; i < syllable.size(); ++i)
+        {
+            std::unordered_set<char> blocked;
+            blocked.insert(syllable[i]);
+            for (const auto &[key, neighbors] : qwerty_neighbors())
+            {
+                if (key == syllable[i])
+                {
+                    blocked.insert(neighbors.begin(), neighbors.end());
+                }
+            }
+            for (char key = 'a'; key <= 'z'; ++key)
+            {
+                if (blocked.count(key) != 0)
+                {
+                    continue;
+                }
+                out.push_back(syllable.substr(0, i) + key + syllable.substr(i + 1));
+            }
+        }
+    }
+    else if (kind == ErrorKind::FarInsertion)
+    {
+        // 表外形状：插入字母不属于静态覆盖集（该位相邻字母及其邻键）。
+        for (size_t position = 0; position <= syllable.size(); ++position)
+        {
+            std::unordered_set<char> covered;
+            if (position > 0)
+            {
+                covered.insert(syllable[position - 1]);
+                for (const auto &[key, neighbors] : qwerty_neighbors())
+                {
+                    if (key == syllable[position - 1])
+                    {
+                        covered.insert(neighbors.begin(), neighbors.end());
+                    }
+                }
+            }
+            if (position < syllable.size())
+            {
+                covered.insert(syllable[position]);
+                for (const auto &[key, neighbors] : qwerty_neighbors())
+                {
+                    if (key == syllable[position])
+                    {
+                        covered.insert(neighbors.begin(), neighbors.end());
+                    }
+                }
+            }
+            for (char key = 'a'; key <= 'z'; ++key)
+            {
+                if (covered.count(key) != 0)
+                {
+                    continue;
+                }
+                out.push_back(syllable.substr(0, position) + key + syllable.substr(position));
+            }
+        }
+    }
     return out;
 }
 
@@ -495,7 +565,8 @@ std::vector<std::string> usable_variants(ErrorKind kind, const std::string &syll
 }
 
 // mixed = 交换 25% / 邻键 25% / 漏字 25% / 多字 25%；deletion = 100% 漏字；
-// insertion = 100% 多字。选中的错误类型在该音节上无可用变体（如 2 字母音节
+// insertion = 100% 多字；outside = 非相邻替换 / 远键插入各半（表外形状，度量
+// 生成式纠错空间的覆盖增益）。选中的错误类型在该音节上无可用变体（如 2 字母音节
 // 或 6 字母音节的插入变体超长）时保持原样，交由样本级作废逻辑处理，不回退
 // 到其他类型，保证分布可解释。
 std::string corrupt_syllable(const std::string &syllable, std::mt19937 &rng, ErrorModel model,
@@ -513,6 +584,11 @@ std::string corrupt_syllable(const std::string &syllable, std::mt19937 &rng, Err
     else if (model == ErrorModel::Insertion)
     {
         kind = ErrorKind::Insertion;
+    }
+    else if (model == ErrorModel::Outside)
+    {
+        kind = std::uniform_int_distribution<int>(1, 100)(rng) <= 50 ? ErrorKind::FarSubstitution
+                                                                     : ErrorKind::FarInsertion;
     }
     const auto variants = usable_variants(kind, syllable, legal);
     if (variants.empty())

@@ -37,7 +37,9 @@ cmake --build build --config Release --target <imetest | eval_quanpin_autocorrec
 ### 运行
 
 ```powershell
-# 仓库根目录执行；--model 可选 mixed|deletion|ambiguous|insertion
+# 仓库根目录执行；--model 可选 mixed|deletion|ambiguous|insertion|outside
+# outside = 表外形状注错（非相邻替换/远键插入），度量生成式纠错空间的覆盖增益，
+# 与静态表形状构造性不相交——该档 R@1 在无生成空间的代码上恒为 0。
 ./engine/tests/build/bin/Release/eval_quanpin_autocorrect.exe `
     --db <msime.db 路径> `
     --samples 300 --seed 42 --model mixed `

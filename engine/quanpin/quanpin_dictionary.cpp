@@ -176,6 +176,10 @@ SeriesQueryResolution resolve_series_query(const std::string &raw_input, const q
             }
         };
 
+        // 静态优先语义由 k-best 搜索自身保证（见 quanpin_utils.h 契约）：最优
+        // 切分为纯静态时生成切分已在搜索内被丢弃，下面的 head+简拼尾组合路径
+        // 与 k=1 预编辑投影等调用方同享该保证；生成读法只在静态空间完全无法
+        // 解释输入时出场。混表竞争的加权仲裁依赖训练权重，留给方向阶段 3。
         const auto cuts = quanpin::autocorrect_cut_kbest(raw_input, autocorrect_types, kAutocorrectCutKBest);
         if (!cuts.empty())
         {
