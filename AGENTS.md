@@ -53,7 +53,7 @@ cmake -S ui      -B ui/build -A x64                # GUI 框架
 
 引擎不需要任何初始化步骤，普通 clone 即可；`vendor/` 下的 opencc 和 cpp-pinyin 仍是 submodule，构建 `windows/` 或 `server/` 前先 `git submodule update --init --recursive`。
 
-引擎头文件一律按 `engine/...` 前缀引用（`#include "engine/core/input_session.h"`），因为构建把仓库根放进了 include path。不要用相对路径回跳，那会把调用方绑死在自己的目录深度上。
+引擎头文件的引用方式两侧不同：**Server** 按 `engine/...` 前缀引用（`#include "engine/core/input_session.h"`），因为 `server/CMakeLists.txt` 把仓库根放进了 include path，不要用相对路径回跳，那会把调用方绑死在自己的目录深度上；**TSF DLL（windows/）没有仓库根**（include path 只有 `./src/*` 平铺项），契约头用相对路径 `../../../engine/contracts/...` 引用——在 windows/ 里写 `engine/...` 前缀编不过。
 
 `scripts/format.sh` 覆盖 `server/`、`windows/`、`ui/`、`log/` 和 `engine/`（排除引擎里的第三方副本和生成的头文件），CI 用 `--check` 卡格式。
 

@@ -134,7 +134,7 @@
 ## 代码风格
 
 - 使用 C++17、Windows Unicode API、SAL 标注和项目现有的 4 空格 Microsoft 风格。
-- 格式化遵循根目录 `.clang-format`，且明确 `SortIncludes: false`；不要自动重排 include。
+- 格式化遵循**本目录自己的 `.clang-format`**——仓库没有根目录 `.clang-format`，每个组件子树各有一份、规则互不相同；本目录这份是 Microsoft 风格、明确 `SortIncludes: false`，不要自动重排 include。
 - 修改 `.cpp` / `.h` 后对**本次涉及的文件**运行：
 
 ```powershell
