@@ -263,6 +263,10 @@ if(BUILD_TESTING)
     add_executable(bench_input_session tests/src/bench_input_session.cpp)
     target_link_libraries(bench_input_session PRIVATE MetasequoiaIme::Engine)
 
+    # Run this benchmark by hand with the released dictionaries and neural models.
+    add_executable(bench_neural_rescore tests/src/bench_neural_rescore.cpp)
+    target_link_libraries(bench_neural_rescore PRIVATE MetasequoiaIme::Engine)
+
     add_executable(test_online_input_session tests/src/test_online_input_session.cpp)
     target_link_libraries(test_online_input_session PRIVATE MetasequoiaIme::Engine)
     add_test(NAME online_input_session COMMAND test_online_input_session)
