@@ -448,9 +448,16 @@ std::vector<WordItem> QuanpinDictionary::query_exact(const std::string &raw_inpu
             if (primary_score.has_value())
             {
                 // 前置过滤沿用保护位同款 1/100 量级：今天就赢不了晋升的备选不付解码钱。
-                // 主切首位权重取 result 首行（精确键命中行），与 merge_alternative_
-                // segmentations 的 primary_top_weight 同源。
-                const std::int64_t primary_top_weight = result.empty() ? 0 : result.front().weight;
+                // 基准必须与 merge_alternative_segmentations 的 primary_top_weight 同源，
+                // 即取正读**整键**命中的首位权重、没有整键行时取 0。不能取 result.front()：
+                // result 是 query_series 的完整输出，头部可能是高权重前缀单字（真实词库里
+                // 单字是 1e6+ 的语料计数，见 heuristic_log_prob）或生成的整句。正读两音节
+                // 在词库里没有整词、词格只能用单字拼出路径时，那正是重排价值最高的场景，拿单字
+                // 当基准会在解码之前就把正常备选全筛掉，重排悄悄不生效。同参调用
+                // query_single_path 走缓存，不额外查库。
+                const std::string primary_key = quanpin::join_segments(resolution.corrected_segments);
+                const auto primary_full = query_single_path(raw_input, primary_key, resolution.corrected_segments);
+                const std::int64_t primary_top_weight = primary_full.empty() ? 0 : primary_full.front().weight;
                 const auto alternative_items = quanpin::query_exact_segmentations_keyed_flat(
                     resolution.alternative_corrected_cuts, db_, statement_cache_,
                     kAlternativeSegmentationCandidateLimit);
