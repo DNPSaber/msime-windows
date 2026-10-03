@@ -337,6 +337,80 @@ void run_umlaut_alias_session_tests(const std::filesystem::path &data_directory)
 // 光标驱动的前缀解码（PRD R2–R7，Stage 1）：候选与量化边界按「光标之前的完整音节
 // 单元前缀」重算。自建隔离词库，不与主 fixture 互相污染；Server（Stage 2）将以
 // set_caret + recompute_candidates 的同一方式消费这些入口。
+// 阶段 1 上下文消解（任务 quanpin-autocorrect-context-ranking）：同档纠错读法
+// 在词格路径分边际达标时由胜出切分接管领衔。zhng 的删除目标按表序 zhang 在前
+// （主切），fixture 让 zheng 侧的办证权重高 20 倍——启发式路径分差 ln(20)=3.0
+// （log10 1.3），两种标度下都过 1.0 接管边际。fixture 无 sc.lm，词格退回
+// 启发式打分（ln(weight)+词长奖励），权重完全决定路径分，测试因此确定。
+void run_autocorrect_context_ranking_tests(const std::filesystem::path &data_directory)
+{
+    const std::filesystem::path directory = data_directory / "autocorrect-context";
+    std::filesystem::create_directories(directory);
+    {
+        Database database(directory / "msime.db");
+        database.execute("CREATE TABLE tbl_2_b(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_b VALUES('ban''zheng', 'bz', '办证', 100000);"
+                         "INSERT INTO tbl_2_b VALUES('ban''zheng', 'bz', '辩证', 10);"
+                         "INSERT INTO tbl_2_b VALUES('ban''zhang', 'bz', '班长', 5000);"
+                         "INSERT INTO tbl_2_b VALUES('ban''zhang', 'bz', '搬账', 4000);");
+        database.execute("CREATE TABLE tbl_1_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_s VALUES('shang', 's', '上', 900);"
+                         "INSERT INTO tbl_1_s VALUES('sheng', 's', '生', 800);");
+    }
+
+    metasequoia::RuntimePaths paths;
+    paths.resources = directory;
+    paths.user_data = directory;
+    paths.cache = directory;
+    paths.dictionaries = directory;
+    const unsigned both = quanpin::kAutocorrectTransposition | quanpin::kAutocorrectNeighbor;
+    SentenceAssociationOptions lattice_only;
+    lattice_only.word_lattice = true;
+
+    const auto candidate_words = [](const metasequoia::InputSession &session) {
+        std::vector<std::string> words;
+        for (const auto &item : session.candidates())
+        {
+            words.push_back(item.word);
+        }
+        return words;
+    };
+
+    // 关联关闭 = 现状静态路径：合并池按权重排序，办证系与班长系交错。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "banzhng");
+        const auto words = candidate_words(session);
+        require(words.size() == 4 && words[0] == "办证" && words[1] == "班长" && words[2] == "搬账" &&
+                    words[3] == "辩证",
+                "The static same-tier merge must interleave the readings by dictionary weight.");
+    }
+
+    // 关联开启：zheng 切分上下文胜出接管领衔——办证系整体前移，辩证从末位
+    // 升到第 2 位，班长系整体后移。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        session.set_sentence_association(lattice_only);
+        type(session, "banzhng");
+        const auto words = candidate_words(session);
+        require(words.size() == 4 && words[0] == "办证" && words[1] == "辩证" && words[2] == "班长" &&
+                    words[3] == "搬账",
+                "The context-ranked reading must lead with its whole word group.");
+    }
+
+    // 单音节纠错无词格可搭（词格要求 >=2 完整音节）：两种状态必须逐位一致。
+    {
+        metasequoia::InputSession off(SchemeType::Quanpin, both, true, true, true, paths);
+        type(off, "shng");
+        metasequoia::InputSession on(SchemeType::Quanpin, both, true, true, true, paths);
+        on.set_sentence_association(lattice_only);
+        type(on, "shng");
+        require(same_candidate_words(off, on),
+                "A single-syllable correction must take the static path even with the word lattice on.");
+        require(candidate_words(on).size() == 2, "The single-syllable fixture must surface both deletion targets.");
+    }
+}
+
 void run_caret_prefix_session_tests(const std::filesystem::path &data_directory)
 {
     const std::filesystem::path directory = data_directory / "caret-prefix";
@@ -1242,6 +1316,7 @@ int run_test()
 
     run_umlaut_alias_session_tests(data_directory);
     run_caret_prefix_session_tests(data_directory);
+    run_autocorrect_context_ranking_tests(data_directory);
 #endif
 
 #ifndef METASEQUOIA_SKIP_FREQUENCY_TESTS
