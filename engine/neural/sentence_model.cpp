@@ -886,16 +886,17 @@ std::vector<float> SentenceModel::target_log_probs(const std::vector<float> &hid
         {
             weights = &token_.floats[id * n_embd];
         }
-        for (std::size_t active = 0; active < active_rows.size(); ++active)
+        for (std::size_t slot = 0; slot < active_rows.size(); ++slot)
         {
-            logits[active * vocab + id] = dot(&hidden[active_rows[active] * n_embd], weights, n_embd) * scale;
+            const std::size_t row = active_rows[slot];
+            logits[slot * vocab + id] = dot(&hidden[row * n_embd], weights, n_embd) * scale;
         }
     }
 
-    for (std::size_t active = 0; active < active_rows.size(); ++active)
+    for (std::size_t slot = 0; slot < active_rows.size(); ++slot)
     {
-        const std::size_t row = active_rows[active];
-        const float *source = &logits[active * vocab];
+        const std::size_t row = active_rows[slot];
+        const float *source = &logits[slot * vocab];
         float highest = -std::numeric_limits<float>::infinity();
         for (std::size_t id = 0; id < vocab; ++id)
         {
