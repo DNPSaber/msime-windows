@@ -153,11 +153,18 @@ Segments autocorrect_cut(const std::string &pinyin, unsigned autocorrect_types);
 // kAutocorrectInsertion, so a type bit no longer maps one-to-one onto a table. An
 // input with no static cut at all is now reachable through a single bit -- "sahng"
 // reads as "sa'ang" under the neighbour bit alone, "shng" as "sang". Callers must
-// not read a bit as "only this family of typo". Product behaviour is unaffected
+// not read a bit as "only this family of typo".
+//
+// Scope of that: the BARE-bit readings above are unreachable in the product,
 // because engine.cpp always pairs the deletion and insertion bits with the legacy
-// switches, so the only masks that ever occur are 0 / 0xd / 0xe / 0xf; the
-// head+jianpin-tail path in quanpin_dictionary.cpp additionally masks the
-// neighbour bit off, which suppresses every generated substitution for free.
+// switches, so the only masks that ever occur are 0 / 0xd / 0xe / 0xf. The
+// generated space itself is NOT unreachable: 0xe and 0xf still carry the
+// neighbour bit and all three carry the insertion bit, so it does add
+// user-visible recall (far substitutions under 0xe/0xf, far insertions under
+// 0xd). That recall is the intended gain, pinned end-to-end by
+// engine/tests/src/test_input_session.cpp ("shatg" -> shang, "zthou" -> zhou).
+// The head+jianpin-tail fallback in quanpin_dictionary.cpp additionally masks the
+// neighbour bit off, which suppresses generated substitutions on that path only.
 // Every returned cut contains at least one corrected edge, so a fully legal input
 // with no correction reading yields an empty vector (the caller owns the plain
 // segmentation). This is the query-time disambiguation surface of CN 101133411

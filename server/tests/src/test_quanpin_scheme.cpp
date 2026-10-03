@@ -682,9 +682,11 @@ TEST_CASE(QuanpinAutocorrectCutGatesEachTypeIndependently)
     // neighbour pair (kQwertyNeighbors['a'] == "qwsz"), and the generated space
     // explains "sahng" as "sa'ang" under the neighbour bit alone. The cases below
     // used to pin that one-to-one relation and are kept, with the widened reading
-    // spelled out. The mask is unreachable in the product: engine.cpp assembles the
-    // deletion and insertion bits alongside the legacy switches, so the only
-    // non-zero masks are 0xd/0xe/0xf -- the widening never reaches a user.
+    // spelled out. The bare bit used here is unreachable in the product: engine.cpp
+    // assembles the deletion and insertion bits alongside the legacy switches, so
+    // the only non-zero masks are 0xd/0xe/0xf. That makes THIS row untriggerable by
+    // a user; it does not make the generated space unreachable, because 0xe/0xf
+    // still carry the neighbour bit and all three carry the insertion bit.
     // "sahng" is a transposition fix; only that bit may correct it.
     REQUIRE(quanpin::autocorrect_cut("sahng", none).empty());
     REQUIRE_EQ(quanpin::join_segments(quanpin::autocorrect_cut("sahng", transposition_only)), std::string("shang"));

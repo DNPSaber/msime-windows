@@ -950,9 +950,14 @@ void test_quanpin_autocorrect_switches_and_guard()
     // fix (AC1-AC4). Since the generated correction space was added, the neighbour
     // bit also carries out-of-table substitutions, so a bit no longer maps onto
     // exactly one table and the 'must NOT correct' rows had to give up their empty
-    // expectation for the input's widened reading. The masks involved are
-    // unreachable in the product: engine.cpp always pairs the deletion and
-    // insertion bits with the legacy switches, so only 0xd/0xe/0xf ever occur.
+    // expectation for the input's widened reading. The bare bits used here
+    // (neighbour alone, T|N) are unreachable in the product: engine.cpp always
+    // pairs the deletion and insertion bits with the legacy switches, so only
+    // 0xd/0xe/0xf ever occur. That does NOT make the generated space unreachable
+    // -- 0xe/0xf still carry the neighbour bit and all three carry the insertion
+    // bit -- it only means these particular one-bit rows cannot be triggered by a
+    // user. The space itself is reachable and is covered by the session-level
+    // cases below plus test_input_session.cpp.
     expect(quanpin::autocorrect_cut("sahng", none).empty(), "Both switches off must disable the correction cut.");
     expect(quanpin::join_segments(quanpin::autocorrect_cut("sahng", transposition_only)) == "shang",
            "Transposition-only must correct 'sahng'.");
@@ -1137,11 +1142,14 @@ void test_quanpin_autocorrect_switches_and_guard()
                "Transposition-only must correct 'sahng' at the dictionary layer (AC2).");
 
         // AC2 gating is verified through the correction marker rather than through
-        // 上's presence: a sequence-prefix query hits the 'shang' key through 'sha'
-        // whether or not a correction happened (see the AC3 case below for the same
-        // effect). Now that the generated space routes neighbor-only 'sahng' through
-        // the correction path (as sa + ang), 上 comes back with an empty
-        // corrected_from -- the transposition reading is still not produced.
+        // 上's presence. Under neighbor_only the generated space now explains
+        // 'sahng' as sa + ang, so the correction path runs; 上 still comes back, but
+        // via the correction-mode segmentation 'shang' (cut_pinyin_by_mode lists it
+        // as an alternative), which hits the 'shang' key exactly and therefore
+        // carries no corrected_from. The transposition reading is not produced, so
+        // nothing is marked. Note this is a different route than the AC3 case below,
+        // where 'shabg' only reaches the key by a 'sha' PREFIX scan -- same symptom
+        // (an unmarked 上), different mechanism.
         const auto neighbor_denied = dictionary.query("sahng", "sa'h'n'g", neighbor_only);
         expect(std::none_of(neighbor_denied.begin(), neighbor_denied.end(),
                             [](const WordItem &item) { return item.corrected_from == "sahng"; }),
