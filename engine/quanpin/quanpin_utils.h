@@ -147,6 +147,17 @@ Segments autocorrect_cut(const std::string &pinyin, unsigned autocorrect_types);
 // when the top cut is pure static all generated cuts are dropped before
 // returning -- in-table inputs get exactly the pre-generated-space cut set,
 // and out-of-table shapes surface only when no static cut explains the input.
+//
+// One caveat that the ranking guarantee does not cover: the generated space hangs
+// its out-of-table SUBSTITUTIONS off kAutocorrectNeighbor and its insertions off
+// kAutocorrectInsertion, so a type bit no longer maps one-to-one onto a table. An
+// input with no static cut at all is now reachable through a single bit -- "sahng"
+// reads as "sa'ang" under the neighbour bit alone, "shng" as "sang". Callers must
+// not read a bit as "only this family of typo". Product behaviour is unaffected
+// because engine.cpp always pairs the deletion and insertion bits with the legacy
+// switches, so the only masks that ever occur are 0 / 0xd / 0xe / 0xf; the
+// head+jianpin-tail path in quanpin_dictionary.cpp additionally masks the
+// neighbour bit off, which suppresses every generated substitution for free.
 // Every returned cut contains at least one corrected edge, so a fully legal input
 // with no correction reading yields an empty vector (the caller owns the plain
 // segmentation). This is the query-time disambiguation surface of CN 101133411
@@ -158,11 +169,21 @@ std::vector<AutocorrectCut> autocorrect_cut_kbest(const std::string &pinyin, uns
                                                   std::size_t k = 3);
 
 // True when the input reads as one or more legal syllables plus at most one trailing
-// letter ("zheg" = zhe + g): a jianpin-intent shape the correction tables must not
-// rewrite. Deliberately NOT true for all-consonant strings of 3+ letters: the engine
+// letter ("zheg" = zhe + g): a jianpin-intent shape, which is user intent and never
+// a typo. Deliberately NOT true for all-consonant strings of 3+ letters: the engine
 // has no multi-letter jianpin, so correction is the only useful reading of e.g.
 // "bqng" -> bang. Inputs with manual delimiters return false; the correction path
 // excludes them on its own.
+//
+// Who enforces it: the CALLERS, not the search above. autocorrect_cut,
+// autocorrect_cut_kbest and autocorrect_cut_detail never consult this predicate, so
+// calling them directly on a jianpin shape still cuts one -- "zheg" reads as "zhei"
+// through the generated space, "zher" as "zhe" through the insertion table (both
+// pinned by engine/tests/src/test_pinyin.cpp). Both production callers apply the
+// guard before reaching the search: quanpin_dictionary.cpp (query layer) and
+// input_session_composition.cpp (preedit layer). A new caller has to do the same;
+// none of these signatures carries the constraint, so omitting it fails silently
+// rather than at compile time.
 bool looks_like_syllable_with_jianpin_tail(const std::string &pinyin);
 
 } // namespace quanpin
