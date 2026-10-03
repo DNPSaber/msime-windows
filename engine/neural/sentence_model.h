@@ -134,6 +134,8 @@ class SentenceModel
     std::vector<double> score_sentences(const std::string &context, const std::vector<std::string> &texts) const;
 
   private:
+    struct Workspace;
+
     static constexpr std::uint32_t kUnk = 1;
     static constexpr std::uint32_t kBos = 2;
 
@@ -178,8 +180,9 @@ class SentenceModel
 
     void attention(const std::vector<float> &q, const std::vector<float> &k, const std::vector<float> &v,
                    std::size_t batch, std::size_t width, const std::vector<float> *past_k,
-                   const std::vector<float> *past_v, std::size_t past_len, std::vector<float> &out) const;
-    void feed_forward(std::vector<float> &x, const Block &block) const;
+                   const std::vector<float> *past_v, std::size_t past_len, std::vector<float> &out,
+                   std::vector<float> &scores) const;
+    void feed_forward(std::vector<float> &x, const Block &block, Workspace &workspace) const;
 };
 
 } // namespace neural

@@ -8,6 +8,7 @@
 #include <fstream>
 #include <limits>
 #include <stdexcept>
+#include <utility>
 
 namespace neural
 {
@@ -85,12 +86,15 @@ float dot_i8(const float *a, const std::int8_t *b, std::size_t n)
 // and the whole forward pass runs at DRAM bandwidth. Hoisting the output loop reads each weight row
 // once and reuses it across the batch, which is the reason a batch of candidates costs barely more
 // than one.
-std::vector<float> linear(const std::vector<float> &x, const Matrix &w, const std::vector<float> &bias,
-                          std::size_t inputs, std::size_t outputs)
+void linear_into(const std::vector<float> &x, const Matrix &w, const std::vector<float> &bias, std::size_t inputs,
+                 std::size_t outputs, std::vector<float> &out, std::vector<float> &scratch)
 {
     std::size_t rows = inputs == 0 ? 0 : x.size() / inputs;
-    std::vector<float> out(rows * outputs, 0.0f);
-    std::vector<float> scratch(w.quantized ? inputs : 0, 0.0f);
+    out.resize(rows * outputs);
+    if (w.quantized && scratch.size() < inputs)
+    {
+        scratch.resize(inputs);
+    }
     for (std::size_t o = 0; o < outputs; ++o)
     {
         // Widen the row's int8 once per output row instead of once per (output row, input row).
@@ -123,13 +127,12 @@ std::vector<float> linear(const std::vector<float> &x, const Matrix &w, const st
             out[row * outputs + o] = dot(&x[row * inputs], weights, inputs) * scale + b;
         }
     }
-    return out;
 }
 
-std::vector<float> layer_norm(const float *x, std::size_t rows, const std::vector<float> &weight,
-                              const std::vector<float> &bias, std::size_t width)
+void layer_norm_into(const float *x, std::size_t rows, const std::vector<float> &weight, const std::vector<float> &bias,
+                     std::size_t width, std::vector<float> &out)
 {
-    std::vector<float> out(rows * width, 0.0f);
+    out.resize(rows * width);
     for (std::size_t row = 0; row < rows; ++row)
     {
         const float *source = &x[row * width];
@@ -153,15 +156,14 @@ std::vector<float> layer_norm(const float *x, std::size_t rows, const std::vecto
             target[i] = (source[i] - mean) * inverse * weight[i] + bias[i];
         }
     }
-    return out;
 }
 
 void split_qkv(const std::vector<float> &qkv, std::size_t rows, std::size_t n_embd, std::vector<float> &q,
                std::vector<float> &k, std::vector<float> &v)
 {
-    q.assign(rows * n_embd, 0.0f);
-    k.assign(rows * n_embd, 0.0f);
-    v.assign(rows * n_embd, 0.0f);
+    q.resize(rows * n_embd);
+    k.resize(rows * n_embd);
+    v.resize(rows * n_embd);
     for (std::size_t row = 0; row < rows; ++row)
     {
         const float *source = &qkv[row * 3 * n_embd];
@@ -333,6 +335,21 @@ std::size_t product(const std::vector<std::size_t> &shape)
 }
 
 } // namespace
+
+struct SentenceModel::Workspace
+{
+    std::vector<float> normed;
+    std::vector<float> qkv;
+    std::vector<float> q;
+    std::vector<float> k;
+    std::vector<float> v;
+    std::vector<float> attended;
+    std::vector<float> projected;
+    std::vector<float> ff_hidden;
+    std::vector<float> ff_out;
+    std::vector<float> linear_scratch;
+    std::vector<float> attention_scores;
+};
 
 float Matrix::dot_row(const float *x, std::size_t row, std::size_t width) const
 {
@@ -680,7 +697,8 @@ std::vector<float> SentenceModel::embed(const std::vector<std::uint32_t> &tokens
 
 void SentenceModel::attention(const std::vector<float> &q, const std::vector<float> &k, const std::vector<float> &v,
                               std::size_t batch, std::size_t width, const std::vector<float> *past_k,
-                              const std::vector<float> *past_v, std::size_t past_len, std::vector<float> &out) const
+                              const std::vector<float> *past_v, std::size_t past_len, std::vector<float> &out,
+                              std::vector<float> &scores) const
 {
     const std::size_t n_embd = config_.n_embd;
     const std::size_t heads = config_.n_head;
@@ -691,7 +709,7 @@ void SentenceModel::attention(const std::vector<float> &q, const std::vector<flo
         past_len = 0;
     }
     out.assign(batch * width * n_embd, 0.0f);
-    std::vector<float> scores(past_len + width, 0.0f);
+    scores.resize(past_len + width);
     for (std::size_t row = 0; row < batch; ++row)
     {
         const std::size_t base_row = row * width;
@@ -748,20 +766,22 @@ void SentenceModel::attention(const std::vector<float> &q, const std::vector<flo
     }
 }
 
-void SentenceModel::feed_forward(std::vector<float> &x, const Block &block) const
+void SentenceModel::feed_forward(std::vector<float> &x, const Block &block, Workspace &workspace) const
 {
     const std::size_t n_embd = config_.n_embd;
     std::size_t rows = x.size() / n_embd;
-    std::vector<float> normed = layer_norm(x.data(), rows, block.ln2_weight, block.ln2_bias, n_embd);
-    std::vector<float> hidden = linear(normed, block.fc_weight, block.fc_bias, n_embd, 4 * n_embd);
-    for (float &value : hidden)
+    layer_norm_into(x.data(), rows, block.ln2_weight, block.ln2_bias, n_embd, workspace.normed);
+    linear_into(workspace.normed, block.fc_weight, block.fc_bias, n_embd, 4 * n_embd, workspace.ff_hidden,
+                workspace.linear_scratch);
+    for (float &value : workspace.ff_hidden)
     {
         value = gelu(value);
     }
-    std::vector<float> out = linear(hidden, block.out_weight, block.out_bias, 4 * n_embd, n_embd);
+    linear_into(workspace.ff_hidden, block.out_weight, block.out_bias, 4 * n_embd, n_embd, workspace.ff_out,
+                workspace.linear_scratch);
     for (std::size_t i = 0; i < x.size(); ++i)
     {
-        x[i] += out[i];
+        x[i] += workspace.ff_out[i];
     }
 }
 
@@ -772,10 +792,7 @@ std::vector<float> SentenceModel::forward(const std::vector<std::uint32_t> &toke
     const std::size_t rows = batch * width;
     const std::size_t past_len = past == nullptr ? 0 : past->length;
     std::vector<float> x = embed(tokens, width, past_len);
-    std::vector<float> q;
-    std::vector<float> k;
-    std::vector<float> v;
-    std::vector<float> attended;
+    Workspace workspace;
     if (record != nullptr)
     {
         // A cache is shared by every row that later attends to it, so it can only ever describe one
@@ -787,25 +804,29 @@ std::vector<float> SentenceModel::forward(const std::vector<std::uint32_t> &toke
     for (std::size_t layer = 0; layer < blocks_.size(); ++layer)
     {
         const Block &block = blocks_[layer];
-        std::vector<float> normed = layer_norm(x.data(), rows, block.ln1_weight, block.ln1_bias, n_embd);
-        std::vector<float> qkv = linear(normed, block.qkv_weight, block.qkv_bias, n_embd, 3 * n_embd);
-        split_qkv(qkv, rows, n_embd, q, k, v);
+        layer_norm_into(x.data(), rows, block.ln1_weight, block.ln1_bias, n_embd, workspace.normed);
+        linear_into(workspace.normed, block.qkv_weight, block.qkv_bias, n_embd, 3 * n_embd, workspace.qkv,
+                    workspace.linear_scratch);
+        split_qkv(workspace.qkv, rows, n_embd, workspace.q, workspace.k, workspace.v);
         const std::vector<float> *past_k = past_len == 0 ? nullptr : &past->keys[layer];
         const std::vector<float> *past_v = past_len == 0 ? nullptr : &past->values[layer];
-        attention(q, k, v, batch, width, past_k, past_v, past_len, attended);
-        std::vector<float> projected = linear(attended, block.proj_weight, block.proj_bias, n_embd, n_embd);
+        attention(workspace.q, workspace.k, workspace.v, batch, width, past_k, past_v, past_len, workspace.attended,
+                  workspace.attention_scores);
+        linear_into(workspace.attended, block.proj_weight, block.proj_bias, n_embd, n_embd, workspace.projected,
+                    workspace.linear_scratch);
         for (std::size_t i = 0; i < x.size(); ++i)
         {
-            x[i] += projected[i];
+            x[i] += workspace.projected[i];
         }
-        feed_forward(x, block);
+        feed_forward(x, block, workspace);
         if (record != nullptr)
         {
-            record->keys[layer] = k;
-            record->values[layer] = v;
+            record->keys[layer] = workspace.k;
+            record->values[layer] = workspace.v;
         }
     }
-    return layer_norm(x.data(), rows, final_weight_, final_bias_, n_embd);
+    layer_norm_into(x.data(), rows, final_weight_, final_bias_, n_embd, workspace.normed);
+    return std::move(workspace.normed);
 }
 
 PrefixCache SentenceModel::build_prefix(const std::vector<std::uint32_t> &tokens) const
