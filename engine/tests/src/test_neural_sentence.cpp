@@ -152,6 +152,23 @@ int run_test()
         }
     }
 
+    // Empty candidates have no targets. They must not read a padding logit.
+    {
+        const std::vector<std::string> texts = {"", "上海", "", "伤害"};
+        const std::vector<double> scores = model->score_sentences("我今天想去", texts);
+        expect(scores.size() == texts.size(), "empty candidates should keep their batch positions");
+        if (scores.size() == texts.size())
+        {
+            for (std::size_t i = 0; i < texts.size(); ++i)
+            {
+                expect_near(scores[i], reference_score(*model, "我今天想去", texts[i]), 1e-3,
+                            "empty candidates should not affect other scores");
+            }
+        }
+        expect(model->score_sentences("", {""}) == std::vector<double>{0.0},
+               "a batch without targets should score zero");
+    }
+
     // ---- 批量与单条一致：padding 行不能污染同批的其它行 ----
     {
         const std::string context = "我今天想去";
