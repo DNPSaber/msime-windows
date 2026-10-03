@@ -513,8 +513,24 @@ std::vector<WordItem> QuanpinDictionary::query_exact(const std::string &raw_inpu
                     std::vector<WordItem> rest =
                         merge_alternative_segmentations(raw_input, pinyin_segmentation_, resolution.corrected_segments,
                                                         remaining_alternatives, std::move(result));
-                    result = query_series(raw_input, winner_key, winner_segments);
+                    // query_series 的 count 从整键递减到 1，返回的不只是胜出切分的整键行，还有它
+                    // 首音节的全部单字。整句与词格行跟整键行同键——append_ime_fallback 用完整
+                    // segmentation 填 canonical_pinyin，词格 select_distinct 用 path->key——所以
+                    // 按 canonical_pinyin == winner_key 能干净地把前缀行摘出去。
+                    //
+                    // 不切开会破坏 merge_alternative_segmentations 的既有分层（merged_full 在前、
+                    // 前缀作为 remaining 追加）：query_series(ban'zheng) 先出 办证/辩证/整句，再出
+                    // 班/办/半/般…，而班长、搬账这些同键位整词在 rest 里、排在单字之后，整组被挤
+                    // 出首页。这里恢复同一分层：整键块、rest、前缀块。
+                    std::vector<WordItem> winner_full;
+                    std::vector<WordItem> winner_prefix;
+                    for (auto &item : query_series(raw_input, winner_key, winner_segments))
+                    {
+                        (item.canonical_pinyin == winner_key ? winner_full : winner_prefix).push_back(std::move(item));
+                    }
+                    result = std::move(winner_full);
                     append_unique_words(result, std::move(rest));
+                    append_unique_words(result, std::move(winner_prefix));
                     context_reordered = true;
                 }
             }

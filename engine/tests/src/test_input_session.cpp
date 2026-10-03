@@ -411,6 +411,83 @@ void run_autocorrect_context_ranking_tests(const std::filesystem::path &data_dir
     }
 }
 
+// 审阅缺陷 D1（PR #592 行内评论）：上下文重排接管后，胜出切分的单字前缀曾被插到
+// 同键位整词前面。query_series 的 count 从整键递减到 1，ban'zheng 的输出里除了
+// 办证/辩证/整句还带着首音节的单字；这些单字排在 rest（班长、搬账）之前，把同键位的
+// 其他整词整组挤出首页。原 fixture 没有 tbl_1_b，前缀这条路根本没被走到。
+// 这里补单字表，并直接断言「整键在前、前缀在后」这条分层不变量。
+void run_autocorrect_context_layering_tests(const std::filesystem::path &data_directory)
+{
+    const std::filesystem::path directory = data_directory / "autocorrect-context-layering";
+    std::filesystem::create_directories(directory);
+    {
+        Database database(directory / "msime.db");
+        database.execute("CREATE TABLE tbl_2_b(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_b VALUES('ban''zheng', 'bz', '办证', 100000);"
+                         "INSERT INTO tbl_2_b VALUES('ban''zheng', 'bz', '辩证', 10);"
+                         "INSERT INTO tbl_2_b VALUES('ban''zhang', 'bz', '班长', 5000);"
+                         "INSERT INTO tbl_2_b VALUES('ban''zhang', 'bz', '搬账', 4000);");
+        // 单字表：query_series 递减到 count==1 时查它，前缀行由此产生。单字权重取 1e6
+        // 量级（真实词库里单字是语料计数），确保它们不会被 append 阶段的去重或调频挪走。
+        database.execute("CREATE TABLE tbl_1_b(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_b VALUES('ban', 'b', '办', 1000000);"
+                         "INSERT INTO tbl_1_b VALUES('ban', 'b', '半', 900000);");
+    }
+
+    metasequoia::RuntimePaths paths;
+    paths.resources = directory;
+    paths.user_data = directory;
+    paths.cache = directory;
+    paths.dictionaries = directory;
+    const unsigned both = quanpin::kAutocorrectTransposition | quanpin::kAutocorrectNeighbor;
+    SentenceAssociationOptions lattice_only;
+    lattice_only.word_lattice = true;
+
+    metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+    session.set_sentence_association(lattice_only);
+    type(session, "banzhng");
+
+    const auto &items = session.candidates();
+    const auto index_of = [&items](const std::string &word) {
+        for (size_t i = 0; i < items.size(); ++i)
+        {
+            if (items[i].word == word)
+            {
+                return i;
+            }
+        }
+        return items.size();
+    };
+
+    // 先确认 fixture 真的同时产出了整键行与单字前缀行，否则下面的分层断言是空的。
+    const size_t prefix_a = index_of("办");
+    const size_t prefix_b = index_of("半");
+    require(prefix_a != items.size() && prefix_b != items.size(),
+            "The layering fixture must surface single-character prefix rows for the winner cut.");
+    const size_t sibling = index_of("班长");
+    require(sibling != items.size(), "The layering fixture must surface the same-tier whole word.");
+
+    require(index_of("办证") < prefix_a, "The winner cut's whole word must precede its own single-character prefixes.");
+    require(sibling < prefix_a && sibling < prefix_b,
+            "Same-tier whole words must not be pushed behind the winner cut's single-character prefixes.");
+
+    // 分层的完整形式：所有整键行都在任何前缀行之前。全拼键用 ' 分隔音节，
+    // 单音节键不含 '。
+    const auto is_prefix_row = [&items](size_t i) { return items[i].canonical_pinyin.find('\'') == std::string::npos; };
+    bool seen_prefix = false;
+    for (size_t i = 0; i < items.size(); ++i)
+    {
+        if (is_prefix_row(i))
+        {
+            seen_prefix = true;
+        }
+        else
+        {
+            require(!seen_prefix, "Every whole-key row must precede every single-character prefix row.");
+        }
+    }
+}
+
 // 阶段 2 生成式纠错空间（任务 quanpin-autocorrect-generated-space）：静态表
 // 形状之外的单编辑手误由生成式索引兜底，权重落贵档（15）。隔离 fixture：
 // - shatg = shang 的 n→t（t 非邻键，远键替换）
@@ -1407,6 +1484,8 @@ int run_test()
     run_umlaut_alias_session_tests(data_directory);
     run_caret_prefix_session_tests(data_directory);
     run_autocorrect_context_ranking_tests(data_directory);
+    run_autocorrect_context_layering_tests(data_directory);
+
     run_autocorrect_generated_space_tests(data_directory);
 #endif
 
