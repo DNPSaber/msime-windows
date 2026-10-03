@@ -17,7 +17,6 @@
 #include "utils/window_utils.h"
 #include <WebView2EnvironmentOptions.h>
 #include <algorithm>
-#include <atomic>
 #include <cmath>
 #include <thread>
 #include "webview2/windows_webview2_internal.h"
@@ -435,45 +434,90 @@ void TraceSmallWindowWebview(const std::wstring &line)
     }
 }
 
+enum class SmallWindowWebviewFailure
+{
+    // CreateCoreWebView2EnvironmentWithOptions failed: the Runtime is missing, broken or cannot start.
+    Environment,
+    // The environment is up but CreateCoreWebView2Controller failed for one host, e.g. the uiAccess
+    // E_INVALIDARG below. Reinstalling the Runtime does not help there.
+    Controller,
+};
+
+// Re-armed on forward progress, so a session that recovers and later fails again still says so,
+// while a host that keeps failing does not raise a box on every exhausted budget.
+bool smallWindowUnavailableReported = false;
+
 // The three small windows are shown DWM-cloaked and only uncloaked once the WebView2 controller has
 // painted, so a start-up that never completes looks exactly like a broken engine: no candidate
-// window, no error, nothing on screen. Once the retry budget is spent it will not fix itself, so
-// stop being silent.
+// window, no error, nothing on screen. Once the retry budget is spent nothing retries on its own
+// until the user right-clicks the tray icon, so stop being silent.
 // The host windows are parked off-screen, and a box owned by one of them is centred on an invisible
 // window — use an ownerless box. It is modal and this runs on the Server message thread, so it goes
 // out on its own thread.
-void ReportSmallWindowWebviewUnavailable(HRESULT last_hr)
+void ReportSmallWindowWebviewUnavailable(HRESULT last_hr, SmallWindowWebviewFailure failure)
 {
-    static std::atomic<bool> reported{false};
-    if (reported.exchange(true))
+    if (smallWindowUnavailableReported)
     {
         return;
     }
-    TraceSmallWindowWebview(
-        fmt::format(L"edge webview unavailable: gave up after {}/{} attempts, last hr={:#x}; the candidate, "
-                    L"floating-toolbar and tray-menu hosts stay cloaked",
-                    smallWindowInitAttempts, kMaxSmallWindowInitAttempts, static_cast<unsigned>(last_hr)));
+    smallWindowUnavailableReported = true;
+
+    // Only the hosts that are still without a controller are affected; the others already work.
+    std::wstring hosts_zh;
+    std::wstring hosts_en;
+    std::wstring hosts_trace;
+    const auto add_host = [&](bool missing, const wchar_t *zh, const wchar_t *en, const wchar_t *trace) {
+        if (!missing)
+        {
+            return;
+        }
+        hosts_zh += hosts_zh.empty() ? zh : std::wstring(L"、") + zh;
+        hosts_en += hosts_en.empty() ? en : std::wstring(L", ") + en;
+        hosts_trace += hosts_trace.empty() ? trace : std::wstring(L",") + trace;
+    };
+    add_host(webviewControllerCandWnd == nullptr, L"候选窗", L"candidate window", L"cand");
+    add_host(webviewControllerFtbWnd == nullptr, L"悬浮工具栏", L"floating toolbar", L"ftb");
+    add_host(webviewControllerMenuWnd == nullptr, L"托盘菜单", L"tray menu", L"menu");
+    if (hosts_trace.empty())
+    {
+        return;
+    }
+
+    const bool environment = failure == SmallWindowWebviewFailure::Environment;
+    TraceSmallWindowWebview(fmt::format(L"edge webview unavailable: {} failed {}/{} times, last hr={:#x}; "
+                                        L"hosts still cloaked: {}",
+                                        environment ? L"environment" : L"controller", smallWindowInitAttempts,
+                                        kMaxSmallWindowInitAttempts, static_cast<unsigned>(last_hr), hosts_trace));
 
     const std::wstring message =
-        fmt::format(L"水杉输入法没能启动 WebView2 运行时，候选窗、悬浮工具栏和托盘菜单都不会出现。\r\n"
-                    L"Metasequoia IME could not start the WebView2 Runtime, so the candidate window, the "
-                    L"floating toolbar and the tray menu will not appear.\r\n\r\n"
-                    L"请安装或修复 Microsoft Edge WebView2 Runtime 后重新登录：\r\n"
-                    L"Install or repair the Microsoft Edge WebView2 Runtime, then sign in again:\r\n"
-                    L"https://developer.microsoft.com/microsoft-edge/webview2/\r\n\r\n"
-                    L"错误码 / error: {:#x}",
-                    static_cast<unsigned>(last_hr));
+        environment
+            ? fmt::format(L"水杉输入法没能启动 WebView2 运行时，{}暂时无法显示。\r\n"
+                          L"Metasequoia IME could not start the WebView2 Runtime, so the following cannot be "
+                          L"shown for now: {}.\r\n\r\n"
+                          L"请安装或修复 Microsoft Edge WebView2 Runtime 后重新登录：\r\n"
+                          L"Install or repair the Microsoft Edge WebView2 Runtime, then sign in again:\r\n"
+                          L"https://developer.microsoft.com/microsoft-edge/webview2/\r\n\r\n"
+                          L"错误码 / error: {:#x}",
+                          hosts_zh, hosts_en, static_cast<unsigned>(last_hr))
+            : fmt::format(L"WebView2 运行时已启动，但{}没能创建，暂时无法显示。\r\n"
+                          L"The WebView2 Runtime started, but the following could not be created and cannot be "
+                          L"shown for now: {}.\r\n\r\n"
+                          L"右键托盘图标会再试一次；仍然失败请重新登录，或附上诊断日志反馈。\r\n"
+                          L"Right-click the tray icon to retry; if it keeps failing, sign in again or report it "
+                          L"with the diagnostic log.\r\n\r\n"
+                          L"错误码 / error: {:#x}",
+                          hosts_zh, hosts_en, static_cast<unsigned>(last_hr));
     std::thread([message]() {
         MessageBoxW(nullptr, message.c_str(), L"水杉输入法 / Metasequoia IME",
                     MB_OK | MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST);
     }).detach();
 }
 
-void ScheduleSmallWindowRetryWithBackoff(HRESULT hr)
+void ScheduleSmallWindowRetryWithBackoff(HRESULT hr, SmallWindowWebviewFailure failure)
 {
     if (smallWindowInitAttempts >= kMaxSmallWindowInitAttempts)
     {
-        ReportSmallWindowWebviewUnavailable(hr);
+        ReportSmallWindowWebviewUnavailable(hr, failure);
         return;
     }
     // 1s, 2s, 4s, 8s capped at 10s: covers user-data-folder locks left by
@@ -492,7 +536,7 @@ void OnSmallWindowWebviewInitFailed(HRESULT hr)
     TraceSmallWindowWebview(fmt::format(L"edge webview environment create failed hr={:#x} attempt={}/{}",
                                         static_cast<unsigned>(hr), smallWindowInitAttempts,
                                         kMaxSmallWindowInitAttempts));
-    ScheduleSmallWindowRetryWithBackoff(hr);
+    ScheduleSmallWindowRetryWithBackoff(hr, SmallWindowWebviewFailure::Environment);
 }
 
 void MaybeFlushPendingTrayMenuShow()
@@ -593,7 +637,7 @@ void RequestNextSmallWindowController()
         smallWindowControllerRequestInFlight = false;
         lastFailedSmallWindowHostIndex = chosen;
         ++smallWindowInitAttempts;
-        ScheduleSmallWindowRetryWithBackoff(hr);
+        ScheduleSmallWindowRetryWithBackoff(hr, SmallWindowWebviewFailure::Controller);
     }
 }
 } // namespace
@@ -609,11 +653,12 @@ void OnSmallWindowControllerSettled(HRESULT hr)
     {
         lastFailedSmallWindowHostIndex = currentSmallWindowHostIndex;
         ++smallWindowInitAttempts;
-        ScheduleSmallWindowRetryWithBackoff(hr);
+        ScheduleSmallWindowRetryWithBackoff(hr, SmallWindowWebviewFailure::Controller);
         return;
     }
     // Forward progress: give the remaining hosts a full attempt budget.
     smallWindowInitAttempts = 0;
+    smallWindowUnavailableReported = false;
     ScheduleSmallWindowWebviewRetry(1);
 }
 } // namespace windows_webview2_detail
@@ -670,6 +715,7 @@ void BeginSmallWindowWebviewEnvironmentCreate()
             smallWindowWebviewEnvironment = env;
             smallWindowInitState = SmallWindowInitState::Ready;
             smallWindowInitAttempts = 0;
+            smallWindowUnavailableReported = false;
             RequestNextSmallWindowController();
             return S_OK;
         }).Get());
