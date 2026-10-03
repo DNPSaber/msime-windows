@@ -201,6 +201,8 @@ AiAssistantConfig g_ai_assistant;
 TencentTmtConfig g_tencent_tmt;
 CustomTranslationConfig g_custom_translation;
 NiuTransConfig g_niutrans;
+std::mutex g_network_proxy_mutex;
+NetworkProxyConfig g_network_proxy;
 FrequencyAdjustmentConfig g_frequency_adjustment;
 std::filesystem::path g_config_path;
 } // namespace ime_config_detail
@@ -805,6 +807,15 @@ bool LoadImeConfig()
         g_niutrans.enabled = tbl["niutrans"]["enabled"].value_or(false);
         g_niutrans.app_id = tbl["niutrans"]["app_id"].value_or(std::string());
         g_niutrans.apikey = tbl["niutrans"]["apikey"].value_or(std::string());
+        {
+            NetworkProxyConfig proxy;
+            proxy.mode = tbl["network"]["proxy_mode"].value_or(std::string("system"));
+            if (proxy.mode != "system" && proxy.mode != "none" && proxy.mode != "custom")
+                proxy.mode = "system";
+            proxy.server = NormalizeNetworkProxyServer(tbl["network"]["proxy_server"].value_or(std::string()));
+            std::lock_guard<std::mutex> proxy_lock(g_network_proxy_mutex);
+            g_network_proxy = std::move(proxy);
+        }
         RememberConfigWriteTime();
         return true;
     }

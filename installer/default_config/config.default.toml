@@ -127,6 +127,14 @@ enabled = false
 app_id = ""
 apikey = ""
 
+#
+# 网络代理：云输入、模型下载、AI 联想、翻译、语音识别等需要联网的功能共用。
+# proxy_mode：system 跟随系统代理设置 / none 不使用代理（直连）/ custom 使用下面的 HTTP 代理。
+# proxy_server：custom 模式的 HTTP 代理地址，形如 127.0.0.1:7890；留空时按 system 处理。
+#
+[network]
+proxy_mode = "system"
+proxy_server = ""
 [frequency_adjustment]
 # disabled / pin / halve / linear / promote
 mode = "promote"
