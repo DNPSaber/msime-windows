@@ -125,6 +125,13 @@ struct NiuTransConfig
     std::string apikey;
 };
 
+// [network] 段：云输入、模型下载、AI、翻译、语音等所有出站请求共用的代理设置。
+struct NetworkProxyConfig
+{
+    std::string mode = "system"; // system（跟随系统）| none（直连）| custom（自定义 HTTP 代理）
+    std::string server;          // custom 模式的 HTTP 代理，已规范化为 host:port
+};
+
 struct FrequencyAdjustmentConfig
 {
     std::string mode = "promote"; // disabled | pin | halve | linear | promote
@@ -518,6 +525,12 @@ bool SetConfiguredCustomTranslationString(const std::string &key, const std::str
 const NiuTransConfig &GetConfiguredNiuTrans();
 bool SetConfiguredNiuTransBool(const std::string &key, bool value);
 bool SetConfiguredNiuTransString(const std::string &key, const std::string &value);
+// Snapshot by value: download threads and the cloud worker read it while the settings host rewrites it.
+NetworkProxyConfig GetConfiguredNetworkProxy();
+bool SetConfiguredNetworkString(const std::string &key, const std::string &value);
+// Accepts "host:port" or "http://host:port[/]"; returns the normalized "host:port", or an empty string when the
+// value is not a usable HTTP proxy (other schemes such as socks5:// are rejected: WinHTTP cannot speak them).
+std::string NormalizeNetworkProxyServer(const std::string &value);
 const FrequencyAdjustmentConfig &GetConfiguredFrequencyAdjustment();
 bool SetConfiguredFrequencyAdjustmentString(const std::string &key, const std::string &value);
 bool SetConfiguredFrequencyAdjustmentInt(const std::string &key, int value);
