@@ -189,11 +189,27 @@
       clip-path: inset(0 round var(--wg-radius));
       letter-spacing: -0.31em;
     }
-    /* The first/last end-cap bands are gone. The selected row's own background already reaches
-       the frame edge -- measured gap 0 on both sides -- and the 9px corners come from
-       .container's clip-path, so a band adds no coverage. The right-hand one had
-       background-size 100% tall, which also painted the preedit row and left a green edge at
-       the card's top-right corner (#462). */
+    .container.preedit-hidden:has(> .pinyin + .row-wrapper > .first) {
+      background-image: linear-gradient(to right, var(--wg-hilite), var(--wg-hilite));
+      background-position: left;
+      background-size: var(--wg-radius) 100%;
+    }
+    /* The container has to carry the same fill behind a candidate that hugs the frame edge,
+       otherwise the surface colour bleeds through the rounded corner and the fractional-pixel
+       edge (dev.to/rashidshamloo/css-fixing-background-color-bleed-in-rounded-corners). The fill
+       may only cover the candidate row: with the preedit row visible the last candidate touches
+       the bottom-right corner alone, and only once that row is hidden does the whole right edge
+       belong to it. Page arrows are appended inside the container and push its right edge past
+       the last candidate, where the fill would land on their far side: there is none then. */
+    .container:has(> .row-wrapper:is(:last-child, .last-visible) > .first):not(:has(> .page-arrows)) {
+      background-image: linear-gradient(to left, var(--wg-hilite), var(--wg-hilite));
+      background-position: right bottom;
+      background-size: var(--wg-radius) var(--wg-radius);
+    }
+    .container.preedit-hidden:has(> .row-wrapper:is(:last-child, .last-visible) > .first):not(:has(> .page-arrows)) {
+      background-position: right;
+      background-size: var(--wg-radius) 100%;
+    }
     .container.preedit-hidden:has(> .pinyin + .row-wrapper > .first):has(> .row-wrapper:is(:last-child, .last-visible) > .first) {
       background-color: var(--wg-hilite);
       background-image: none;

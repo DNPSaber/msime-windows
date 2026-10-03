@@ -201,7 +201,10 @@
       background-position: top;
       background-size: 100% var(--wg-radius);
     }
-    .container:has(> .row-wrapper:is(:last-child, .last-visible) > .first) {
+    /* Page arrows are appended inside the container, which pushes its bottom edge below the last
+       candidate; the fill would then land on their far side instead of behind the candidate's
+       lower edge, so there is none while they are shown. */
+    .container:has(> .row-wrapper:is(:last-child, .last-visible) > .first):not(:has(> .page-arrows)) {
       background-image: linear-gradient(var(--wg-hilite), var(--wg-hilite));
       background-position: bottom;
       background-size: 100% var(--wg-radius);
