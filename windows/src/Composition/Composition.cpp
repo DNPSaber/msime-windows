@@ -1197,6 +1197,9 @@ STDAPI CMetasequoiaIME::OnCompositionTerminated(TfEditCookie ecWrite, _In_ ITfCo
     // Detach and end the old candidate/session before the COM cleanup calls
     // below can re-enter and create a presenter for a newer composition.
     _DeleteCandidateList(FALSE, ownerContext);
+    // The host kept the composition text in the document, so the selected word
+    // and its remaining spelling are already committed there.
+    _ClearCreatingWordState();
     if (Global::g_connected)
     {
         // EndCandidateUiSession is intentionally idempotent, but a presenter

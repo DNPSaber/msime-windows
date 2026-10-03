@@ -220,6 +220,17 @@ HRESULT CMetasequoiaIME::_HandleEscapeCancel(TfEditCookie ec, _In_ ITfContext *p
     return _HandleCancel(ec, pContext);
 }
 
+// Drops the selected-word prefix and the toggle fallback spelling. Exits that
+// end the composition without going through _HandleComplete / _HandleCancel
+// (a host-forced termination) must call this, or the next mode toggle would
+// commit the stale word and spelling at the new caret.
+void CMetasequoiaIME::_ClearCreatingWordState()
+{
+    g_toggleImeFallbackBuffer.clear();
+    GlobalIme::word_for_creating_word.clear();
+    GlobalIme::pending_create_word_preedit.clear();
+}
+
 HRESULT CMetasequoiaIME::_HandleToogleIMEMode(TfEditCookie ec, _In_ ITfContext *pContext)
 {
     CStringRange keyStrokebuffer = _pCompositionProcessorEngine->GetKeystrokeBuffer();
