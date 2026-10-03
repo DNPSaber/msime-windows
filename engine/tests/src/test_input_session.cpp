@@ -416,6 +416,8 @@ void run_autocorrect_context_ranking_tests(const std::filesystem::path &data_dir
 // 办证/辩证/整句还带着首音节的单字；这些单字排在 rest（班长、搬账）之前，把同键位的
 // 其他整词整组挤出首页。原 fixture 没有 tbl_1_b，前缀这条路根本没被走到。
 // 这里补单字表，并直接断言「整键在前、前缀在后」这条分层不变量。
+// 同上一组 fixture：词库目录里没有 sc.lm，词格退回启发式打分，权重完全决定路径分，
+// 因此 zheng 侧稳定胜出、重排稳定接管，用例不依赖任何模型文件。
 void run_autocorrect_context_layering_tests(const std::filesystem::path &data_directory)
 {
     const std::filesystem::path directory = data_directory / "autocorrect-context-layering";

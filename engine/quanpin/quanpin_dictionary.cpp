@@ -518,6 +518,12 @@ std::vector<WordItem> QuanpinDictionary::query_exact(const std::string &raw_inpu
                     // segmentation 填 canonical_pinyin，词格 select_distinct 用 path->key——所以
                     // 按 canonical_pinyin == winner_key 能干净地把前缀行摘出去。
                     //
+                    // 这个判据依赖一个前置事实：整键档的 canonical 必然就是 winner_key 本身。
+                    // 胜出切分只能出自 decode_pool，那里用 query_exact_segmentations_keyed_flat
+                    // 只收精确键，词库里没有整词的切分压根进不了池；于是整键档走的是
+                    // query_single_cut_keyed 的精确键分支，不会退到前缀区间扫描那层降级
+                    // （那种行的 key 是别的读音，会被这个判据误当成前缀行沉到末尾）。
+                    //
                     // 不切开会破坏 merge_alternative_segmentations 的既有分层（merged_full 在前、
                     // 前缀作为 remaining 追加）：query_series(ban'zheng) 先出 办证/辩证/整句，再出
                     // 班/办/半/般…，而班长、搬账这些同键位整词在 rest 里、排在单字之后，整组被挤
