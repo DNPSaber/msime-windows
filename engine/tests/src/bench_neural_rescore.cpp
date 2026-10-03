@@ -1,7 +1,11 @@
 // Measure the engine async rerank path with real dictionaries and neural models.
 // Run by hand: METASEQUOIA_IME_DATA_DIR=<data directory> bench_neural_rescore [repeats]
 // Each row measures the final key. Prefix keys run before the timer starts.
-// Warm mode types the prefix twice without clearing session caches.
+// session_cold and session_warm describe InputSession prefix/query caches.
+// Warm mode types the prefix twice without clearing those caches.
+// SentenceModel prefix K/V cache is process-wide and is not reset between rows.
+// Model loading happens before timing starts.
+// Active prefix jobs can delay the final job; async_ms includes that delay.
 
 #include "core/input_session.h"
 #include "core/data_path.h"
@@ -98,14 +102,14 @@ struct Case
     std::string context;
     const char *length_name;
     const char *pinyin;
-    const char *prefix_name;
-    bool warm_prefix;
+    const char *session_cache_name;
+    bool warm_session_cache;
 };
 
 void print_failure(const Case &item, int repeat, const char *status)
 {
     std::printf("%s,%s,%s,%s,%s,%d,NA,NA,NA,NA,%s\n", item.model, item.context_name, item.length_name, item.pinyin,
-                item.prefix_name, repeat, status);
+                item.session_cache_name, repeat, status);
 }
 
 bool run_case(const Case &item, int repeat, CallbackEvents &events)
@@ -124,7 +128,7 @@ bool run_case(const Case &item, int repeat, CallbackEvents &events)
     session.set_rescoring_context(item.context);
 
     const std::string input = item.pinyin;
-    if (item.warm_prefix)
+    if (item.warm_session_cache)
     {
         if (!type_prefix(session, input))
         {
@@ -173,7 +177,7 @@ bool run_case(const Case &item, int repeat, CallbackEvents &events)
         if (!settled)
             continue;
         std::printf("%s,%s,%s,%s,%s,%d,%.3f,%.3f,%.3f,%.3f,ok\n", item.model, item.context_name, item.length_name,
-                    item.pinyin, item.prefix_name, repeat, milliseconds(start, initial),
+                    item.pinyin, item.session_cache_name, repeat, milliseconds(start, initial),
                     milliseconds(initial, callback), milliseconds(callback, requery_done),
                     milliseconds(start, requery_done));
         return true;
@@ -196,8 +200,14 @@ bool run_all(long repeats, CallbackEvents &events)
             {
                 for (bool warm : {false, true})
                 {
-                    const Case item{model,       source, context_name,           context_of_length(context_chars),
-                                    length_name, pinyin, warm ? "warm" : "cold", warm};
+                    const Case item{model,
+                                    source,
+                                    context_name,
+                                    context_of_length(context_chars),
+                                    length_name,
+                                    pinyin,
+                                    warm ? "session_warm" : "session_cold",
+                                    warm};
                     for (int repeat = 1; repeat <= repeats; ++repeat)
                         if (!run_case(item, repeat, events))
                             return false;
@@ -247,7 +257,8 @@ int main(int argc, char **argv)
     CallbackEvents events;
     neural::RescoreWorker &worker = neural::RescoreWorker::instance();
     worker.set_ready_callback([&events] { events.push(); });
-    std::printf("model,context,pinyin_class,pinyin,prefix,repeat,initial_ms,async_ms,requery_ms,settle_ms,status\n");
+    std::printf(
+        "model,context,pinyin_class,pinyin,session_cache,repeat,initial_ms,async_ms,requery_ms,settle_ms,status\n");
     std::fflush(stdout);
     const bool passed = run_all(repeats, events);
     worker.set_ready_callback(nullptr);
