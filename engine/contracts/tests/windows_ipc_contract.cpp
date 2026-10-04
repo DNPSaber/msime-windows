@@ -138,7 +138,8 @@ int main()
     CHECK(FanyImeWorkerReplyType::MidSentenceHelpcodeChanged == 28);
     CHECK(FanyImeWorkerReplyType::MidSentenceHelpcodeSemicolonChanged == 29);
     CHECK(FanyImeWorkerReplyType::DirectHelpcodeChanged == 30);
-    CHECK(FanyImeWorkerReplyType::MaxKnown == FanyImeWorkerReplyType::DirectHelpcodeChanged);
+    CHECK(FanyImeWorkerReplyType::MidSentenceHelpcodeUppercaseChanged == 31);
+    CHECK(FanyImeWorkerReplyType::MaxKnown == FanyImeWorkerReplyType::MidSentenceHelpcodeUppercaseChanged);
     // 直接辅助码的 / 与 ; 形状规则，TSF（WCHAR）与引擎（char）共用。
     const auto slash_at = [](const std::wstring &text, std::size_t caret) {
         return FanyImeDirectHelpcode::AcceptsSlashAt(text.data(), text.size(), caret);
@@ -164,6 +165,28 @@ int main()
     CHECK(accepts_at(L"ulpbih", 2) && accepts_at(L"ulpbih", 4) && accepts_at(L"ulpbih", 6));
     CHECK(!accepts_at(L"ulpbih", 0) && !accepts_at(L"ulpbih", 3) && !accepts_at(L"ulpbih", 7));
     CHECK(!accepts_at(L"ul`xpb", 2) && accepts_at(L"ul`xpb", 6) && !accepts_at(L"ul`xpb", 3));
+    // 大写触发：完整音节后的大写字母自己开一段（≡ 反引号 + 这个字母），紧跟的大写字母是第二码。
+    const auto upper_marker = [](const std::wstring &text) {
+        return FanyImeMidSentenceHelpcode::AcceptsMarker(text.data(), text.size(), true);
+    };
+    CHECK(!upper_marker(L"ulX") && upper_marker(L"ulXpb") && !upper_marker(L"ulXp") && upper_marker(L"ulXYpb"));
+    // 关着时大写字母只是普通的一个键：ulXpb 是 5 键（奇数），ulXpbi 是 6 键。
+    CHECK(!accepts(L"ulXpb") && accepts(L"ulXpbi"));
+    const auto upper_at = [](const std::wstring &text, std::size_t caret) {
+        return FanyImeMidSentenceHelpcode::AcceptsMarkerAt(text.data(), text.size(), caret, true);
+    };
+    CHECK(!upper_at(L"ulXpb", 2) && upper_at(L"ulXpb", 5) && upper_at(L"ulpb", 2));
+    const auto second_at = [](const std::wstring &text, std::size_t caret, bool upper) {
+        return FanyImeMidSentenceHelpcode::AcceptsSecondCodeAt(text.data(), text.size(), caret, upper);
+    };
+    CHECK(second_at(L"ulX", 3, true) && !second_at(L"ulXY", 4, true) && !second_at(L"ulX", 3, false));
+    CHECK(second_at(L"ul`x", 4, false) && !second_at(L"ul`xY", 5, false) && !second_at(L"ul", 2, true));
+    const auto semicolon_at = [](const std::wstring &text, bool upper) {
+        return FanyImeMidSentenceHelpcode::AcceptsSemicolonFinalAt(text.data(), text.size(), text.size(), upper);
+    };
+    // 关着时与原来的规则一致（只看最后一个 '）；开着时大写段不算键：nihkXb 里 b 后面接 ; 是 b; 音节。
+    CHECK(semicolon_at(L"nihkb", false) && !semicolon_at(L"nihkXb", false) && semicolon_at(L"nihkXb", true));
+    CHECK(semicolon_at(L"ni'b", false) && !semicolon_at(L"nihk", true));
     const std::wstring voice(1000, L'x');
     const auto frames = FanyImeVoiceCompositionPipe::EncodeSnapshot(voice, 7);
     CHECK(FanyImeVoiceCompositionPipe::AssembleFrames(frames) == voice);

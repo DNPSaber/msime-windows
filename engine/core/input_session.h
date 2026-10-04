@@ -64,6 +64,9 @@ class InputSession
     bool accepts_mid_sentence_helpcode_marker_at(std::size_t caret) const;
     // 双拼直接辅助码（万象式，不要引导键，见 engine/direct_helpcode/）。默认关闭；开着时末尾辅助码
     // 和反引号句中辅助码都让位给它。
+    // 句中辅助码的大写触发：完整音节后的大写字母相当于「反引号 + 这个字母」（第二码规则不变），见
+    // FanyImeMidSentenceHelpcode::StartsUppercaseBlock。只在句中辅助码开着、直接辅助码关着时生效。
+    void set_mid_sentence_uppercase_trigger_enabled(bool enabled);
     void set_direct_helpcode_enabled(bool enabled);
     bool direct_helpcode_enabled() const
     {
@@ -352,6 +355,7 @@ class InputSession
     bool shuangpin_helpcode_enabled_ = true;
     bool mid_sentence_helpcode_enabled_ = false;
     bool direct_helpcode_enabled_ = false;
+    bool mid_sentence_uppercase_trigger_enabled_ = false;
     bool chinese_punctuation_enabled_ = true;
     bool candidate_learning_enabled_ = true;
     PunctuationPolicy punctuation_;

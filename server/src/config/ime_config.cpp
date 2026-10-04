@@ -85,6 +85,7 @@ bool g_shuangpin_helpcode_enabled = true;
 bool g_shuangpin_mid_sentence_helpcode_enabled = false;
 bool g_shuangpin_mid_sentence_helpcode_backtick = true;
 bool g_shuangpin_mid_sentence_helpcode_semicolon = false;
+bool g_shuangpin_mid_sentence_helpcode_uppercase = false;
 bool g_shuangpin_direct_helpcode_enabled = false;
 bool g_quanpin_helpcode_enabled = true;
 std::string g_shuangpin_helpcode_schema = "lantian";
@@ -423,6 +424,8 @@ bool LoadImeConfig()
             tbl["helpcode"]["shuangpin_mid_sentence_helpcode_backtick"].value_or(true);
         g_shuangpin_mid_sentence_helpcode_semicolon =
             tbl["helpcode"]["shuangpin_mid_sentence_helpcode_semicolon"].value_or(false);
+        g_shuangpin_mid_sentence_helpcode_uppercase =
+            tbl["helpcode"]["shuangpin_mid_sentence_helpcode_uppercase"].value_or(false);
         g_shuangpin_direct_helpcode_enabled = tbl["helpcode"]["shuangpin_direct_helpcode"].value_or(false);
         g_quanpin_helpcode_enabled = tbl["helpcode"]["quanpin_helpcode"].value_or(true);
         const std::string shuangpin_helpcode_schema =

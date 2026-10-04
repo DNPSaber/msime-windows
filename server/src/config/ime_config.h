@@ -277,6 +277,14 @@ bool GetConfiguredShuangpinMidSentenceHelpcodeBacktick();
 bool SetConfiguredShuangpinMidSentenceHelpcodeBacktick(bool enabled);
 bool GetConfiguredShuangpinMidSentenceHelpcodeSemicolon();
 bool SetConfiguredShuangpinMidSentenceHelpcodeSemicolon(bool enabled);
+// 第三种触发：完整音节后的大写字母（helpcode.shuangpin_mid_sentence_helpcode_uppercase，默认关），相当于
+// 「反引号 + 这个字母」，第二码仍要大写。规则见 engine/contracts/mid_sentence_helpcode.h。
+bool GetConfiguredShuangpinMidSentenceHelpcodeUppercase();
+bool SetConfiguredShuangpinMidSentenceHelpcodeUppercase(bool enabled);
+// 大写触发此刻是否生效：句中辅助码开着、勾了大写、没开直接辅助码。
+bool IsConfiguredMidSentenceHelpcodeUppercaseTrigger();
+// MidSentenceHelpcodeUppercaseChanged 的载荷："1" 表示大写触发生效且当前方案是双拼。
+std::wstring FormatMidSentenceHelpcodeUppercaseWorkerPayload();
 // 字符 ch（'`' 或 ';'）此刻是不是一个开着的句中辅助码触发键：总开关开着且勾了这个键。
 bool IsConfiguredMidSentenceHelpcodeTrigger(wchar_t ch);
 // MidSentenceHelpcodeChanged 的载荷："1" 表示开关开着、勾了反引号且当前方案是双拼。

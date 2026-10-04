@@ -432,7 +432,20 @@ bool InputSession::accepts_mid_sentence_helpcode_marker_at(std::size_t caret) co
     {
         return false;
     }
-    return shuangpin::accepts_mid_sentence_helpcode_marker_at(get_pinyin_sequence_with_cases(), caret);
+    return shuangpin::accepts_mid_sentence_helpcode_marker_at(get_pinyin_sequence_with_cases(), caret,
+                                                              engine_.mid_sentence_uppercase_trigger_active());
+}
+
+void InputSession::set_mid_sentence_uppercase_trigger_enabled(bool enabled)
+{
+    if (mid_sentence_uppercase_trigger_enabled_ == enabled)
+    {
+        return;
+    }
+    mid_sentence_uppercase_trigger_enabled_ = enabled;
+    engine_.set_mid_sentence_uppercase_trigger_enabled(enabled);
+    update_mixed_candidates();
+    online_requests_.invalidate();
 }
 
 bool InputSession::accepts_mid_sentence_code_at(std::size_t caret, char character) const
@@ -443,9 +456,12 @@ bool InputSession::accepts_mid_sentence_code_at(std::size_t caret, char characte
     {
         return false;
     }
+    const bool uppercase_trigger = engine_.mid_sentence_uppercase_trigger_active();
     const std::string before = typed.substr(0, caret);
+    // 反引号后的第一码、只有第一码的段后的第二码，或（大写触发开着时）完整音节后自己开一段。
     return before.back() == shuangpin::kMidSentenceHelpcodeMarker ||
-           shuangpin::accepts_mid_sentence_second_code(before, character);
+           shuangpin::accepts_mid_sentence_second_code(before, character, uppercase_trigger) ||
+           (uppercase_trigger && FanyImeMidSentenceHelpcode::AcceptsMarkerAt(typed.data(), typed.size(), caret, true));
 }
 
 bool InputSession::has_mid_sentence_helpcode() const

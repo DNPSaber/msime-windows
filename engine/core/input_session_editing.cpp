@@ -97,7 +97,8 @@ std::vector<std::size_t> InputSession::segment_raw_boundaries() const
     {
         // 带句中辅助码的串没有逐音节的单元模型：按段删除、按段跳光标和光标前缀重算都退回逐字符。
         // 直接辅助码同理：辅码字母混在音节之间，贪心切分算不出单元边界。
-        if (shuangpin::has_mid_sentence_helpcode(raw_with_cases) || direct_helpcode_enabled_)
+        if (shuangpin::has_mid_sentence_helpcode(raw_with_cases, engine_.mid_sentence_uppercase_trigger_active()) ||
+            direct_helpcode_enabled_)
         {
             return {};
         }
@@ -200,11 +201,10 @@ KeyResult InputSession::insert_at_caret(char character)
             if (character == ';' && scheme() == SchemeType::Shuangpin &&
                 ShuangpinProfileUsesSemicolonFinal(shuangpin_profile_))
             {
-                const auto separator = caret == 0 ? std::string::npos : text.rfind('\'', caret - 1);
-                const auto start = separator == std::string::npos ? 0 : separator + 1;
                 accepted = direct_helpcode_enabled_
                                ? FanyImeDirectHelpcode::AcceptsSemicolonFinalAt(text.data(), text.size(), caret)
-                               : (caret - start) % 2 == 1;
+                               : FanyImeMidSentenceHelpcode::AcceptsSemicolonFinalAt(
+                                     text.data(), text.size(), caret, engine_.mid_sentence_uppercase_trigger_active());
             }
             if (character == '/')
                 accepted = accepts_direct_helpcode_slash_at(caret);

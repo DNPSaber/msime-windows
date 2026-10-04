@@ -11,6 +11,7 @@
 #include "ipc/input_key_policy.h"
 #include "engine/contracts/direct_helpcode.h"
 #include "engine/contracts/ipc_negotiation.h"
+#include "engine/contracts/mid_sentence_helpcode.h"
 #include "defines/defines.h"
 #include "defines/globals.h"
 #include "utils/common_utils.h"
@@ -131,9 +132,9 @@ bool IsMicrosoftShuangpinIngKeyAt(UINT keycode, WCHAR wch, const std::string &ra
     {
         return FanyImeDirectHelpcode::AcceptsSemicolonFinalAt(raw_input.data(), raw_input.size(), caret);
     }
-    const size_t separator = caret == 0 ? std::string::npos : raw_input.rfind('\'', caret - 1);
-    const size_t chunk_start = separator == std::string::npos ? 0 : separator + 1;
-    return (caret - chunk_start) % 2 == 1;
+    // 句中辅助码的大写触发生效时大写段不算这一节的键；关着时就是原来「最后一个 ' 之后数奇偶」。TSF 同规则。
+    return FanyImeMidSentenceHelpcode::AcceptsSemicolonFinalAt(raw_input.data(), raw_input.size(), caret,
+                                                               IsConfiguredMidSentenceHelpcodeUppercaseTrigger());
 }
 
 // 双拼直接辅助码四码后的 /：光标前是「两键音节 + 两位辅码」的形状时它是编码键而不是标点。TSF 按同一条

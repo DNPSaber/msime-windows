@@ -342,6 +342,10 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
     const checkbox = findElement('midSentenceHelpcodeSemicolonCheckbox') as HTMLInputElement | null;
     if (checkbox) checkbox.checked = data.helpcode.shuangpin_mid_sentence_helpcode_semicolon;
   }
+  if (typeof data?.helpcode?.shuangpin_mid_sentence_helpcode_uppercase === 'boolean') {
+    const checkbox = findElement('midSentenceHelpcodeUppercaseCheckbox') as HTMLInputElement | null;
+    if (checkbox) checkbox.checked = data.helpcode.shuangpin_mid_sentence_helpcode_uppercase;
+  }
   applyDropdownValue(
     'shuangpinHelpcodeSchemeBtn',
     'shuangpinHelpcodeSchemeMenu',

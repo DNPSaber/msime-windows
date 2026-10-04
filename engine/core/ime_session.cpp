@@ -47,17 +47,35 @@ ImeSession::ImeSession(SchemeType scheme_type, const ShuangpinProfile &shuangpin
     bind_shuangpin_scheme();
 }
 
-void ImeSession::bind_shuangpin_scheme()
+void ImeSession::configure_shuangpin_scheme(IInputScheme *scheme) const
 {
-    if (auto *shuangpin_scheme = dynamic_cast<ShuangpinScheme *>(scheme_.get()))
+    if (auto *shuangpin_scheme = dynamic_cast<ShuangpinScheme *>(scheme))
     {
         shuangpin_scheme->set_direct_helpcode(enable_direct_helpcode_);
+        shuangpin_scheme->set_mid_sentence_uppercase_trigger(mid_sentence_uppercase_trigger_active());
     }
+}
+
+void ImeSession::bind_shuangpin_scheme()
+{
+    configure_shuangpin_scheme(scheme_.get());
 }
 
 void ImeSession::set_direct_helpcode_enabled(bool enabled)
 {
     enable_direct_helpcode_ = enabled;
+    bind_shuangpin_scheme();
+}
+
+void ImeSession::set_mid_sentence_helpcode_enabled(bool enabled)
+{
+    enable_mid_sentence_helpcode_ = enabled;
+    bind_shuangpin_scheme();
+}
+
+void ImeSession::set_mid_sentence_uppercase_trigger_enabled(bool enabled)
+{
+    enable_mid_sentence_uppercase_trigger_ = enabled;
     bind_shuangpin_scheme();
 }
 
@@ -222,6 +240,8 @@ std::vector<WordItem> ImeSession::query_raw_candidates(const std::string &raw_in
     // A throwaway scheme instance: set_raw_input on the live scheme would clobber its key
     // strokes, and a prefix query must leave the composition exactly as it found it.
     const std::unique_ptr<IInputScheme> query_scheme = create_scheme(scheme_->type());
+    // 临时方案要按同样的触发规则解析原串（大写段），否则前缀查询与正式查询切得不一样。
+    configure_shuangpin_scheme(query_scheme.get());
     query_scheme->set_raw_input(raw_input, raw_input_with_cases);
     QueryRequest request = query_scheme->build_request();
     apply_request_options(request);

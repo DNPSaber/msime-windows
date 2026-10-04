@@ -58,6 +58,7 @@ void EngineInputSession::ApplyConfiguration()
     session_.set_shuangpin_helpcode_enabled(GetConfiguredShuangpinHelpcodeEnabled());
     session_.set_mid_sentence_helpcode_enabled(GetConfiguredShuangpinMidSentenceHelpcodeEnabled());
     session_.set_direct_helpcode_enabled(GetConfiguredShuangpinDirectHelpcodeEnabled());
+    session_.set_mid_sentence_uppercase_trigger_enabled(GetConfiguredShuangpinMidSentenceHelpcodeUppercase());
     session_.set_quanpin_helpcode_enabled(GetConfiguredQuanpinHelpcodeEnabled());
     const unsigned autocorrect_types =
         (GetConfiguredQuanpinAutocorrectTransposition() ? quanpin::kAutocorrectTransposition : 0u) |

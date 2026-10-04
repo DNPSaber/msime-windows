@@ -1554,6 +1554,75 @@ int run_test()
                     "A backquote was accepted in front of an existing helpcode block.");
         }
 
+        // 句中辅助码的大写触发：完整音节后的大写字母相当于「反引号 + 这个字母」，第二码仍要大写。
+        {
+            const auto has_word = [](const metasequoia::InputSession &target, const std::string &word) {
+                const auto &items = target.candidates();
+                return std::any_of(items.begin(), items.end(), [&](const WordItem &item) { return item.word == word; });
+            };
+            const auto uppercase_session = [](bool uppercase, const ShuangpinProfile &profile) {
+                auto session = std::make_unique<metasequoia::InputSession>(SchemeType::Shuangpin, profile,
+                                                                           metasequoia::RuntimePaths::legacy());
+                session->set_shuangpin_helpcode_enabled(false);
+                session->set_mid_sentence_helpcode_enabled(true);
+                session->set_mid_sentence_uppercase_trigger_enabled(uppercase);
+                require(session->set_helpcode_schema("lantian"), "The Lantian helpcode fixture was not selected.");
+                return session;
+            };
+
+            auto first_session = uppercase_session(true, GetXiaoheShuangpinProfile());
+            auto &first = *first_session;
+            type(first, "niChc");
+            require(first.preedit() == "niChc" && first.get_pinyin_sequence_with_cases() == "niChc" &&
+                        first.get_pinyin_sequence() == "ni'hc",
+                    "An uppercase letter after a complete syllable did not open a mid-sentence helpcode block.");
+            require(first.get_pinyin_segmentation_with_cases() == "niC'hc",
+                    "The uppercase helpcode block was not shown after its syllable.");
+            require(has_word(first, "拟好") && !has_word(first, "你好"),
+                    "The uppercase first code did not filter the constrained syllable.");
+            // 大写段之后照样能接反引号段，这一节从大写段之后算起。
+            require(first.handle_character('`').handled && first.preedit() == "niChc`",
+                    "A backquote was rejected after an uppercase helpcode block.");
+
+            auto second_session = uppercase_session(true, GetXiaoheShuangpinProfile());
+            type(*second_session, "niCDhc");
+            require(has_word(*second_session, "拟好") && !has_word(*second_session, "你好"),
+                    "A matching uppercase second code after an uppercase block filtered the syllable away.");
+            auto wrong_second_session = uppercase_session(true, GetXiaoheShuangpinProfile());
+            type(*wrong_second_session, "niCEhc");
+            require(!has_word(*wrong_second_session, "拟好") && !has_word(*wrong_second_session, "你好"),
+                    "An uppercase second code after an uppercase block did not take part in filtering.");
+
+            // 只有在完整音节后才开段：音节中间的大写字母不收（辅助码开关关着时）。
+            auto middle_session = uppercase_session(true, GetXiaoheShuangpinProfile());
+            type(*middle_session, "n");
+            require(!middle_session->handle_character('C').handled && middle_session->preedit() == "n",
+                    "An uppercase letter in the middle of a syllable was accepted as a helpcode.");
+
+            // 勾选关着：大写字母不开段，原来的规则不变。
+            auto off_session = uppercase_session(false, GetXiaoheShuangpinProfile());
+            type(*off_session, "ni");
+            require(!off_session->handle_character('C').handled && off_session->preedit() == "ni",
+                    "An uppercase letter opened a block while the uppercase trigger was off.");
+
+            // 约束挂在后面的音节上：选掉前面的词，大写段随剩余部分留下来。
+            auto carried_session = uppercase_session(true, GetXiaoheShuangpinProfile());
+            auto &carried = *carried_session;
+            type(carried, "nihcbuhcX");
+            require(has_word(carried, "你好"), "An uppercase block on a later syllable filtered a shorter candidate.");
+            const auto committed = carried.select_candidate(candidate_index(carried, "你好"));
+            require(committed.commit == "你好" && carried.preedit() == "buhcX",
+                    "Selecting a prefix dropped the uppercase block of the remaining syllables.");
+            require(!has_word(carried, "不好") && !has_word(carried, "补好"),
+                    "The carried uppercase block no longer filtered the remaining syllables.");
+
+            // 微软双拼的 ; 韵母：大写段不算这一节的键，nihkXb; 里 b; 是一个音节。
+            auto microsoft_session = uppercase_session(true, GetMicrosoftShuangpinProfile());
+            type(*microsoft_session, "nihkXb");
+            require(microsoft_session->handle_character(';').handled && microsoft_session->preedit() == "nihkXb;",
+                    "The semicolon final was rejected after an uppercase helpcode block.");
+        }
+
         require(!session.handle_character('1').handled, "A digit was swallowed instead of passed through.");
         require(!session.handle_command(metasequoia::Command::Backspace).handled,
                 "Backspace was swallowed while no composition was active.");

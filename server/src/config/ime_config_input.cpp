@@ -397,6 +397,36 @@ bool SetConfiguredShuangpinMidSentenceHelpcodeSemicolon(bool enabled)
     return true;
 }
 
+bool GetConfiguredShuangpinMidSentenceHelpcodeUppercase()
+{
+    return g_shuangpin_mid_sentence_helpcode_uppercase;
+}
+
+bool SetConfiguredShuangpinMidSentenceHelpcodeUppercase(bool enabled)
+{
+    if (!WriteConfiguredValue("helpcode", "shuangpin_mid_sentence_helpcode_uppercase", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_shuangpin_mid_sentence_helpcode_uppercase = enabled;
+    return true;
+}
+
+bool IsConfiguredMidSentenceHelpcodeUppercaseTrigger()
+{
+    // 与反引号、分号同一套门控：直接辅助码接管辅码时句中辅助码的触发键都不生效。
+    return g_shuangpin_mid_sentence_helpcode_enabled && g_shuangpin_mid_sentence_helpcode_uppercase &&
+           !g_shuangpin_direct_helpcode_enabled;
+}
+
+std::wstring FormatMidSentenceHelpcodeUppercaseWorkerPayload()
+{
+    return IsConfiguredMidSentenceHelpcodeUppercaseTrigger() &&
+                   GetConfiguredActiveInputScheme() == SchemeType::Shuangpin
+               ? L"1"
+               : L"0";
+}
+
 bool GetConfiguredShuangpinDirectHelpcodeEnabled()
 {
     return g_shuangpin_direct_helpcode_enabled;

@@ -35,14 +35,15 @@ struct QueryRequest
     bool enable_mid_sentence_helpcode = false;
     std::string raw_input_with_syllable_helpcodes;
     SyllableHelpcodes syllable_helpcodes;
-    // 双拼直接辅助码（见 engine/direct_helpcode/）：解析器按整句解码选出的切分把请求改写成上面
-    // 句中辅助码的形状。原串里没有反引号，下游没法从原串反推切分，所以去段串到原串的下标映射
-    // （末尾多一项等于原串长度）和每个音节后面原样的辅码文本由解析器直接填在这里。
-    bool direct_helpcode = false;
+    // 去段串（raw_input_with_cases）到原串（raw_input_with_syllable_helpcodes）的下标映射，末尾多一项
+    // 等于原串长度；以及每段原样的辅码文本挂在哪个音节后面。下游推进选词、显示预编辑时直接用它，
+    // 不再从原串反推：反推要知道当时的触发规则（大写触发开没开），而直接辅助码的原串里根本没有段
+    // 标记，切分是解析器整句解码选出来的。由方案层（反引号段、大写段）或直接辅助码的解析器填写。
+    bool has_syllable_helpcode_layout = false;
+    std::vector<std::size_t> syllable_helpcode_source_index;
+    std::vector<std::pair<std::size_t, std::string>> syllable_helpcode_decorations;
     // 会话开着直接辅助码（不论这次请求有没有被改写）。词典层据此让词格与解析器共用一份跨度查询缓存。
     bool enable_direct_helpcode = false;
-    std::vector<std::size_t> direct_helpcode_source_index;
-    std::vector<std::pair<std::size_t, std::string>> direct_helpcode_decorations;
     // Autocorrection is type-gated (bit0 transposition, bit1 neighbor in the session-level
     // mask); both default off, so a fresh install never rewrites the user's spelling.
     bool enable_quanpin_autocorrect_transposition = false;

@@ -420,7 +420,11 @@ constexpr std::uint32_t MidSentenceHelpcodeSemicolonChanged = 29;
 // a four-key code (FanyImeDirectHelpcode::AcceptsSlashAt) and stops requiring an odd chunk before the ';' final
 // (FanyImeDirectHelpcode::AcceptsSemicolonFinalAt). Same single "0"/"1" payload rule as opcode 28.
 constexpr std::uint32_t DirectHelpcodeChanged = 30;
-constexpr std::uint32_t MaxKnown = DirectHelpcodeChanged;
+// Whether the uppercase trigger of shuangpin mid-sentence helpcode is in effect (mid-sentence helpcode on, uppercase
+// trigger checked, shuangpin, direct helpcode off). Payload "0"/"1". TSF still eats letters as before; the flag only
+// changes how it counts the chunk before '`' / ';' (FanyImeMidSentenceHelpcode::ChunkStart with uppercase blocks).
+constexpr std::uint32_t MidSentenceHelpcodeUppercaseChanged = 31;
+constexpr std::uint32_t MaxKnown = MidSentenceHelpcodeUppercaseChanged;
 // Source compatibility for the Server's historical spellings.
 constexpr std::uint32_t SwitchToEn = SwitchToEnglish;
 constexpr std::uint32_t SwitchToCn = SwitchToChinese;

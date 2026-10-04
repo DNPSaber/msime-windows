@@ -69,6 +69,9 @@ static void BroadcastMidSentenceHelpcodeTriggers()
         FormatMidSentenceHelpcodeSemicolonWorkerPayload());
     BroadcastToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::DirectHelpcodeChanged,
                                            FormatDirectHelpcodeWorkerPayload());
+    BroadcastToTsfWorkerThreadViaNamedpipe(
+        Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeUppercaseChanged,
+        FormatMidSentenceHelpcodeUppercaseWorkerPayload());
 }
 
 // 死宿主（InitWebviewSettingsWnd 无调用者）的智能标点子键分发。单独成函数，避免在
@@ -1077,12 +1080,15 @@ static void ApplyHelpcodeSubkey(const std::string &path, const json::object &dat
         }
     }
     if (path == "helpcode.shuangpin_mid_sentence_helpcode_backtick" ||
-        path == "helpcode.shuangpin_mid_sentence_helpcode_semicolon")
+        path == "helpcode.shuangpin_mid_sentence_helpcode_semicolon" ||
+        path == "helpcode.shuangpin_mid_sentence_helpcode_uppercase")
     {
         const bool value = json::value_to<bool>(data.at("value"));
         const bool saved = path == "helpcode.shuangpin_mid_sentence_helpcode_backtick"
                                ? SetConfiguredShuangpinMidSentenceHelpcodeBacktick(value)
-                               : SetConfiguredShuangpinMidSentenceHelpcodeSemicolon(value);
+                           : path == "helpcode.shuangpin_mid_sentence_helpcode_semicolon"
+                               ? SetConfiguredShuangpinMidSentenceHelpcodeSemicolon(value)
+                               : SetConfiguredShuangpinMidSentenceHelpcodeUppercase(value);
         if (saved)
         {
             BroadcastMidSentenceHelpcodeTriggers();
@@ -1726,6 +1732,7 @@ void PostSettingsConfig()
             {"shuangpin_mid_sentence_helpcode", GetConfiguredShuangpinMidSentenceHelpcodeEnabled()},
             {"shuangpin_mid_sentence_helpcode_backtick", GetConfiguredShuangpinMidSentenceHelpcodeBacktick()},
             {"shuangpin_mid_sentence_helpcode_semicolon", GetConfiguredShuangpinMidSentenceHelpcodeSemicolon()},
+            {"shuangpin_mid_sentence_helpcode_uppercase", GetConfiguredShuangpinMidSentenceHelpcodeUppercase()},
             {"shuangpin_direct_helpcode", GetConfiguredShuangpinDirectHelpcodeEnabled()},
             {"shuangpin_helpcode_schema", GetConfiguredShuangpinHelpcodeSchema()},
             {"quanpin_helpcode", GetConfiguredQuanpinHelpcodeEnabled()},

@@ -94,12 +94,13 @@ struct MidSentenceRest
 MidSentenceRest RemapMidSentenceRest(const QueryRequest &request, const std::string &typed, std::size_t clean_begin,
                                      std::size_t clean_end, const ShuangpinProfile &profile)
 {
-    // 直接辅助码的原串里没有反引号，切分是解析器整句解码选出来的，映射直接用它填好的那份。
+    // 方案层或直接辅助码的解析器已经把映射填进请求（见 QueryRequest::has_syllable_helpcode_layout），
+    // 直接用它；原串的段规则取决于当时的触发设置，这里不再反推。
     shuangpin::MidSentenceHelpcodeInput parsed;
-    if (request.direct_helpcode)
+    if (request.has_syllable_helpcode_layout)
     {
         parsed.input = request.raw_input_with_cases;
-        parsed.source_index = request.direct_helpcode_source_index;
+        parsed.source_index = request.syllable_helpcode_source_index;
     }
     else
     {
@@ -532,10 +533,10 @@ std::string InputSession::build_pinyin_segmentation_with_cases(bool shuangpin_ra
     // 句中辅助码的反引号段在切分串里只是一个 '，显示时按原样接回对应音节后面；
     // 末尾补 ' 也要看用户敲的原串，否则 ulpb`x 会显示成 ul'pb`x'。
     const std::string &typed = get_pinyin_sequence_with_cases();
-    // 直接辅助码的辅码段由解析器给出，原串里没有反引号可解析。
+    // 段文本由方案层或直接辅助码的解析器随请求给出（见 QueryRequest::has_syllable_helpcode_layout）。
     const auto decorate = [&](const std::string &segmentation) {
-        return request().direct_helpcode
-                   ? shuangpin::decorate_segmentation(segmentation, request().direct_helpcode_decorations)
+        return request().has_syllable_helpcode_layout
+                   ? shuangpin::decorate_segmentation(segmentation, request().syllable_helpcode_decorations)
                    : shuangpin::decorate_mid_sentence_segmentation(segmentation, typed, shuangpin_profile_);
     };
     if (is_shuangpin() && shuangpin_raw)

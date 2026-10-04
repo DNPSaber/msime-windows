@@ -308,34 +308,53 @@ char to_ascii_lower(char ch)
     return FanyImeMidSentenceHelpcode::IsAsciiUpper(ch) ? static_cast<char>(ch + ('a' - 'A')) : ch;
 }
 
-std::size_t mid_sentence_block_end(const std::string &raw_input, std::size_t marker)
-{
-    return FanyImeMidSentenceHelpcode::BlockEnd(raw_input.data(), raw_input.size(), marker);
-}
-
 std::size_t count_segments(const std::string &segmentation)
 {
     return segmentation.empty()
                ? 0
                : static_cast<std::size_t>(std::count(segmentation.begin(), segmentation.end(), '\'')) + 1;
 }
+
+struct MidSentenceBlock
+{
+    std::size_t begin = 0;
+    std::size_t end = 0;
+    // 第一码的位置：反引号段是反引号后一位，大写段就是段首。
+    std::size_t codes_begin = 0;
+};
+
+std::vector<MidSentenceBlock> scan_mid_sentence_blocks(const std::string &raw_input, bool uppercase_trigger)
+{
+    std::vector<MidSentenceBlock> blocks;
+    FanyImeMidSentenceHelpcode::ScanBlocks(raw_input.data(), raw_input.size(), uppercase_trigger,
+                                           [&](std::size_t begin, std::size_t end, std::size_t codes_begin) {
+                                               blocks.push_back({begin, end, codes_begin});
+                                           });
+    return blocks;
+}
 } // namespace
 
-bool has_mid_sentence_helpcode(const std::string &raw_input)
+bool has_mid_sentence_helpcode(const std::string &raw_input, bool uppercase_trigger)
 {
-    return raw_input.find(kMidSentenceHelpcodeMarker) != std::string::npos;
+    if (raw_input.find(kMidSentenceHelpcodeMarker) != std::string::npos)
+    {
+        return true;
+    }
+    return uppercase_trigger && !scan_mid_sentence_blocks(raw_input, true).empty();
 }
 
 MidSentenceHelpcodeInput parse_mid_sentence_helpcodes(const std::string &raw_input_with_cases,
-                                                      const ShuangpinProfile &profile)
+                                                      const ShuangpinProfile &profile, bool uppercase_trigger)
 {
     MidSentenceHelpcodeInput parsed;
     parsed.input.reserve(raw_input_with_cases.size());
     parsed.source_index.reserve(raw_input_with_cases.size() + 1);
+    const auto blocks = scan_mid_sentence_blocks(raw_input_with_cases, uppercase_trigger);
+    auto next_block = blocks.begin();
     std::size_t index = 0;
     while (index < raw_input_with_cases.size())
     {
-        if (raw_input_with_cases[index] != kMidSentenceHelpcodeMarker)
+        if (next_block == blocks.end() || index != next_block->begin)
         {
             parsed.input.push_back(raw_input_with_cases[index]);
             parsed.source_index.push_back(index);
@@ -343,19 +362,21 @@ MidSentenceHelpcodeInput parse_mid_sentence_helpcodes(const std::string &raw_inp
             continue;
         }
 
-        const std::size_t end = mid_sentence_block_end(raw_input_with_cases, index);
+        const std::size_t end = next_block->end;
+        const std::size_t codes_begin = next_block->codes_begin;
+        ++next_block;
         const std::size_t syllables =
             count_segments(segment_input(boost::algorithm::to_lower_copy(parsed.input), profile));
         if (syllables > 0)
         {
             const std::size_t syllable = syllables - 1;
             parsed.decorations.emplace_back(syllable, raw_input_with_cases.substr(index, end - index));
-            if (end > index + 1)
+            if (end > codes_begin)
             {
                 SyllableHelpcode helpcode;
                 helpcode.syllable = syllable;
-                helpcode.first = to_ascii_lower(raw_input_with_cases[index + 1]);
-                helpcode.second = end > index + 2 ? to_ascii_lower(raw_input_with_cases[index + 2]) : 0;
+                helpcode.first = to_ascii_lower(raw_input_with_cases[codes_begin]);
+                helpcode.second = end > codes_begin + 1 ? to_ascii_lower(raw_input_with_cases[codes_begin + 1]) : 0;
                 // 同一个音节敲了两段，以后一段为准。
                 auto existing = std::find_if(parsed.helpcodes.begin(), parsed.helpcodes.end(),
                                              [&](const SyllableHelpcode &item) { return item.syllable == syllable; });
@@ -378,13 +399,14 @@ MidSentenceHelpcodeInput parse_mid_sentence_helpcodes(const std::string &raw_inp
 }
 
 std::string decorate_mid_sentence_segmentation(const std::string &segmentation, const std::string &raw_input_with_cases,
-                                               const ShuangpinProfile &profile)
+                                               const ShuangpinProfile &profile, bool uppercase_trigger)
 {
-    if (!has_mid_sentence_helpcode(raw_input_with_cases) || segmentation.empty())
+    if (!has_mid_sentence_helpcode(raw_input_with_cases, uppercase_trigger) || segmentation.empty())
     {
         return segmentation;
     }
-    return decorate_segmentation(segmentation, parse_mid_sentence_helpcodes(raw_input_with_cases, profile).decorations);
+    return decorate_segmentation(
+        segmentation, parse_mid_sentence_helpcodes(raw_input_with_cases, profile, uppercase_trigger).decorations);
 }
 
 std::string decorate_segmentation(const std::string &segmentation,
@@ -420,22 +442,21 @@ std::string decorate_segmentation(const std::string &segmentation,
     return decorated;
 }
 
-bool accepts_mid_sentence_helpcode_marker(const std::string &raw_input)
+bool accepts_mid_sentence_helpcode_marker(const std::string &raw_input, bool uppercase_trigger)
 {
-    return FanyImeMidSentenceHelpcode::AcceptsMarker(raw_input.data(), raw_input.size());
+    return FanyImeMidSentenceHelpcode::AcceptsMarker(raw_input.data(), raw_input.size(), uppercase_trigger);
 }
 
-bool accepts_mid_sentence_helpcode_marker_at(const std::string &raw_input, std::size_t caret)
+bool accepts_mid_sentence_helpcode_marker_at(const std::string &raw_input, std::size_t caret, bool uppercase_trigger)
 {
-    return FanyImeMidSentenceHelpcode::AcceptsMarkerAt(raw_input.data(), raw_input.size(), caret);
+    return FanyImeMidSentenceHelpcode::AcceptsMarkerAt(raw_input.data(), raw_input.size(), caret, uppercase_trigger);
 }
 
-bool accepts_mid_sentence_second_code(const std::string &raw_input, char ch)
+bool accepts_mid_sentence_second_code(const std::string &raw_input, char ch, bool uppercase_trigger)
 {
-    const std::size_t size = raw_input.size();
-    return FanyImeMidSentenceHelpcode::IsAsciiUpper(ch) && size >= 2 &&
-           raw_input[size - 2] == kMidSentenceHelpcodeMarker &&
-           FanyImeMidSentenceHelpcode::IsAsciiLetter(raw_input[size - 1]);
+    return FanyImeMidSentenceHelpcode::IsAsciiUpper(ch) &&
+           FanyImeMidSentenceHelpcode::AcceptsSecondCodeAt(raw_input.data(), raw_input.size(), raw_input.size(),
+                                                           uppercase_trigger);
 }
 
 } // namespace shuangpin

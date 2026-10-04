@@ -40,12 +40,10 @@ bool IsMicrosoftShuangpinIngKeyAt(UINT uCode, WCHAR wch, const WCHAR *buffer, DW
         return FanyImeDirectHelpcode::AcceptsSemicolonFinalAt(buffer, static_cast<std::size_t>(length),
                                                               static_cast<std::size_t>(caret));
     }
-    DWORD_PTR chunkLength = 0;
-    for (DWORD_PTR index = caret; index > 0 && buffer[index - 1] != L'\''; --index)
-    {
-        ++chunkLength;
-    }
-    return chunkLength % 2 == 1;
+    // 大写触发开着时大写段不算这一节的键；关着时就是原来「最后一个 ' 之后数奇偶」的规则。
+    return FanyImeMidSentenceHelpcode::AcceptsSemicolonFinalAt(
+        buffer, static_cast<std::size_t>(length), static_cast<std::size_t>(caret),
+        Global::MidSentenceHelpcodeUppercaseEnabled.load(std::memory_order_relaxed));
 }
 
 // 双拼直接辅助码的 /：四码（两键音节 + 两位辅码）后面的终止键是编码键，否则仍按标点处理。Server
@@ -69,8 +67,9 @@ bool IsMidSentenceHelpcodeMarkerKey(UINT uCode, WCHAR wch, const WCHAR *buffer, 
                            Global::MidSentenceHelpcodeSemicolonEnabled.load(std::memory_order_relaxed) &&
                            !IsMicrosoftShuangpinIngKeyAt(uCode, wch, buffer, length, caret);
     return (backtick || semicolon) && buffer != nullptr && length > 0 &&
-           FanyImeMidSentenceHelpcode::AcceptsMarkerAt(buffer, static_cast<std::size_t>(length),
-                                                       static_cast<std::size_t>(min(caret, length)));
+           FanyImeMidSentenceHelpcode::AcceptsMarkerAt(
+               buffer, static_cast<std::size_t>(length), static_cast<std::size_t>(min(caret, length)),
+               Global::MidSentenceHelpcodeUppercaseEnabled.load(std::memory_order_relaxed));
 }
 
 // 日语模式禁用 -/= 翻页：'-' 是长音符（ー）的输入键。空编码时也要起头组合，

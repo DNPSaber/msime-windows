@@ -273,6 +273,9 @@ void ApplyConfiguredInputScheme()
         FormatMidSentenceHelpcodeSemicolonWorkerPayload());
     BroadcastToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::DirectHelpcodeChanged,
                                            FormatDirectHelpcodeWorkerPayload());
+    BroadcastToTsfWorkerThreadViaNamedpipe(
+        Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeUppercaseChanged,
+        FormatMidSentenceHelpcodeUppercaseWorkerPayload());
     // 「双拼显示全拼」让原始按键样式在双拼下改由 Server 回包驱动，换方案时 TSF 要跟着换。
     BroadcastToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::PagingCommaPeriodChanged,
                                            FormatPagingCommaPeriodWorkerPayload());

@@ -20,9 +20,13 @@ class ImeSession
     void handle_key(ImeKeyCode vk, ImeModifierMask modifiers_down = 0, ImeCharacter wch = 0);
     void switch_scheme(SchemeType scheme_type);
     void set_shuangpin_helpcode_enabled(bool enabled);
-    void set_mid_sentence_helpcode_enabled(bool enabled)
+    void set_mid_sentence_helpcode_enabled(bool enabled);
+    // 句中辅助码的大写触发（见 FanyImeMidSentenceHelpcode::StartsUppercaseBlock）。只在句中辅助码开着、
+    // 直接辅助码关着时生效。
+    void set_mid_sentence_uppercase_trigger_enabled(bool enabled);
+    bool mid_sentence_uppercase_trigger_active() const
     {
-        enable_mid_sentence_helpcode_ = enabled;
+        return enable_mid_sentence_helpcode_ && enable_mid_sentence_uppercase_trigger_ && !enable_direct_helpcode_;
     }
     // 双拼直接辅助码（万象式，见 engine/direct_helpcode/）。开着时末尾单码/双码辅助和反引号句中
     // 辅助码都让位给它。
@@ -108,6 +112,8 @@ class ImeSession
     void refresh_candidates();
     void bind_wubi_scheme();
     void bind_shuangpin_scheme();
+    // 把会话的直接辅助码、大写触发设置下发给双拼方案（非双拼方案什么也不做）。
+    void configure_shuangpin_scheme(IInputScheme *scheme) const;
     std::unique_ptr<IInputScheme> create_scheme(SchemeType scheme_type) const;
 
   private:
@@ -118,6 +124,7 @@ class ImeSession
     bool enable_shuangpin_helpcode_ = false;
     bool enable_mid_sentence_helpcode_ = false;
     bool enable_direct_helpcode_ = false;
+    bool enable_mid_sentence_uppercase_trigger_ = false;
     bool enable_quanpin_helpcode_ = false;
     unsigned quanpin_autocorrect_types_ = 0;
     metasequoia::FuzzyPinyinOptions fuzzy_pinyin_;

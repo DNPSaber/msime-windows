@@ -20,10 +20,17 @@ class ShuangpinScheme : public IInputScheme
     {
         direct_helpcode_ = enabled;
     }
+    // 句中辅助码的大写触发：完整音节后的大写字母开一段（FanyImeMidSentenceHelpcode::StartsUppercaseBlock）。
+    // 由会话按「句中辅助码开、勾了大写、没开直接辅助码」设置，原串照样记大写字母，只是解析规则变了。
+    void set_mid_sentence_uppercase_trigger(bool enabled)
+    {
+        mid_sentence_uppercase_trigger_ = enabled;
+    }
 
   private:
     const ShuangpinProfile profile_;
     bool direct_helpcode_ = false;
+    bool mid_sentence_uppercase_trigger_ = false;
     std::string raw_input_;
     std::vector<KeyStroke> key_strokes_;
 };

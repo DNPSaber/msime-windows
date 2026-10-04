@@ -72,6 +72,7 @@ export function setupHelpcode(): void {
   const triggerCheckboxes: [string, string][] = [
     ['midSentenceHelpcodeBacktickCheckbox', 'helpcode.shuangpin_mid_sentence_helpcode_backtick'],
     ['midSentenceHelpcodeSemicolonCheckbox', 'helpcode.shuangpin_mid_sentence_helpcode_semicolon'],
+    ['midSentenceHelpcodeUppercaseCheckbox', 'helpcode.shuangpin_mid_sentence_helpcode_uppercase'],
   ];
   for (const [id, path] of triggerCheckboxes) {
     const checkbox = document.getElementById(id) as HTMLInputElement | null;

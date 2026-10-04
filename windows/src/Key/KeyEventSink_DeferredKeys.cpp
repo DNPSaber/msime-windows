@@ -26,6 +26,7 @@
 #include "../Utils/PerfTimer.h"
 #include <chrono>
 #include "../../../engine/contracts/ipc_negotiation.h"
+#include "../../../engine/contracts/mid_sentence_helpcode.h"
 #include "KeyEventSinkInternal.h"
 
 using namespace key_event_sink_detail;
@@ -526,10 +527,10 @@ bool CMetasequoiaIME::_ClassifyDeferredKeyDown(_In_ ITfContext *pContext, WPARAM
             !Global::DirectHelpcodeEnabled.load(std::memory_order_relaxed) && *classifiedCode == VK_OEM_1 &&
             *classifiedWch == L';' && !shadow.rawInput.empty())
         {
-            const size_t caret = min(shadow.caret, shadow.rawInput.size());
-            const size_t separator = caret == 0 ? std::wstring::npos : shadow.rawInput.rfind(L'\'', caret - 1);
-            const size_t chunkStart = separator == std::wstring::npos ? 0 : separator + 1;
-            isInputKey = (caret - chunkStart) % 2 == 1;
+            // 与同步路径同一条规则：大写触发开着时大写段不算这一节的键。
+            isInputKey = FanyImeMidSentenceHelpcode::AcceptsSemicolonFinalAt(
+                shadow.rawInput.data(), shadow.rawInput.size(), min(shadow.caret, shadow.rawInput.size()),
+                Global::MidSentenceHelpcodeUppercaseEnabled.load(std::memory_order_relaxed));
         }
         // 与 CompositionProcessorEngine_KeyClassify.cpp 的句中辅助码判断一致，按影子状态算。
         if (!isInputKey)

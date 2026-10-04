@@ -96,9 +96,9 @@ void apply_spellings(QueryRequest &request, const std::string &typed, const std:
     request.syllable_helpcodes = std::move(helpcodes);
     request.enable_mid_sentence_helpcode = true;
     request.enable_shuangpin_helpcode = false;
-    request.direct_helpcode = true;
-    request.direct_helpcode_source_index = std::move(source_index);
-    request.direct_helpcode_decorations = std::move(decorations);
+    request.has_syllable_helpcode_layout = true;
+    request.syllable_helpcode_source_index = std::move(source_index);
+    request.syllable_helpcode_decorations = std::move(decorations);
     request.valid = !clean.empty();
     if (!request.valid)
         return;

@@ -214,6 +214,9 @@ inline std::atomic_bool MicrosoftShuangpinEnabled{false};
 inline std::atomic_bool MidSentenceHelpcodeEnabled{false};
 // 同上，换成分号触发键（设置里多选）。分号触发的段在按键缓冲里同样记成反引号。
 inline std::atomic_bool MidSentenceHelpcodeSemicolonEnabled{false};
+// 句中辅助码的大写触发生效：完整音节后的大写字母自己开一段。字母键照常吃，只改变反引号/分号与 ; 韵母
+// 判断时这一节怎么数（大写段不算键），规则见 engine/contracts/mid_sentence_helpcode.h。
+inline std::atomic_bool MidSentenceHelpcodeUppercaseEnabled{false};
 // 双拼直接辅助码（万象式）开着且当前是双拼：四码后的 / 当编码键吃掉，; 韵母不再看奇偶，规则见
 // engine/contracts/direct_helpcode.h。
 inline std::atomic_bool DirectHelpcodeEnabled{false};

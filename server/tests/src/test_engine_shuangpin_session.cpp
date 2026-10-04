@@ -1571,3 +1571,65 @@ TEST_CASE(EngineShuangpinMidSentenceHelpcodeConstrainsSentenceSources)
     }
     REQUIRE(has_sentence);
 }
+
+TEST_CASE(EngineShuangpinMidSentenceUppercaseTriggerActsAsBacktick)
+{
+    // 大写触发：完整音节后的大写字母 ≡ 反引号 + 这个字母。走 Server 的真实路径与真实词库。
+    struct ReloadConfigOnExit
+    {
+        ~ReloadConfigOnExit()
+        {
+            InitImeConfig();
+        }
+    } reload;
+    ScopedConfigRoot config_root;
+    InitImeConfig();
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeEnabled(true));
+    REQUIRE(SetConfiguredShuangpinHelpcodeSchema("ziranma"));
+    REQUIRE(SetConfiguredAssocSentenceWordLattice(true));
+    REQUIRE(!IsConfiguredMidSentenceHelpcodeUppercaseTrigger());
+    REQUIRE_EQ(FormatMidSentenceHelpcodeUppercaseWorkerPayload(), std::wstring(L"0"));
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeUppercase(true));
+    REQUIRE(IsConfiguredMidSentenceHelpcodeUppercaseTrigger());
+    const bool shuangpin_active = GetConfiguredInputScheme() == SchemeType::Shuangpin;
+    REQUIRE_EQ(FormatMidSentenceHelpcodeUppercaseWorkerPayload(), std::wstring(shuangpin_active ? L"1" : L"0"));
+
+    EngineInputSession session(SchemeType::Shuangpin, GetXiaoheShuangpinProfile());
+    const auto first_code = [&session](const std::string &hanzi) {
+        const std::string annotation = session.get_helpcode_annotation(hanzi, false);
+        return annotation.size() > 1 ? static_cast<char>(std::tolower(static_cast<unsigned char>(annotation[1])))
+                                     : '\0';
+    };
+    const auto apply = [&session](const std::string &raw) {
+        session.set_pinyin_sequence(raw);
+        session.set_pinyin_sequence_with_cases(raw);
+        session.recompute_candidates();
+    };
+    const char code = first_code("泥");
+    REQUIRE(code != '\0');
+
+    const std::string raw =
+        std::string("ni") + static_cast<char>(std::toupper(static_cast<unsigned char>(code))) + "hc";
+    apply(raw);
+    REQUIRE_EQ(session.get_pinyin_sequence_with_cases(), raw);
+    REQUIRE_EQ(session.get_pinyin_sequence(), std::string("ni'hc"));
+    REQUIRE(session.has_mid_sentence_helpcode());
+    bool has_hanzi = false;
+    for (const auto &item : session.get_candidates())
+    {
+        if (item.source != CandidateSource::Database && item.source != CandidateSource::UserDatabase &&
+            item.source != CandidateSource::Generated && item.source != CandidateSource::Fallback)
+            continue;
+        if (HelpcodeUtils::count_han_chars(item.word) == 0 ||
+            HelpcodeUtils::count_han_chars(item.word) != HelpcodeUtils::count_utf8_chars(item.word))
+            continue;
+        has_hanzi = true;
+        REQUIRE_EQ(first_code(HelpcodeUtils::get_first_han_char(item.word)), code);
+    }
+    REQUIRE(has_hanzi);
+
+    // 直接辅助码接管辅码时大写触发不生效，TSF 收到的载荷也是 "0"。
+    REQUIRE(SetConfiguredShuangpinDirectHelpcodeEnabled(true));
+    REQUIRE(!IsConfiguredMidSentenceHelpcodeUppercaseTrigger());
+    REQUIRE_EQ(FormatMidSentenceHelpcodeUppercaseWorkerPayload(), std::wstring(L"0"));
+}

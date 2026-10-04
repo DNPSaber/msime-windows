@@ -55,21 +55,27 @@ struct MidSentenceHelpcodeInput
     std::vector<std::pair<std::size_t, std::string>> decorations;
 };
 
-bool has_mid_sentence_helpcode(const std::string &raw_input);
+// uppercase_trigger：大写字母触发开着时，完整音节后的大写字母也开一段，规则见
+// FanyImeMidSentenceHelpcode::StartsUppercaseBlock。
+bool has_mid_sentence_helpcode(const std::string &raw_input, bool uppercase_trigger = false);
 MidSentenceHelpcodeInput parse_mid_sentence_helpcodes(const std::string &raw_input_with_cases,
-                                                      const ShuangpinProfile &profile = GetXiaoheShuangpinProfile());
+                                                      const ShuangpinProfile &profile = GetXiaoheShuangpinProfile(),
+                                                      bool uppercase_trigger = false);
 // 把每段反引号段按原样接回切分串里对应音节的后面：ul'pb'ih'fa → ul'pb`x'ih'fa。切分串必须是
 // 由 parse_mid_sentence_helpcodes(...).input 切出来的（音节序号才对得上）。
 std::string decorate_mid_sentence_segmentation(const std::string &segmentation, const std::string &raw_input_with_cases,
-                                               const ShuangpinProfile &profile = GetXiaoheShuangpinProfile());
+                                               const ShuangpinProfile &profile = GetXiaoheShuangpinProfile(),
+                                               bool uppercase_trigger = false);
 // 同上，段文本已经在手：直接辅助码由解析器给出（原串里没有反引号可解析）。
 std::string decorate_segmentation(const std::string &segmentation,
                                   const std::vector<std::pair<std::size_t, std::string>> &decorations);
 // 输入串末尾能否接一个反引号，即 FanyImeMidSentenceHelpcode::AcceptsMarker。
-bool accepts_mid_sentence_helpcode_marker(const std::string &raw_input);
+bool accepts_mid_sentence_helpcode_marker(const std::string &raw_input, bool uppercase_trigger = false);
 // 光标停在 raw_input[caret] 时能否插入一个反引号，即 FanyImeMidSentenceHelpcode::AcceptsMarkerAt。
-bool accepts_mid_sentence_helpcode_marker_at(const std::string &raw_input, std::size_t caret);
-// 输入串末尾能否接 ch 作为第二码：紧跟在「反引号 + 第一码」之后的大写字母。
-bool accepts_mid_sentence_second_code(const std::string &raw_input, char ch);
+bool accepts_mid_sentence_helpcode_marker_at(const std::string &raw_input, std::size_t caret,
+                                             bool uppercase_trigger = false);
+// 输入串末尾能否接 ch 作为第二码：紧跟在只有第一码的段（「反引号 + 第一码」或大写触发的一码）之后的
+// 大写字母，即 FanyImeMidSentenceHelpcode::AcceptsSecondCodeAt。
+bool accepts_mid_sentence_second_code(const std::string &raw_input, char ch, bool uppercase_trigger = false);
 
 } // namespace shuangpin
