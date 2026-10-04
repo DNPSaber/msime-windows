@@ -26,6 +26,10 @@ class TrayMenuPresenter
 
     void RebuildScene();
     void PlaceAndShow(float widthDip, float heightDip);
+    void OpenSchemeSubmenu();
+    void CloseSchemeSubmenu();
+    bool ExpandHostForSubmenu();
+    void RestoreHostAfterSubmenu();
 
     struct Impl;
     std::unique_ptr<Impl> impl_;

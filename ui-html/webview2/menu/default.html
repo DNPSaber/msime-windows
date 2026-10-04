@@ -107,6 +107,49 @@
       transform: translateX(16px);
     }
 
+    /* 向左展开输入方案子菜单时，宿主窗口向左加宽，主菜单靠右才能停在原处。 */
+    body.submenu-left {
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .menu-chevron {
+      width: 16px;
+      height: 16px;
+      display: inline-flex;
+      flex-shrink: 0;
+    }
+
+    .menu-chevron svg {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    .submenu {
+      position: fixed;
+      display: none;
+      min-width: 0;
+      width: 120px;
+    }
+
+    .submenu.measuring {
+      display: block;
+      visibility: hidden;
+    }
+
+    .submenu.open {
+      display: block;
+    }
+
+    .submenu .scheme-check {
+      visibility: hidden;
+    }
+
+    .submenu .menu-item.selected .scheme-check {
+      visibility: visible;
+    }
+
   </style>
 </head>
 
@@ -124,6 +167,24 @@
         悬浮工具栏
       </div>
       <div class="toggle" id="floatingToggle"></div>
+    </div>
+
+    <div class="menu-item" id="inputScheme">
+      <div class="menu-item-left">
+        <span class="menu-icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 8H17M14 4.5L17.5 8L14 11.5M20 16H7M10 12.5L6.5 16L10 19.5" stroke="currentColor"
+              stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>
+        </span>
+        输入方案
+      </div>
+      <span class="menu-chevron" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M6 4L10 8L6 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"
+            stroke-linejoin="round" />
+        </svg>
+      </span>
     </div>
 
     <div class="menu-item" id="emojiSymbols">
@@ -213,7 +274,42 @@
     </div>
   </div>
 
+  <!-- 输入方案子菜单放在 #menuContainer 之外：容器 overflow 会裁掉它，宿主也只按容器量尺寸。 -->
+  <div class="menu submenu" id="inputSchemeSubmenu">
+    <div class="menu-item" data-scheme="quanpin">
+      <div class="menu-item-left">
+          <span class="menu-icon scheme-check" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M5 12.5L10 17.5L19 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+          </span>        全拼
+      </div>
+    </div>
+    <div class="menu-item" data-scheme="shuangpin">
+      <div class="menu-item-left">
+          <span class="menu-icon scheme-check" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M5 12.5L10 17.5L19 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+          </span>        双拼
+      </div>
+    </div>
+    <div class="menu-item" data-scheme="wubi">
+      <div class="menu-item-left">
+          <span class="menu-icon scheme-check" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M5 12.5L10 17.5L19 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+                stroke-linejoin="round" />
+            </svg>
+          </span>        五笔
+      </div>
+    </div>
+  </div>
+
   <script src="https://msime-contracts/schema.js"></script>
+
   <script src="https://msime-contracts/runtime.js"></script>
   <script>const serializeHostMessage = message => MsimeProtocol.serializeClientMessage(message, "menu");</script>
   <script>
@@ -261,6 +357,85 @@
       window.chrome.webview.postMessage(serializeHostMessage({
         type: 'settings',
       }));
+    });
+
+    // 输入方案：悬停展开子菜单。宿主窗口只按 #menuContainer 定尺寸，所以先把子菜单所需宽度告诉 C++，
+    // 由它把窗口向有空间的一侧加宽，再回调 PlaceInputSchemeSubmenu 摆放。
+    const SUBMENU_GAP = 4;
+    const schemeItem = document.getElementById('inputScheme');
+    const schemeSubmenu = document.getElementById('inputSchemeSubmenu');
+    let schemeSubmenuRequested = false;
+
+    function openSchemeSubmenu() {
+      if (schemeSubmenuRequested) return;
+      schemeSubmenuRequested = true;
+      schemeSubmenu.classList.add('measuring');
+      const width = Math.ceil(schemeSubmenu.getBoundingClientRect().width) + SUBMENU_GAP;
+      window.chrome.webview.postMessage(serializeHostMessage({
+        type: 'inputSchemeSubmenu',
+        data: { open: true, width: width }
+      }));
+    }
+
+    function closeSchemeSubmenu() {
+      if (!schemeSubmenuRequested) return;
+      schemeSubmenuRequested = false;
+      schemeSubmenu.classList.remove('measuring', 'open');
+      // 主菜单保持靠右，等宿主把窗口还原后由 PlaceInputSchemeSubmenu('') 取消，避免中途跳动。
+      window.chrome.webview.postMessage(serializeHostMessage({
+        type: 'inputSchemeSubmenu',
+        data: { open: false, width: 0 }
+      }));
+    }
+
+    // C++ 调整完窗口后调用：side 为 'left' / 'right'，空串表示窗口已还原。
+    window.PlaceInputSchemeSubmenu = function (side) {
+      if (!side) {
+        if (!schemeSubmenuRequested) document.body.classList.remove('submenu-left');
+        return;
+      }
+      if (!schemeSubmenuRequested) return;
+      document.body.classList.toggle('submenu-left', side === 'left');
+      schemeSubmenu.classList.remove('measuring');
+      schemeSubmenu.classList.add('open');
+      const menu = document.getElementById('menuContainer').getBoundingClientRect();
+      const item = schemeItem.getBoundingClientRect();
+      const sub = schemeSubmenu.getBoundingClientRect();
+      // 第一项与「输入方案」对齐：上移子菜单的边框、内边距和项目外边距。
+      const inset = schemeSubmenu.firstElementChild.getBoundingClientRect().top - sub.top;
+      const top = Math.max(0, Math.min(item.top - inset, document.documentElement.clientHeight - sub.height));
+      // 宿主在本函数返回后才加宽窗口：向左时主菜单靠右，子菜单按到右边缘的距离摆放；向右时按左边缘。
+      const viewportWidth = document.documentElement.clientWidth;
+      schemeSubmenu.style.left = side === 'left' ? '' : (menu.right + SUBMENU_GAP) + 'px';
+      schemeSubmenu.style.right = side === 'left' ? (viewportWidth - menu.left + SUBMENU_GAP) + 'px' : '';
+      schemeSubmenu.style.top = top + 'px';
+    };
+
+    // 菜单每次弹出前由 C++ 调用，收起上次残留的子菜单。
+    window.ResetInputSchemeSubmenu = function () {
+      schemeSubmenuRequested = false;
+      schemeSubmenu.classList.remove('measuring', 'open');
+      document.body.classList.remove('submenu-left');
+    };
+
+    // 当前方案打勾，由 C++ 按 input.schema 同步。
+    window.SetInputScheme = function (scheme) {
+      schemeSubmenu.querySelectorAll('.menu-item').forEach(item => {
+        item.classList.toggle('selected', item.dataset.scheme === scheme);
+      });
+    };
+
+    schemeItem.addEventListener('mouseenter', openSchemeSubmenu);
+    document.querySelectorAll('#menuContainer > .menu-item').forEach(item => {
+      if (item !== schemeItem) item.addEventListener('mouseenter', closeSchemeSubmenu);
+    });
+    schemeSubmenu.querySelectorAll('.menu-item').forEach(item => {
+      item.addEventListener('click', () => {
+        window.chrome.webview.postMessage(serializeHostMessage({
+          type: 'changeInputScheme',
+          data: item.dataset.scheme
+        }));
+      });
     });
 
     // 关于：打开设置窗口并定位到“关于”分区。

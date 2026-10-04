@@ -36,6 +36,39 @@ constexpr float kShadowPadTop = 12.0f;
 constexpr float kShadowPadRight = 16.0f;
 constexpr float kShadowPadBottom = 20.0f;
 
+// 输入方案二级菜单：宽度含 4 DIP 内边距；与主菜单卡片之间留 kSchemeSubmenuGap 的缝。
+constexpr float kSchemeSubmenuWidth = 120.0f;
+constexpr float kSchemeSubmenuGap = 4.0f;
+// 主菜单项相对卡片四边内缩 4 DIP，见 RebuildScene 里 items 的 padding。
+constexpr float kItemInset = 4.0f;
+
+struct SchemeChoice
+{
+    const char *name;
+    const wchar_t *label;
+};
+
+constexpr SchemeChoice kSchemeChoices[] = {
+    {"quanpin", L"全拼"},
+    {"shuangpin", L"双拼"},
+    {"wubi", L"五笔"},
+};
+
+const char kSvgInputScheme[] =
+    R"(<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M4 8H17M14 4.5L17.5 8L14 11.5M20 16H7M10 12.5L6.5 16L10 19.5" stroke="currentColor"
+              stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+          </svg>)";
+
+const char kSvgCheck[] =
+    R"(<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M5 12.5L10 17.5L19 7.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"
+              stroke-linejoin="round" />
+          </svg>)";
+
+// 未选中的方案占同样的图标位，让三项文字对齐。
+const char kSvgBlank[] = R"(<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"></svg>)";
+
 const char kSvgToolbar[] =
     R"(<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
             <rect x="3" y="6" width="18" height="12" rx="3" stroke="currentColor" stroke-width="1.8" />
@@ -103,7 +136,14 @@ struct TrayMenuPresenter::Impl
     std::shared_ptr<msimeui::Container> frame;
     std::shared_ptr<msimeui::StackPanel> items;
     std::shared_ptr<msimeui::MenuFlyoutItem> floatingToggle;
+    std::shared_ptr<msimeui::MenuFlyoutItem> schemeItem;
+    std::shared_ptr<msimeui::Popup> schemeSubmenu;
     std::vector<std::shared_ptr<msimeui::MenuFlyoutItem>> rows;
+    bool schemeSubmenuOpen = false;
+    // 子菜单开着时宿主窗口向一侧加宽；记下加宽前的窗口矩形以便还原。
+    bool hostExpanded = false;
+    bool hostExpandedLeft = false;
+    RECT hostRectBeforeSubmenu{};
     D2D1_COLOR_F fill = ColorFromRgb(0x2B2B2B);
     D2D1_COLOR_F border = ColorFromRgb(0x3A3A3A);
     D2D1_COLOR_F text = ColorFromRgb(0xE0E0E0);
@@ -163,11 +203,21 @@ void TrayMenuPresenter::RebuildScene()
     // radius (6) is the card radius (10) minus that inset, keeping corners concentric.
     impl_->items->SetPadding({4.0f, 4.0f, 4.0f, 4.0f});
     impl_->rows.clear();
+    // 旧场景连同其中的子菜单一起被换掉，窗口尺寸由随后的 PlaceAndShow 重新给出。
+    impl_->schemeSubmenuOpen = false;
+    impl_->hostExpanded = false;
 
     auto addItem = [this](const std::wstring &label, const char *svg, bool toggle) {
         auto item = std::make_shared<msimeui::MenuFlyoutItem>(label, false);
         item->SetLeadingSvg(svg);
         item->SetTrailingToggle(toggle);
+        // 悬停到其他行时收起输入方案子菜单，与候选窗右键菜单的「固定排位」一致。
+        item->SetOnHover([this](bool hovered) {
+            if (hovered)
+            {
+                CloseSchemeSubmenu();
+            }
+        });
         impl_->items->AddChild(item);
         impl_->rows.push_back(item);
         return item;
@@ -186,6 +236,45 @@ void TrayMenuPresenter::RebuildScene()
             PostSettingsConfig();
         }
     });
+
+    impl_->schemeItem = std::make_shared<msimeui::MenuFlyoutItem>(L"输入方案", true);
+    impl_->schemeItem->SetLeadingSvg(kSvgInputScheme);
+    impl_->schemeItem->SetOnHover([this](bool hovered) {
+        if (hovered)
+        {
+            OpenSchemeSubmenu();
+        }
+    });
+    impl_->items->AddChild(impl_->schemeItem);
+    impl_->rows.push_back(impl_->schemeItem);
+
+    auto schemeStack = std::make_shared<msimeui::StackPanel>(2.0f);
+    const std::string currentScheme = GetConfiguredInputSchemeName();
+    for (const SchemeChoice &choice : kSchemeChoices)
+    {
+        auto item = std::make_shared<msimeui::MenuFlyoutItem>(choice.label, false);
+        item->SetLeadingSvg(currentScheme == choice.name ? kSvgCheck : kSvgBlank);
+        const std::string scheme = choice.name;
+        item->SetOnClick([this, scheme]() {
+            Hide();
+            if (scheme != GetConfiguredInputSchemeName() && SetConfiguredInputScheme(scheme))
+            {
+                ApplyConfiguredInputScheme();
+                PostSettingsConfig();
+            }
+        });
+        schemeStack->AddChild(item);
+        impl_->rows.push_back(item);
+    }
+    impl_->schemeSubmenu = std::make_shared<msimeui::Popup>(schemeStack);
+    impl_->schemeSubmenu->SetMatchAnchorWidth(false);
+    impl_->schemeSubmenu->SetWidth(kSchemeSubmenuWidth);
+    impl_->schemeSubmenu->SetPadding({kItemInset, kItemInset, kItemInset, kItemInset});
+    impl_->schemeSubmenu->SetBackgroundFill(impl_->fill);
+    impl_->schemeSubmenu->SetBorderColor(impl_->border);
+    impl_->schemeSubmenu->SetCornerRadius(10.0f);
+    impl_->schemeSubmenu->SetShadowEnabled(true);
+    impl_->schemeSubmenu->SetConstrainToViewport(true);
 
     auto launch = [this](auto fn) {
         return [this, fn]() {
@@ -315,6 +404,109 @@ void TrayMenuPresenter::ShowFromLangBar()
     impl_->root->InvalidateArrange();
     impl_->root->ArrangeInLayout({0.0f, 0.0f, measured.width, measured.height});
     PlaceAndShow((std::max)(measured.width, 1.0f), (std::max)(measured.height, 80.0f));
+}
+
+void TrayMenuPresenter::OpenSchemeSubmenu()
+{
+    if (!impl_ || !impl_->window || !impl_->schemeSubmenu || !impl_->schemeItem || impl_->schemeSubmenuOpen)
+    {
+        return;
+    }
+    const bool openLeft = ExpandHostForSubmenu();
+    // 加宽会改 frame 的内边距，先按新尺寸排一遍版，锚点才是加宽后的位置。
+    Present();
+    const msimeui::RectF anchor = impl_->schemeItem->GetBounds();
+    if (anchor.width < 1.0f || anchor.height < 1.0f)
+    {
+        RestoreHostAfterSubmenu();
+        return;
+    }
+    // Popup 放在锚点下方再加 offset：纵向上移一行加内边距，让第一项与「输入方案」对齐；
+    // 横向越过卡片边缘再留一道缝。
+    const float offsetX = openLeft ? -(kItemInset + kSchemeSubmenuGap + kSchemeSubmenuWidth)
+                                   : anchor.width + kItemInset + kSchemeSubmenuGap;
+    impl_->schemeSubmenu->SetAnchorRect(anchor);
+    impl_->schemeSubmenu->SetOffset(offsetX, -anchor.height - kItemInset);
+    if (msimeui::Scene *scene = impl_->window->GetScene())
+    {
+        scene->AddPopup(impl_->schemeSubmenu, [this]() {
+            // 点击空白处由 Scene 收起子菜单。这里只记状态，不在鼠标分发中途改窗口尺寸；
+            // 加宽的部分在下次悬停其他行或菜单重新弹出时还原。
+            if (impl_)
+            {
+                impl_->schemeSubmenuOpen = false;
+            }
+        });
+        impl_->schemeSubmenuOpen = true;
+    }
+    Present();
+}
+
+void TrayMenuPresenter::CloseSchemeSubmenu()
+{
+    if (!impl_ || !impl_->window)
+    {
+        return;
+    }
+    if (impl_->schemeSubmenuOpen && impl_->schemeSubmenu)
+    {
+        // 子菜单离开场景，Window 缓存的悬停目标要一并清掉；焦点不动，主菜单仍开着。
+        impl_->window->DispatchImportedMessage(WM_MOUSELEAVE, 0, 0);
+        if (msimeui::Scene *scene = impl_->window->GetScene())
+        {
+            scene->RemovePopup(impl_->schemeSubmenu.get(), false);
+        }
+        impl_->schemeSubmenuOpen = false;
+    }
+    RestoreHostAfterSubmenu();
+}
+
+bool TrayMenuPresenter::ExpandHostForSubmenu()
+{
+    RECT rc{};
+    GetWindowRect(hwnd_, &rc);
+    MONITORINFO mi{sizeof(mi)};
+    GetMonitorInfoW(MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST), &mi);
+    const float scale = impl_->window->GetDpi() / 96.0f;
+    const int extraPx = static_cast<int>(std::ceil((kSchemeSubmenuWidth + kSchemeSubmenuGap) * scale));
+    // 托盘通常在屏幕右下角，右侧放不下就向左展开；两边都放不下时取较宽的一侧。
+    const LONG roomRight = mi.rcWork.right - rc.right;
+    const LONG roomLeft = rc.left - mi.rcWork.left;
+    if (impl_->hostExpanded)
+    {
+        return impl_->hostExpandedLeft;
+    }
+    const bool openLeft = roomRight < extraPx && roomLeft > roomRight;
+    impl_->hostRectBeforeSubmenu = rc;
+    impl_->hostExpanded = true;
+    impl_->hostExpandedLeft = openLeft;
+    // 用换算回来的 DIP 当内边距，卡片在屏幕上的位置不随像素取整漂移。
+    const float extraDip = static_cast<float>(extraPx) / scale;
+    if (impl_->frame)
+    {
+        impl_->frame->SetPadding({kShadowPadLeft + (openLeft ? extraDip : 0.0f), kShadowPadTop,
+                                  kShadowPadRight + (openLeft ? 0.0f : extraDip), kShadowPadBottom});
+    }
+    SetWindowPos(hwnd_, nullptr, openLeft ? rc.left - extraPx : rc.left, rc.top, rc.right - rc.left + extraPx,
+                 rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
+    return openLeft;
+}
+
+void TrayMenuPresenter::RestoreHostAfterSubmenu()
+{
+    if (!impl_ || !impl_->hostExpanded)
+    {
+        return;
+    }
+    impl_->hostExpanded = false;
+    if (impl_->frame)
+    {
+        impl_->frame->SetPadding({kShadowPadLeft, kShadowPadTop, kShadowPadRight, kShadowPadBottom});
+    }
+    const RECT &rc = impl_->hostRectBeforeSubmenu;
+    SetWindowPos(hwnd_, nullptr, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top,
+                 SWP_NOZORDER | SWP_NOACTIVATE);
+    Present();
 }
 
 void TrayMenuPresenter::Hide()

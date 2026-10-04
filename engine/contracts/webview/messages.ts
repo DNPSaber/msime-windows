@@ -47,6 +47,8 @@ export type ClientMessage =
   | { "type": "keyboardPanel"; "protocolVersion"?: 1 }
   | { "type": "handwritingPanel"; "protocolVersion"?: 1 }
   | { "type": "voiceInput"; "protocolVersion"?: 1 }
+  | { "type": "changeInputScheme"; "protocolVersion"?: 1; "data": "quanpin" | "shuangpin" | "wubi" }
+  | { "type": "inputSchemeSubmenu"; "protocolVersion"?: 1; "data": { "open": boolean; "width": number } }
   | { "type": "ready"; "protocolVersion"?: 1 }
   | { "type": "exitEnglishInputMode"; "protocolVersion"?: 1 }
   | { "type": "changeCharacterSet"; "protocolVersion"?: 1 }

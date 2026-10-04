@@ -10,10 +10,78 @@
 #include "voice-input/voice_input_service.h"
 #include "window/tray_menu_presenter.h"
 #include <algorithm>
+#include <cmath>
 #include <filesystem>
 #include <string>
 
 using namespace windows_webview2_detail;
+
+namespace
+{
+// 输入方案子菜单开着时，宿主窗口向一侧加宽；记下加宽前的窗口矩形以便还原。
+bool g_menuExpandedForSubmenu = false;
+RECT g_menuRectBeforeSubmenu{};
+// 加宽在页面脚本完成后才执行；期间若已收起或再次展开，旧回调凭代数作废。
+unsigned g_menuSubmenuGeneration = 0;
+
+// 页面告知子菜单所需的 CSS 宽度，按当前栅格化比例换成物理像素，向有空间的一侧加宽宿主。
+// 先让页面按那一侧摆好（向左时主菜单改为靠右），再改窗口，主菜单在屏幕上就不会跳一下。
+void ExpandMenuForSchemeSubmenu(HWND hwnd, double widthDip)
+{
+    if (!::webviewMenuWnd)
+    {
+        return;
+    }
+    RECT rc{};
+    GetWindowRect(hwnd, &rc);
+    if (g_menuExpandedForSubmenu)
+    {
+        rc = g_menuRectBeforeSubmenu;
+    }
+    MONITORINFO mi{sizeof(mi)};
+    GetMonitorInfoW(MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST), &mi);
+    const FLOAT scale = GetWebViewRasterizationScale(hwnd);
+    const int extraPx = static_cast<int>(std::ceil(widthDip * (scale > 0.0f ? scale : 1.0f)));
+    // 托盘通常在屏幕右下角，右侧放不下就向左展开；两边都放不下时取较宽的一侧。
+    const LONG roomRight = mi.rcWork.right - rc.right;
+    const LONG roomLeft = rc.left - mi.rcWork.left;
+    const bool openLeft = roomRight < extraPx && roomLeft > roomRight;
+    g_menuRectBeforeSubmenu = rc;
+    g_menuExpandedForSubmenu = true;
+    const unsigned generation = ++g_menuSubmenuGeneration;
+    const RECT expanded{openLeft ? rc.left - extraPx : rc.left, rc.top, openLeft ? rc.right : rc.right + extraPx,
+                        rc.bottom};
+    ::webviewMenuWnd->ExecuteScript(
+        openLeft ? L"window.PlaceInputSchemeSubmenu && PlaceInputSchemeSubmenu('left')"
+                 : L"window.PlaceInputSchemeSubmenu && PlaceInputSchemeSubmenu('right')",
+        Microsoft::WRL::Callback<ICoreWebView2ExecuteScriptCompletedHandler>([hwnd, expanded,
+                                                                              generation](HRESULT, LPCWSTR) -> HRESULT {
+            if (!g_menuExpandedForSubmenu || generation != g_menuSubmenuGeneration || !IsWindowVisible(hwnd))
+            {
+                return S_OK;
+            }
+            SetWindowPos(hwnd, nullptr, expanded.left, expanded.top, expanded.right - expanded.left,
+                         expanded.bottom - expanded.top, SWP_NOZORDER | SWP_NOACTIVATE);
+            return S_OK;
+        }).Get());
+}
+
+void RestoreMenuAfterSchemeSubmenu(HWND hwnd)
+{
+    if (!g_menuExpandedForSubmenu)
+    {
+        return;
+    }
+    g_menuExpandedForSubmenu = false;
+    ++g_menuSubmenuGeneration;
+    const RECT &rc = g_menuRectBeforeSubmenu;
+    SetWindowPos(hwnd, nullptr, rc.left, rc.top, rc.right - rc.left, rc.bottom - rc.top, SWP_NOZORDER | SWP_NOACTIVATE);
+    if (::webviewMenuWnd)
+    {
+        ::webviewMenuWnd->ExecuteScript(L"window.PlaceInputSchemeSubmenu && PlaceInputSchemeSubmenu('')", nullptr);
+    }
+}
+} // namespace
 
 //
 //
@@ -211,6 +279,28 @@ HRESULT OnControllerCreatedMenuWnd(     //
                         VoiceInput::ToggleRecording();
                         ShowWindow(::global_hwnd_menu, SW_HIDE);
                     }
+                    else if (type == "inputSchemeSubmenu")
+                    {
+                        const json::object &data = val.at("data").as_object();
+                        if (json::value_to<bool>(data.at("open")))
+                        {
+                            ExpandMenuForSchemeSubmenu(hwnd, JsonNumberAsDouble(data.at("width")));
+                        }
+                        else
+                        {
+                            RestoreMenuAfterSchemeSubmenu(hwnd);
+                        }
+                    }
+                    else if (type == "changeInputScheme")
+                    {
+                        const std::string scheme = json::value_to<std::string>(val.at("data"));
+                        ShowWindow(::global_hwnd_menu, SW_HIDE);
+                        if (scheme != GetConfiguredInputSchemeName() && SetConfiguredInputScheme(scheme))
+                        {
+                            ApplyConfiguredInputScheme();
+                            PostSettingsConfig();
+                        }
+                    }
                     else if (type == "contentTruncated")
                     {
                         if (HandleContentTruncatedMessage(hwnd, webviewMenuWnd.Get(), webviewControllerMenuWnd.Get(),
@@ -297,4 +387,22 @@ void SyncMenuFloatingToolbarToggle()
                                       if (toggle) toggle.classList.remove('active');
                                   })())";
     ::webviewMenuWnd->ExecuteScript(script, nullptr);
+
+    // 输入方案子菜单的勾选同样以 input.schema 为准。
+    const std::wstring schemeScript =
+        L"window.SetInputScheme && SetInputScheme('" + string_to_wstring(GetConfiguredInputSchemeName()) + L"')";
+    ::webviewMenuWnd->ExecuteScript(schemeScript.c_str(), nullptr);
+}
+
+/**
+ * @brief Drop a scheme submenu left open by the previous show; the show path has already resized the host.
+ */
+void ResetMenuInputSchemeSubmenu()
+{
+    g_menuExpandedForSubmenu = false;
+    ++g_menuSubmenuGeneration;
+    if (::webviewMenuWnd)
+    {
+        ::webviewMenuWnd->ExecuteScript(L"window.ResetInputSchemeSubmenu && ResetInputSchemeSubmenu()", nullptr);
+    }
 }

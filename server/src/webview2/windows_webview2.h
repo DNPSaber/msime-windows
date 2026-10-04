@@ -172,8 +172,10 @@ inline ComPtr<ICoreWebView2Controller2> webviewController2MenuWnd;
 
 inline std::wstring HTMLStringMenuWnd = LR"()";
 
-// Sync tray-menu floating-toolbar toggle with general.floating_toolbar.
+// Sync tray-menu floating-toolbar toggle and input-scheme check with config.toml.
 void SyncMenuFloatingToolbarToggle();
+// Collapse the tray-menu input-scheme submenu before the menu is shown again.
+void ResetMenuInputSchemeSubmenu();
 
 //
 // settings 窗口 webview

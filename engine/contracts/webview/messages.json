@@ -663,6 +663,41 @@
         "menu"
       ]
     },
+    "changeInputScheme": {
+      "surfaces": [
+        "menu"
+      ],
+      "data": {
+        "type": "string",
+        "enum": [
+          "quanpin",
+          "shuangpin",
+          "wubi"
+        ]
+      }
+    },
+    "inputSchemeSubmenu": {
+      "surfaces": [
+        "menu"
+      ],
+      "data": {
+        "type": "object",
+        "properties": {
+          "open": {
+            "type": "boolean"
+          },
+          "width": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "open",
+          "width"
+        ],
+        "additionalProperties": false
+      }
+    },
     "ready": {
       "surfaces": [
         "toolbar"

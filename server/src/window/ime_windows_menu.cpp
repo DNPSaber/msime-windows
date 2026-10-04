@@ -151,6 +151,8 @@ LRESULT CALLBACK WndProcMenuWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
         }
         UpdateMenuPhysicalSizeCache(hwnd, scale);
         const POINT position = MenuPosition();
+        // 上次弹出时可能留着输入方案子菜单；宿主尺寸下面按菜单本身重给，页面也一并收起。
+        ResetMenuInputSchemeSubmenu();
         EnsureSmallWindowsTopmost(L"show-menu");
         // Host can appear before WebView paints; pending topmost/content refresh
         // runs when navigations complete. Pass cached physical size (kept current
