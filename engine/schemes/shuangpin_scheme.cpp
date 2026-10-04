@@ -77,7 +77,17 @@ void ShuangpinScheme::handle_key(ImeKeyCode vk, ImeModifierMask modifiers_down, 
         return;
     }
 
-    const bool microsoft_ing_key = is_microsoft_ing_key(vk, wch, raw_input_, profile_);
+    if (direct_helpcode_ && wch == u'/')
+    {
+        key_strokes_.push_back(KeyStroke{vk, modifiers_down, wch});
+        raw_input_.push_back('/');
+        return;
+    }
+
+    const bool microsoft_ing_key = direct_helpcode_ ? ShuangpinProfileUsesSemicolonFinal(profile_) && wch == u';' &&
+                                                          !raw_input_.empty() &&
+                                                          std::isalpha(static_cast<unsigned char>(raw_input_.back()))
+                                                    : is_microsoft_ing_key(vk, wch, raw_input_, profile_);
     if (!is_alpha_vk(vk) && !microsoft_ing_key)
     {
         return;

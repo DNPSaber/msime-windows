@@ -57,7 +57,8 @@ TEST_CASE(ipc_pipe_ready_is_a_distinct_server_reply)
     // otherwise misread a new frame. New frames take the next free number.
     REQUIRE_EQ(Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged, 28u);
     REQUIRE_EQ(Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeSemicolonChanged, 29u);
-    REQUIRE_EQ(Global::DataFromServerMsgTypeToTsfWorkerThread::MaxKnown, 29u);
+    REQUIRE_EQ(Global::DataFromServerMsgTypeToTsfWorkerThread::DirectHelpcodeChanged, 30u);
+    REQUIRE_EQ(Global::DataFromServerMsgTypeToTsfWorkerThread::MaxKnown, 30u);
     REQUIRE(Global::DataFromServerMsgTypeToTsfWorkerThread::FocusSessionReady >
             Global::DataFromServerMsgTypeToTsfWorkerThread::PagingCommaPeriodChanged);
     REQUIRE(Global::DataFromServerMsgTypeToTsfWorkerThread::PipeReady >
@@ -100,8 +101,10 @@ TEST_CASE(ipc_pipe_ready_is_a_distinct_server_reply)
             Global::DataFromServerMsgTypeToTsfWorkerThread::CommitCandidateAndContinue);
     REQUIRE(Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeSemicolonChanged >
             Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeChanged);
+    REQUIRE(Global::DataFromServerMsgTypeToTsfWorkerThread::DirectHelpcodeChanged >
+            Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeSemicolonChanged);
     REQUIRE_EQ(Global::DataFromServerMsgTypeToTsfWorkerThread::MaxKnown,
-               Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeSemicolonChanged);
+               Global::DataFromServerMsgTypeToTsfWorkerThread::DirectHelpcodeChanged);
 }
 
 TEST_CASE(ipc_client_suspension_is_a_distinct_nonterminal_route_reset)

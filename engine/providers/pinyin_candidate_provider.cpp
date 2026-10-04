@@ -38,6 +38,11 @@ std::vector<WordItem> PinyinCandidateProvider::query(const QueryRequest &request
     return candidates;
 }
 
+bool PinyinCandidateProvider::resolve_direct_helpcode(QueryRequest &request)
+{
+    return request.scheme == SchemeType::Shuangpin && shuangpin_engine_.resolve_direct_helpcode(request);
+}
+
 bool PinyinCandidateProvider::expand_initial_candidates(const QueryRequest &request, std::vector<WordItem> &candidates)
 {
     bool expanded = false;

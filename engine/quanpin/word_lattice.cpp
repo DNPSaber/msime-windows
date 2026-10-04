@@ -399,7 +399,8 @@ void merge_lattice_candidates(std::vector<WordItem> &candidates, const Segments 
     if (!has_only_complete_pinyin_segments(syllables))
         return;
 
-    auto paths = decode_word_lattice(syllables, lookup, options);
+    auto paths =
+        options.precomputed_paths.empty() ? decode_word_lattice(syllables, lookup, options) : options.precomputed_paths;
     if (paths.empty())
         return;
 

@@ -214,6 +214,9 @@ inline std::atomic_bool MicrosoftShuangpinEnabled{false};
 inline std::atomic_bool MidSentenceHelpcodeEnabled{false};
 // 同上，换成分号触发键（设置里多选）。分号触发的段在按键缓冲里同样记成反引号。
 inline std::atomic_bool MidSentenceHelpcodeSemicolonEnabled{false};
+// 双拼直接辅助码（万象式）开着且当前是双拼：四码后的 / 当编码键吃掉，; 韵母不再看奇偶，规则见
+// engine/contracts/direct_helpcode.h。
+inline std::atomic_bool DirectHelpcodeEnabled{false};
 inline std::atomic_bool JapaneseInputModeEnabled{false};
 inline std::atomic_bool CapsLockEnabled{false};
 inline std::atomic_bool TsfDiagnosticLogEnabled{false};

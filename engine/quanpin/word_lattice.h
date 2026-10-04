@@ -142,6 +142,9 @@ struct WordLatticeOptions
     LatticeCollocationScorer collocation_scorer;
     // 搭配项的线性权重；0 = 关闭（scorer 非空也不生效）。
     double collocation_weight = 0.0;
+    // 调用方已经按同一套打分解出来的 n-best（双拼直接辅助码的解析器选切分时顺带解出了最优整句）。
+    // 非空时 merge_lattice_candidates 直接用它，不再重解一遍，其余合并逻辑不变。全拼从不设置。
+    std::vector<LatticePath> precomputed_paths;
 };
 
 // Optional second opinion on the decoded n-best, applied before the paths become candidates.

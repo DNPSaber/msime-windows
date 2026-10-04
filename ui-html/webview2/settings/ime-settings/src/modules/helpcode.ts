@@ -63,6 +63,11 @@ export function setupHelpcode(): void {
     updateConfig('helpcode.shuangpin_mid_sentence_helpcode', active);
   });
 
+  // 双拼直接辅助码（万象式）开关
+  setupToggleButton('directHelpcodeToggleBtn', (active) => {
+    updateConfig('helpcode.shuangpin_direct_helpcode', active);
+  });
+
   // 句中辅助码触发键，可多选；至少留一个，最后一个取消不掉
   const triggerCheckboxes: [string, string][] = [
     ['midSentenceHelpcodeBacktickCheckbox', 'helpcode.shuangpin_mid_sentence_helpcode_backtick'],

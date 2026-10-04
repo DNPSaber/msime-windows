@@ -67,6 +67,8 @@ static void BroadcastMidSentenceHelpcodeTriggers()
     BroadcastToTsfWorkerThreadViaNamedpipe(
         Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeSemicolonChanged,
         FormatMidSentenceHelpcodeSemicolonWorkerPayload());
+    BroadcastToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::DirectHelpcodeChanged,
+                                           FormatDirectHelpcodeWorkerPayload());
 }
 
 // 死宿主（InitWebviewSettingsWnd 无调用者）的智能标点子键分发。单独成函数，避免在
@@ -1087,6 +1089,16 @@ static void ApplyHelpcodeSubkey(const std::string &path, const json::object &dat
             PostSettingsConfig();
         }
     }
+    if (path == "helpcode.shuangpin_direct_helpcode")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        // 直接辅助码开关同时决定反引号/分号触发键是否生效，三个载荷一起重发。
+        if (SetConfiguredShuangpinDirectHelpcodeEnabled(value))
+        {
+            BroadcastMidSentenceHelpcodeTriggers();
+            PostSettingsConfig();
+        }
+    }
     if (path == "helpcode.shuangpin_helpcode_schema")
     {
         const std::string value = json::value_to<std::string>(data.at("value"));
@@ -1714,6 +1726,7 @@ void PostSettingsConfig()
             {"shuangpin_mid_sentence_helpcode", GetConfiguredShuangpinMidSentenceHelpcodeEnabled()},
             {"shuangpin_mid_sentence_helpcode_backtick", GetConfiguredShuangpinMidSentenceHelpcodeBacktick()},
             {"shuangpin_mid_sentence_helpcode_semicolon", GetConfiguredShuangpinMidSentenceHelpcodeSemicolon()},
+            {"shuangpin_direct_helpcode", GetConfiguredShuangpinDirectHelpcodeEnabled()},
             {"shuangpin_helpcode_schema", GetConfiguredShuangpinHelpcodeSchema()},
             {"quanpin_helpcode", GetConfiguredQuanpinHelpcodeEnabled()},
             {"quanpin_helpcode_schema", GetConfiguredQuanpinHelpcodeSchema()},

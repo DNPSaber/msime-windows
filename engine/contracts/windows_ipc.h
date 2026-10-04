@@ -416,7 +416,11 @@ constexpr std::uint32_t MidSentenceHelpcodeChanged = 28;
 // Same as MidSentenceHelpcodeChanged for the optional ';' trigger. Payload "0"/"1". A separate
 // opcode keeps 28 meaning "'`' is a trigger" for older DLLs, which ignore this one.
 constexpr std::uint32_t MidSentenceHelpcodeSemicolonChanged = 29;
-constexpr std::uint32_t MaxKnown = MidSentenceHelpcodeSemicolonChanged;
+// Whether shuangpin direct helpcode (Wanxiang style, no guide key) is on. Payload "0"/"1". TSF then eats '/' after
+// a four-key code (FanyImeDirectHelpcode::AcceptsSlashAt) and stops requiring an odd chunk before the ';' final
+// (FanyImeDirectHelpcode::AcceptsSemicolonFinalAt). Same single "0"/"1" payload rule as opcode 28.
+constexpr std::uint32_t DirectHelpcodeChanged = 30;
+constexpr std::uint32_t MaxKnown = DirectHelpcodeChanged;
 // Source compatibility for the Server's historical spellings.
 constexpr std::uint32_t SwitchToEn = SwitchToEnglish;
 constexpr std::uint32_t SwitchToCn = SwitchToChinese;

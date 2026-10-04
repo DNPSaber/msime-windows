@@ -91,10 +91,20 @@ struct MidSentenceRest
     std::string rest;
 };
 
-MidSentenceRest RemapMidSentenceRest(const std::string &typed, std::size_t clean_begin, std::size_t clean_end,
-                                     const ShuangpinProfile &profile)
+MidSentenceRest RemapMidSentenceRest(const QueryRequest &request, const std::string &typed, std::size_t clean_begin,
+                                     std::size_t clean_end, const ShuangpinProfile &profile)
 {
-    const auto parsed = shuangpin::parse_mid_sentence_helpcodes(typed, profile);
+    // 直接辅助码的原串里没有反引号，切分是解析器整句解码选出来的，映射直接用它填好的那份。
+    shuangpin::MidSentenceHelpcodeInput parsed;
+    if (request.direct_helpcode)
+    {
+        parsed.input = request.raw_input_with_cases;
+        parsed.source_index = request.direct_helpcode_source_index;
+    }
+    else
+    {
+        parsed = shuangpin::parse_mid_sentence_helpcodes(typed, profile);
+    }
     const std::string &clean = parsed.input;
     clean_end = (std::min)(clean_end, clean.size());
     while (clean_begin < clean_end && clean[clean_begin] == '\'')
@@ -522,10 +532,16 @@ std::string InputSession::build_pinyin_segmentation_with_cases(bool shuangpin_ra
     // 句中辅助码的反引号段在切分串里只是一个 '，显示时按原样接回对应音节后面；
     // 末尾补 ' 也要看用户敲的原串，否则 ulpb`x 会显示成 ul'pb`x'。
     const std::string &typed = get_pinyin_sequence_with_cases();
+    // 直接辅助码的辅码段由解析器给出，原串里没有反引号可解析。
+    const auto decorate = [&](const std::string &segmentation) {
+        return request().direct_helpcode
+                   ? shuangpin::decorate_segmentation(segmentation, request().direct_helpcode_decorations)
+                   : shuangpin::decorate_mid_sentence_segmentation(segmentation, typed, shuangpin_profile_);
+    };
     if (is_shuangpin() && shuangpin_raw)
     {
         std::string preedit = request().raw_segmentation.empty() ? request().raw_input : request().raw_segmentation;
-        preedit = shuangpin::decorate_mid_sentence_segmentation(preedit, typed, shuangpin_profile_);
+        preedit = decorate(preedit);
         if (!typed.empty() && typed.back() == '\'' && (preedit.empty() || preedit.back() != '\''))
         {
             preedit.push_back('\'');
@@ -540,7 +556,7 @@ std::string InputSession::build_pinyin_segmentation_with_cases(bool shuangpin_ra
         request().normalized_segmentation.empty() ? request().segmentation : request().normalized_segmentation;
     if (is_shuangpin())
     {
-        preedit = shuangpin::decorate_mid_sentence_segmentation(preedit, typed, shuangpin_profile_);
+        preedit = decorate(preedit);
     }
     if (!typed.empty() && typed.back() == '\'' && (preedit.empty() || preedit.back() != '\''))
     {
@@ -788,7 +804,7 @@ InputSession::SelectionTransition InputSession::advance_composition_after_select
                 remove_consumed_leading_separators(normalized_rest, cased_rest);
                 if (!typed.empty())
                 {
-                    auto remapped = RemapMidSentenceRest(typed, rest_start, rest_end, shuangpin_profile_);
+                    auto remapped = RemapMidSentenceRest(request(), typed, rest_start, rest_end, shuangpin_profile_);
                     transition.consumed_raw_input_with_cases = std::move(remapped.consumed);
                     cased_rest = std::move(remapped.rest);
                     normalized_rest = LowercaseLetters(cased_rest);
@@ -821,8 +837,8 @@ InputSession::SelectionTransition InputSession::advance_composition_after_select
                 remove_consumed_leading_separators(normalized_rest, cased_rest);
                 if (!typed.empty())
                 {
-                    auto remapped = RemapMidSentenceRest(typed, consumed_raw_length, base.raw_input_with_cases.size(),
-                                                         shuangpin_profile_);
+                    auto remapped = RemapMidSentenceRest(request(), typed, consumed_raw_length,
+                                                         base.raw_input_with_cases.size(), shuangpin_profile_);
                     transition.consumed_raw_input_with_cases = std::move(remapped.consumed);
                     cased_rest = std::move(remapped.rest);
                     normalized_rest = LowercaseLetters(cased_rest);

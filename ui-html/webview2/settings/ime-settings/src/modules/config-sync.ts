@@ -331,6 +331,9 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (typeof data?.helpcode?.shuangpin_mid_sentence_helpcode === 'boolean') {
     applyToggleState('midSentenceHelpcodeToggleBtn', data.helpcode.shuangpin_mid_sentence_helpcode);
   }
+  if (typeof data?.helpcode?.shuangpin_direct_helpcode === 'boolean') {
+    applyToggleState('directHelpcodeToggleBtn', data.helpcode.shuangpin_direct_helpcode);
+  }
   if (typeof data?.helpcode?.shuangpin_mid_sentence_helpcode_backtick === 'boolean') {
     const checkbox = findElement('midSentenceHelpcodeBacktickCheckbox') as HTMLInputElement | null;
     if (checkbox) checkbox.checked = data.helpcode.shuangpin_mid_sentence_helpcode_backtick;

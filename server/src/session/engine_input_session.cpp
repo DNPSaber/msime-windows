@@ -57,6 +57,7 @@ void EngineInputSession::ApplyConfiguration()
     }
     session_.set_shuangpin_helpcode_enabled(GetConfiguredShuangpinHelpcodeEnabled());
     session_.set_mid_sentence_helpcode_enabled(GetConfiguredShuangpinMidSentenceHelpcodeEnabled());
+    session_.set_direct_helpcode_enabled(GetConfiguredShuangpinDirectHelpcodeEnabled());
     session_.set_quanpin_helpcode_enabled(GetConfiguredQuanpinHelpcodeEnabled());
     const unsigned autocorrect_types =
         (GetConfiguredQuanpinAutocorrectTransposition() ? quanpin::kAutocorrectTransposition : 0u) |
@@ -214,8 +215,14 @@ bool EngineInputSession::accepts_mid_sentence_helpcode_marker(std::size_t caret)
 {
     // 开关在 ApplyConfiguration 里随每键重读；这里在吃键之前被问到，那一刻配置可能刚改过，
     // 所以直接按当前配置判断，不等下一次重读。
-    return GetConfiguredShuangpinMidSentenceHelpcodeEnabled() &&
+    return GetConfiguredShuangpinMidSentenceHelpcodeEnabled() && !GetConfiguredShuangpinDirectHelpcodeEnabled() &&
            session_.accepts_mid_sentence_helpcode_marker_at(caret);
+}
+
+bool EngineInputSession::accepts_direct_helpcode_slash(std::size_t caret) const
+{
+    // 同上，按当前配置判断。
+    return GetConfiguredShuangpinDirectHelpcodeEnabled() && session_.accepts_direct_helpcode_slash_at(caret);
 }
 
 bool EngineInputSession::has_mid_sentence_helpcode() const

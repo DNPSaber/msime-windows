@@ -309,6 +309,10 @@ shuangpin_mid_sentence_helpcode = false
 # 只有在完整音节后才当触发键
 shuangpin_mid_sentence_helpcode_backtick = true
 shuangpin_mid_sentence_helpcode_semicolon = false
+# 双拼直接辅助码（万象式）：不要引导键，音节后直接接辅码。三码（双拼 + 第一位辅码，如 uia）自动识别、
+# 整句断句；四码（双拼 + 两位辅码）单独敲时直接定字，句中要在后面补一个 /（如 uiab/）。开启后
+# 末尾辅助码与上面的句中辅助码（反引号/分号）都让位给它
+shuangpin_direct_helpcode = false
 # 全拼辅助码
 quanpin_helpcode = true
 # 全拼辅助码方案，可选："lantian", "ziranma", "shouyou2_0", "shouyouplus", "xiaohe", "jiajia"，

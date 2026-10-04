@@ -51,6 +51,17 @@
       <label class="check-option"><input type="checkbox" name="mid-sentence-helpcode-trigger" id="midSentenceHelpcodeSemicolonCheckbox" value="semicolon"><span>; 分号</span></label>
       <div class="input-setting-description">至少保留一个。分号在微软、搜狗、紫光双拼里也是 ing 韵母，只有在完整音节后才当触发键；按下后预编辑里同样显示为 `</div>
     </div>
+
+    <!-- 直接辅助码（万象式）：不要引导键，三码自动识别，四码在句中补 / -->
+    <div class="section-header section-header-shuangpin-helpcode">
+      <div class="section-title" title="音节后直接接辅码，不用按引导键：三码（如 uia）自动识别并整句断句；四码（如 uiab）单独敲时直接定字，句中要在后面补一个 /（如 uiab/）">直接辅助码（万象式）</div>
+      <div class="ftb-toggle-btn" id="directHelpcodeToggleBtn">
+        <div class="ftb-toggle-knob"></div>
+      </div>
+    </div>
+    <div class="content-page-option">
+      <div class="input-setting-description">开启后末尾辅助码与句中辅助码的触发键都不再生效，由它统一识别</div>
+    </div>
   </div>
 
   <!-- 全拼辅助码 -->

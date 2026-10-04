@@ -283,6 +283,12 @@ bool IsConfiguredMidSentenceHelpcodeTrigger(wchar_t ch);
 std::wstring FormatMidSentenceHelpcodeWorkerPayload();
 // MidSentenceHelpcodeSemicolonChanged 的载荷：同上，换成分号。
 std::wstring FormatMidSentenceHelpcodeSemicolonWorkerPayload();
+// 双拼直接辅助码（helpcode.shuangpin_direct_helpcode，万象式，不要引导键），默认关闭。开着时句中辅助码的
+// 触发键一律不生效（IsConfiguredMidSentenceHelpcodeTrigger 返回 false），末尾单码/双码辅助也让位给它。
+bool GetConfiguredShuangpinDirectHelpcodeEnabled();
+bool SetConfiguredShuangpinDirectHelpcodeEnabled(bool enabled);
+// DirectHelpcodeChanged 的载荷："1" 表示开关开着且当前方案是双拼。
+std::wstring FormatDirectHelpcodeWorkerPayload();
 const std::string &GetConfiguredShuangpinHelpcodeSchema();
 bool SetConfiguredShuangpinHelpcodeSchema(const std::string &schema);
 bool GetConfiguredQuanpinHelpcodeEnabled();

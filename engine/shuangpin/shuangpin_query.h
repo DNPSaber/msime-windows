@@ -62,6 +62,9 @@ MidSentenceHelpcodeInput parse_mid_sentence_helpcodes(const std::string &raw_inp
 // 由 parse_mid_sentence_helpcodes(...).input 切出来的（音节序号才对得上）。
 std::string decorate_mid_sentence_segmentation(const std::string &segmentation, const std::string &raw_input_with_cases,
                                                const ShuangpinProfile &profile = GetXiaoheShuangpinProfile());
+// 同上，段文本已经在手：直接辅助码由解析器给出（原串里没有反引号可解析）。
+std::string decorate_segmentation(const std::string &segmentation,
+                                  const std::vector<std::pair<std::size_t, std::string>> &decorations);
 // 输入串末尾能否接一个反引号，即 FanyImeMidSentenceHelpcode::AcceptsMarker。
 bool accepts_mid_sentence_helpcode_marker(const std::string &raw_input);
 // 光标停在 raw_input[caret] 时能否插入一个反引号，即 FanyImeMidSentenceHelpcode::AcceptsMarkerAt。

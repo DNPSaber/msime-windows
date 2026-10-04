@@ -663,6 +663,7 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"shuangpin_mid_sentence_helpcode", GetConfiguredShuangpinMidSentenceHelpcodeEnabled()},
             {"shuangpin_mid_sentence_helpcode_backtick", GetConfiguredShuangpinMidSentenceHelpcodeBacktick()},
             {"shuangpin_mid_sentence_helpcode_semicolon", GetConfiguredShuangpinMidSentenceHelpcodeSemicolon()},
+            {"shuangpin_direct_helpcode", GetConfiguredShuangpinDirectHelpcodeEnabled()},
             {"shuangpin_helpcode_schema", GetConfiguredShuangpinHelpcodeSchema()},
             {"quanpin_helpcode", GetConfiguredQuanpinHelpcodeEnabled()},
             {"quanpin_helpcode_schema", GetConfiguredQuanpinHelpcodeSchema()},
@@ -1037,6 +1038,8 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredShuangpinMidSentenceHelpcodeBacktick(json::value_to<bool>(data.at("value")));
     if (path == "helpcode.shuangpin_mid_sentence_helpcode_semicolon")
         return SetConfiguredShuangpinMidSentenceHelpcodeSemicolon(json::value_to<bool>(data.at("value")));
+    if (path == "helpcode.shuangpin_direct_helpcode")
+        return SetConfiguredShuangpinDirectHelpcodeEnabled(json::value_to<bool>(data.at("value")));
     if (path == "helpcode.shuangpin_helpcode_schema")
         return SetConfiguredShuangpinHelpcodeSchema(json::value_to<std::string>(data.at("value")));
     if (path == "helpcode.quanpin_helpcode")

@@ -522,6 +522,7 @@ LRESULT CALLBACK WndProcCandWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
             const std::wstring previous_mid_sentence_helpcode = FormatMidSentenceHelpcodeWorkerPayload();
             const std::wstring previous_mid_sentence_helpcode_semicolon =
                 FormatMidSentenceHelpcodeSemicolonWorkerPayload();
+            const std::wstring previous_direct_helpcode = FormatDirectHelpcodeWorkerPayload();
             const std::wstring previous_paging_worker_payload = FormatPagingCommaPeriodWorkerPayload();
             const std::string previous_theme_mode = GetConfiguredThemeMode();
             const std::string previous_theme_cand = GetConfiguredThemeCand();
@@ -690,6 +691,12 @@ LRESULT CALLBACK WndProcCandWindow(HWND hwnd, UINT message, WPARAM wParam, LPARA
                     BroadcastToTsfWorkerThreadViaNamedpipe(
                         Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeSemicolonChanged,
                         FormatMidSentenceHelpcodeSemicolonWorkerPayload());
+                }
+                if (previous_direct_helpcode != FormatDirectHelpcodeWorkerPayload())
+                {
+                    BroadcastToTsfWorkerThreadViaNamedpipe(
+                        Global::DataFromServerMsgTypeToTsfWorkerThread::DirectHelpcodeChanged,
+                        FormatDirectHelpcodeWorkerPayload());
                 }
                 const VoiceInputConfig &voice_input = GetConfiguredVoiceInput();
                 if (previous_voice_input.enabled != voice_input.enabled ||

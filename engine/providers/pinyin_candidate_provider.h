@@ -13,6 +13,8 @@ class PinyinCandidateProvider : public ICandidateProvider
     std::optional<WordItem> find_candidate(SchemeType scheme, const std::string &key,
                                            const std::string &value) override;
     bool expand_initial_candidates(const QueryRequest &request, std::vector<WordItem> &candidates);
+    // 双拼直接辅助码，见 ShuangpinEngine::resolve_direct_helpcode。
+    bool resolve_direct_helpcode(QueryRequest &request);
     void reset_cache() override;
     void reset_sentence_cache();
     int create_word(SchemeType scheme, std::string pinyin, std::string word) override;

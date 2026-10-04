@@ -397,9 +397,31 @@ bool SetConfiguredShuangpinMidSentenceHelpcodeSemicolon(bool enabled)
     return true;
 }
 
+bool GetConfiguredShuangpinDirectHelpcodeEnabled()
+{
+    return g_shuangpin_direct_helpcode_enabled;
+}
+
+bool SetConfiguredShuangpinDirectHelpcodeEnabled(bool enabled)
+{
+    if (!WriteConfiguredValue("helpcode", "shuangpin_direct_helpcode", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_shuangpin_direct_helpcode_enabled = enabled;
+    return true;
+}
+
+std::wstring FormatDirectHelpcodeWorkerPayload()
+{
+    return g_shuangpin_direct_helpcode_enabled && GetConfiguredActiveInputScheme() == SchemeType::Shuangpin ? L"1"
+                                                                                                            : L"0";
+}
+
 bool IsConfiguredMidSentenceHelpcodeTrigger(wchar_t ch)
 {
-    if (!g_shuangpin_mid_sentence_helpcode_enabled)
+    // 直接辅助码开着时引擎不收反引号段（两套辅码会把同一个音节约束两遍），触发键跟着失效。
+    if (!g_shuangpin_mid_sentence_helpcode_enabled || g_shuangpin_direct_helpcode_enabled)
     {
         return false;
     }

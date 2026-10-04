@@ -1426,6 +1426,61 @@ TEST_CASE(SegmentBoundariesKeepHelpcodeAndJianpinTailAsTheirOwnUnits)
     REQUIRE_EQ(jianpin.segment_raw_boundaries(), std::vector<std::size_t>({0, 3, 4}));
 }
 
+TEST_CASE(EngineShuangpinDirectHelpcodeDecodesWithoutGuideKey)
+{
+    // 直接辅助码（万象式）走 Server 的真实路径：整串写回会话再重算，真实词库、词格与 Google 整句都开着。
+    struct ReloadConfigOnExit
+    {
+        ~ReloadConfigOnExit()
+        {
+            InitImeConfig();
+        }
+    } reload;
+    ScopedConfigRoot config_root;
+    InitImeConfig();
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeEnabled(true));
+    REQUIRE(SetConfiguredShuangpinDirectHelpcodeEnabled(true));
+    REQUIRE(SetConfiguredShuangpinHelpcodeSchema("ziranma"));
+    REQUIRE(SetConfiguredAssocSentenceWordLattice(true));
+    REQUIRE(SetConfiguredAssocSentenceGoogle(true));
+    const bool shuangpin_active = GetConfiguredInputScheme() == SchemeType::Shuangpin;
+    REQUIRE_EQ(FormatDirectHelpcodeWorkerPayload(), std::wstring(shuangpin_active ? L"1" : L"0"));
+    // 直接辅助码接管辅码：句中辅助码的触发键跟着失效，TSF 收到的载荷也是 "0"。
+    REQUIRE(!IsConfiguredMidSentenceHelpcodeTrigger(L'`'));
+    REQUIRE_EQ(FormatMidSentenceHelpcodeWorkerPayload(), std::wstring(L"0"));
+
+    EngineInputSession session(SchemeType::Shuangpin, GetXiaoheShuangpinProfile());
+    const auto first_code = [&session](const std::string &hanzi) {
+        const std::string annotation = session.get_helpcode_annotation(hanzi, false);
+        return annotation.size() > 1 ? static_cast<char>(std::tolower(static_cast<unsigned char>(annotation[1])))
+                                     : '\0';
+    };
+    const auto apply = [&session](const std::string &raw) {
+        session.set_pinyin_sequence(raw);
+        session.set_pinyin_sequence_with_cases(raw);
+        session.recompute_candidates();
+    };
+    const char stone = first_code("石");
+    const char lion = first_code("狮");
+    REQUIRE(stone != '\0' && lion != '\0');
+
+    // 小鹤 shi = ui：三码不要引导键，uiX uiY 直接解成 石狮。
+    const std::string typed = std::string("ui") + stone + "ui" + lion;
+    apply(typed);
+    const auto &candidates = session.get_candidates();
+    REQUIRE(std::any_of(candidates.begin(), candidates.end(), [](const auto &item) { return item.word == "石狮"; }));
+    REQUIRE(!candidates.empty() && first_code(HelpcodeUtils::get_first_han_char(candidates.front().word)) == stone);
+    REQUIRE_EQ(session.get_pinyin_sequence_with_cases(), typed);
+
+    // 四码后的 / 只在「两键 + 两码」之后收。
+    apply("uiab");
+    REQUIRE(session.accepts_direct_helpcode_slash(4));
+    REQUIRE(!session.accepts_direct_helpcode_slash(3));
+    REQUIRE(SetConfiguredShuangpinDirectHelpcodeEnabled(false));
+    REQUIRE(!session.accepts_direct_helpcode_slash(4));
+    REQUIRE_EQ(FormatDirectHelpcodeWorkerPayload(), std::wstring(L"0"));
+}
+
 TEST_CASE(EngineShuangpinMidSentenceHelpcodeConstrainsSentenceSources)
 {
     // 句中辅助码走 Server 的真实路径：整串写回会话再重算。词格和 Google 整句都打开，约束要在

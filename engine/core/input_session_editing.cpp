@@ -1,4 +1,5 @@
 #include "input_session.h"
+#include "../contracts/direct_helpcode.h"
 #include "../shuangpin/shuangpin_query.h"
 #include "../shuangpin/shuangpin_utils.h"
 #include <algorithm>
@@ -95,7 +96,8 @@ std::vector<std::size_t> InputSession::segment_raw_boundaries() const
     if (current_scheme_type() == SchemeType::Shuangpin)
     {
         // 带句中辅助码的串没有逐音节的单元模型：按段删除、按段跳光标和光标前缀重算都退回逐字符。
-        if (shuangpin::has_mid_sentence_helpcode(raw_with_cases))
+        // 直接辅助码同理：辅码字母混在音节之间，贪心切分算不出单元边界。
+        if (shuangpin::has_mid_sentence_helpcode(raw_with_cases) || direct_helpcode_enabled_)
         {
             return {};
         }
@@ -193,14 +195,19 @@ KeyResult InputSession::insert_at_caret(char character)
             break;
         case LocalInputMode::None:
             accepted = lower || (upper && ((scheme() == SchemeType::Quanpin && quanpin_helpcode_enabled_) ||
-                                           (scheme() == SchemeType::Shuangpin && shuangpin_helpcode_enabled_)));
+                                           (scheme() == SchemeType::Shuangpin &&
+                                            (shuangpin_helpcode_enabled_ || direct_helpcode_enabled_))));
             if (character == ';' && scheme() == SchemeType::Shuangpin &&
                 ShuangpinProfileUsesSemicolonFinal(shuangpin_profile_))
             {
                 const auto separator = caret == 0 ? std::string::npos : text.rfind('\'', caret - 1);
                 const auto start = separator == std::string::npos ? 0 : separator + 1;
-                accepted = (caret - start) % 2 == 1;
+                accepted = direct_helpcode_enabled_
+                               ? FanyImeDirectHelpcode::AcceptsSemicolonFinalAt(text.data(), text.size(), caret)
+                               : (caret - start) % 2 == 1;
             }
+            if (character == '/')
+                accepted = accepts_direct_helpcode_slash_at(caret);
             if (character == '\'' && scheme() != SchemeType::Wubi)
                 accepted = caret > 0;
             // 光标移回句中补句中辅助码：反引号和它后面的码按光标前的部分判断。

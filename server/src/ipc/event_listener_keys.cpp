@@ -9,6 +9,7 @@
 #include "ipc/candidate_text_policy.h"
 #include "ipc/candidate_translation_policy.h"
 #include "ipc/input_key_policy.h"
+#include "engine/contracts/direct_helpcode.h"
 #include "engine/contracts/ipc_negotiation.h"
 #include "defines/defines.h"
 #include "defines/globals.h"
@@ -125,9 +126,30 @@ bool IsMicrosoftShuangpinIngKeyAt(UINT keycode, WCHAR wch, const std::string &ra
         return false;
     }
 
+    // 直接辅助码的辅码会打乱奇偶，改成只看前一个键是不是字母；TSF 按同一条规则吃键。
+    if (GetConfiguredShuangpinDirectHelpcodeEnabled())
+    {
+        return FanyImeDirectHelpcode::AcceptsSemicolonFinalAt(raw_input.data(), raw_input.size(), caret);
+    }
     const size_t separator = caret == 0 ? std::string::npos : raw_input.rfind('\'', caret - 1);
     const size_t chunk_start = separator == std::string::npos ? 0 : separator + 1;
     return (caret - chunk_start) % 2 == 1;
+}
+
+// 双拼直接辅助码四码后的 /：光标前是「两键音节 + 两位辅码」的形状时它是编码键而不是标点。TSF 按同一条
+// 形状规则（FanyImeDirectHelpcode::AcceptsSlashAt）预判吃键，光标按 IsMidSentenceHelpcodeMarkerKey 同样的
+// 方式算。
+bool IsDirectHelpcodeSlashKey(UINT keycode, WCHAR wch, const std::string &raw_input)
+{
+    if (keycode != VK_OEM_2 || wch != L'/' || g_english_input_mode || g_inputSession == nullptr)
+    {
+        return false;
+    }
+    const auto &composition = GlobalIme::composition;
+    const size_t caret = composition.raw_input_with_cases != raw_input && composition.caret_position == 0
+                             ? raw_input.size()
+                             : (std::min)(composition.caret_position, raw_input.size());
+    return g_inputSession->accepts_direct_helpcode_slash(caret);
 }
 
 bool IsMicrosoftShuangpinIngKey(UINT keycode, WCHAR wch, const std::string &raw_input)
@@ -382,6 +404,10 @@ bool ApplyCompositionEditKey(UINT keycode, WCHAR wch, UINT modifiers_down, bool 
         else if (IsMidSentenceHelpcodeMarkerKey(keycode, wch, raw))
         {
             input = '`';
+        }
+        else if (IsDirectHelpcodeSlashKey(keycode, wch, raw))
+        {
+            input = '/';
         }
         else if (IsJapaneseLongVowelKey(keycode, wch))
         {
@@ -853,6 +879,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
         IsMicrosoftShuangpinIngKey(Global::Keycode, Global::Wch, input_before_key);
     const bool is_mid_sentence_helpcode_marker =
         IsMidSentenceHelpcodeMarkerKey(Global::Keycode, Global::Wch, input_before_key);
+    const bool is_direct_helpcode_slash = IsDirectHelpcodeSlashKey(Global::Keycode, Global::Wch, input_before_key);
     // 日语模式下 '-' 是长音符输入键，既不翻页也不做词转字。
     const bool is_japanese_long_vowel = IsJapaneseLongVowelKey(Global::Keycode, Global::Wch);
     const int word_character_direction =
@@ -862,6 +889,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     const bool is_commit_with_highlighted_candidate_punctuation =
         word_character_direction != 0 ||
         (!is_manual_pinyin_separator && !is_microsoft_shuangpin_ing_key && !is_mid_sentence_helpcode_marker &&
+         !is_direct_helpcode_slash &&
          IsCommitWithHighlightedCandidatePunctuationInCandidateMode(Global::Keycode, Global::Wch));
     const bool is_selection_key = IsSelectionKey(Global::Keycode);
     const bool is_unicode_shift_digit_selection =
@@ -873,7 +901,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
         Global::Keycode == VK_LEFT || Global::Keycode == VK_RIGHT || Global::Keycode == VK_BACK ||
         Global::Keycode == VK_DELETE || (Global::Keycode >= 'A' && Global::Keycode <= 'Z') ||
         is_manual_pinyin_separator || is_microsoft_shuangpin_ing_key || is_mid_sentence_helpcode_marker ||
-        is_unicode_hex_digit || is_unicode_plus || is_japanese_long_vowel;
+        is_direct_helpcode_slash || is_unicode_hex_digit || is_unicode_plus || is_japanese_long_vowel;
     const bool should_forward_key_to_session = !is_commit_with_highlighted_candidate_punctuation && !is_selection_key &&
                                                !is_paging_key && !is_composition_edit_key;
 

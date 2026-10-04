@@ -1,3 +1,4 @@
+#include "../direct_helpcode.h"
 #include "../ipc_negotiation.h"
 #include "../mid_sentence_helpcode.h"
 #include "../voice_composition_pipe.h"
@@ -136,7 +137,17 @@ int main()
     CHECK(FanyImeWorkerReplyType::CommitCandidateAndContinue == 27);
     CHECK(FanyImeWorkerReplyType::MidSentenceHelpcodeChanged == 28);
     CHECK(FanyImeWorkerReplyType::MidSentenceHelpcodeSemicolonChanged == 29);
-    CHECK(FanyImeWorkerReplyType::MaxKnown == FanyImeWorkerReplyType::MidSentenceHelpcodeSemicolonChanged);
+    CHECK(FanyImeWorkerReplyType::DirectHelpcodeChanged == 30);
+    CHECK(FanyImeWorkerReplyType::MaxKnown == FanyImeWorkerReplyType::DirectHelpcodeChanged);
+    // 直接辅助码的 / 与 ; 形状规则，TSF（WCHAR）与引擎（char）共用。
+    const auto slash_at = [](const std::wstring &text, std::size_t caret) {
+        return FanyImeDirectHelpcode::AcceptsSlashAt(text.data(), text.size(), caret);
+    };
+    CHECK(slash_at(L"uiab", 4) && slash_at(L"x;ab", 4) && !slash_at(L"uia", 3) && !slash_at(L"ui'b", 4));
+    CHECK(!slash_at(L"uiab/", 4) && slash_at(L"uiabui", 4) && !slash_at(L"uiab", 5));
+    CHECK(FanyImeDirectHelpcode::AcceptsSemicolonFinalAt("uiax", 4, 4) &&
+          !FanyImeDirectHelpcode::AcceptsSemicolonFinalAt("uix;", 4, 4) &&
+          !FanyImeDirectHelpcode::AcceptsSemicolonFinalAt("", 0, 0));
     // TSF（WCHAR）与引擎（char）共用同一条句中辅助码形状规则。
     const auto accepts = [](const std::wstring &text) {
         return FanyImeMidSentenceHelpcode::AcceptsMarker(text.data(), text.size());

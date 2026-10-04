@@ -13,6 +13,8 @@ class ShuangpinEngine
     explicit ShuangpinEngine(const ShuangpinProfile &profile = GetXiaoheShuangpinProfile(),
                              metasequoia::RuntimePaths paths = metasequoia::RuntimePaths::legacy());
     std::vector<WordItem> query(const QueryRequest &request);
+    // 直接辅助码：在 query 之前把请求改写成句中辅助码的形状，见 ShuangpinDictionary::resolve_direct_helpcode。
+    bool resolve_direct_helpcode(QueryRequest &request);
     bool expand_initial_candidates(const QueryRequest &request, std::vector<WordItem> &candidates);
     std::optional<WordItem> find_candidate(const std::string &key, const std::string &value);
     int create_word(std::string pinyin, std::string word);

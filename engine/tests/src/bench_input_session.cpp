@@ -102,5 +102,50 @@ int main(int argc, char **argv)
                     percentile(per_key, 0.9), percentile(per_key, 1.0), percentile(per_input, 0.5));
     }
     session.reset_state();
+
+    // 双拼直接辅助码的额外代价：同一批小鹤双拼按键（含夹在句中的辅码字母），开关关/开各量一遍，
+    // 整句选项固定为 lattice+google。
+    const std::vector<std::string> shuangpin_inputs = {
+        "uiui", "uiauiq", "nihcuiui", "uiauiquhlmmyzuiauib", "womfyiqiqu", "jintmtmqibucoaeje",
+    };
+    SentenceAssociationOptions lattice_google;
+    lattice_google.word_lattice = true;
+    lattice_google.google = true;
+    std::printf("\n%-18s %10s %10s %10s %10s   (shuangpin, ms per key)\n", "direct helpcode", "median", "p90", "max",
+                "per-input");
+    for (const bool direct : {false, true})
+    {
+        metasequoia::InputSession shuangpin(SchemeType::Shuangpin);
+        shuangpin.set_sentence_association(lattice_google);
+        shuangpin.set_shuangpin_helpcode_enabled(!direct);
+        shuangpin.set_direct_helpcode_enabled(direct);
+        shuangpin.set_helpcode_schema("ziranma");
+        std::vector<double> per_key;
+        std::vector<double> per_input;
+        for (int round = -1; round < repeats; ++round)
+        {
+            for (const std::string &input : shuangpin_inputs)
+            {
+                shuangpin.reset_state();
+                shuangpin.reset_cache();
+                double total = 0.0;
+                for (const char character : input)
+                {
+                    const auto start = std::chrono::steady_clock::now();
+                    shuangpin.handle_character(character);
+                    const double ms =
+                        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
+                    total += ms;
+                    if (round >= 0)
+                        per_key.push_back(ms);
+                }
+                if (round >= 0)
+                    per_input.push_back(total);
+            }
+        }
+        std::printf("%-18s %10.2f %10.2f %10.2f %10.2f\n", direct ? "on" : "off", percentile(per_key, 0.5),
+                    percentile(per_key, 0.9), percentile(per_key, 1.0), percentile(per_input, 0.5));
+        shuangpin.reset_state();
+    }
     return 0;
 }

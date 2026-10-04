@@ -49,6 +49,10 @@ class CCompositionProcessorEngine
     // engine/contracts/mid_sentence_helpcode.h。分号先让给 ing 韵母。
     static bool IsMidSentenceHelpcodeTriggerKey(UINT uCode, WCHAR wch, _In_reads_opt_(length) const WCHAR *buffer,
                                                 DWORD_PTR length, DWORD_PTR caret);
+    // 双拼直接辅助码开着时额外收的编码键：四码后的 /，以及不看奇偶的 ; 韵母。规则见
+    // engine/contracts/direct_helpcode.h。
+    static bool IsDirectHelpcodeInputKey(UINT uCode, WCHAR wch, _In_reads_opt_(length) const WCHAR *buffer,
+                                         DWORD_PTR length, DWORD_PTR caret);
     // 当句中辅助码触发键的分号在缓冲里记成反引号（与 Server 的 raw 一致），其余字符原样返回。
     static WCHAR NormalizeMidSentenceHelpcodeTrigger(WCHAR wch, _In_reads_opt_(length) const WCHAR *buffer,
                                                      DWORD_PTR length, DWORD_PTR caret);

@@ -19,6 +19,7 @@
 #include "FanyLog.h"
 #include "EditSession.h"
 #include "TfTextLayoutSink.h"
+#include "../../../engine/contracts/direct_helpcode.h"
 #include "../../../engine/contracts/mid_sentence_helpcode.h"
 #include <new>
 
@@ -33,12 +34,28 @@ bool IsMicrosoftShuangpinIngKeyAt(UINT uCode, WCHAR wch, const WCHAR *buffer, DW
         return false;
     }
     caret = min(caret, length);
+    // 直接辅助码的辅码会打乱奇偶（uia 后面接 x; 时这一节是偶数键），改成只看前一个键是不是字母。
+    if (Global::DirectHelpcodeEnabled.load(std::memory_order_relaxed))
+    {
+        return FanyImeDirectHelpcode::AcceptsSemicolonFinalAt(buffer, static_cast<std::size_t>(length),
+                                                              static_cast<std::size_t>(caret));
+    }
     DWORD_PTR chunkLength = 0;
     for (DWORD_PTR index = caret; index > 0 && buffer[index - 1] != L'\''; --index)
     {
         ++chunkLength;
     }
     return chunkLength % 2 == 1;
+}
+
+// 双拼直接辅助码的 /：四码（两键音节 + 两位辅码）后面的终止键是编码键，否则仍按标点处理。Server
+// 用同一条形状规则决定收不收（engine/contracts/direct_helpcode.h）。
+bool IsDirectHelpcodeSlashKey(UINT uCode, WCHAR wch, const WCHAR *buffer, DWORD_PTR length, DWORD_PTR caret)
+{
+    return uCode == VK_OEM_2 && wch == L'/' && Global::DirectHelpcodeEnabled.load(std::memory_order_relaxed) &&
+           buffer != nullptr && length > 0 &&
+           FanyImeDirectHelpcode::AcceptsSlashAt(buffer, static_cast<std::size_t>(length),
+                                                 static_cast<std::size_t>(min(caret, length)));
 }
 
 // 双拼句中辅助码的触发键（反引号，或设置里勾了的分号）：开关开着，且光标前是一节完整的两键音节时
@@ -336,7 +353,9 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeed( //
     }
 
     if (IsMidSentenceHelpcodeMarkerKey(uCode, pwch ? *pwch : 0, _keystrokeBuffer.Get(), _keystrokeBuffer.GetLength(),
-                                       _caretPosition))
+                                       _caretPosition) ||
+        IsDirectHelpcodeSlashKey(uCode, pwch ? *pwch : 0, _keystrokeBuffer.Get(), _keystrokeBuffer.GetLength(),
+                                 _caretPosition))
     {
         if (pKeyState)
         {
@@ -851,6 +870,14 @@ bool CCompositionProcessorEngine::IsMidSentenceHelpcodeTriggerKey(UINT uCode, WC
                                                                   DWORD_PTR length, DWORD_PTR caret)
 {
     return IsMidSentenceHelpcodeMarkerKey(uCode, wch, buffer, length, caret);
+}
+
+bool CCompositionProcessorEngine::IsDirectHelpcodeInputKey(UINT uCode, WCHAR wch, const WCHAR *buffer, DWORD_PTR length,
+                                                           DWORD_PTR caret)
+{
+    return IsDirectHelpcodeSlashKey(uCode, wch, buffer, length, caret) ||
+           (Global::DirectHelpcodeEnabled.load(std::memory_order_relaxed) &&
+            IsMicrosoftShuangpinIngKeyAt(uCode, wch, buffer, length, caret));
 }
 
 // 分号触发的句中辅助码段在按键缓冲里记成反引号，与 Server 的 raw 一致。在加入缓冲之前、按与吃键

@@ -24,6 +24,13 @@ class ImeSession
     {
         enable_mid_sentence_helpcode_ = enabled;
     }
+    // 双拼直接辅助码（万象式，见 engine/direct_helpcode/）。开着时末尾单码/双码辅助和反引号句中
+    // 辅助码都让位给它。
+    void set_direct_helpcode_enabled(bool enabled);
+    bool direct_helpcode_enabled() const
+    {
+        return enable_direct_helpcode_;
+    }
     void set_quanpin_helpcode_enabled(bool enabled);
     void set_quanpin_autocorrect_types(unsigned autocorrect_types);
     void set_fuzzy_pinyin_options(metasequoia::FuzzyPinyinOptions options)
@@ -96,8 +103,11 @@ class ImeSession
     // Shared option injection for refresh_candidates() and query_raw_candidates(); the two must
     // not drift or a prefix query would answer with different candidates than the live pipeline.
     void apply_request_options(QueryRequest &request) const;
+    // 直接辅助码开着时把请求交给解析器改写，见 ProviderRegistry::resolve_direct_helpcode。
+    void resolve_direct_helpcode(QueryRequest &request);
     void refresh_candidates();
     void bind_wubi_scheme();
+    void bind_shuangpin_scheme();
     std::unique_ptr<IInputScheme> create_scheme(SchemeType scheme_type) const;
 
   private:
@@ -107,6 +117,7 @@ class ImeSession
     CompositionState state_;
     bool enable_shuangpin_helpcode_ = false;
     bool enable_mid_sentence_helpcode_ = false;
+    bool enable_direct_helpcode_ = false;
     bool enable_quanpin_helpcode_ = false;
     unsigned quanpin_autocorrect_types_ = 0;
     metasequoia::FuzzyPinyinOptions fuzzy_pinyin_;

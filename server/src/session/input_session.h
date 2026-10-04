@@ -68,6 +68,12 @@ class IInputSession
     {
         return false;
     }
+    // 光标停在 caret 处时 / 能否作为直接辅助码四码后的终止键插进编码串，语义见 engine
+    // accepts_direct_helpcode_slash_at。默认不能。
+    virtual bool accepts_direct_helpcode_slash(std::size_t) const
+    {
+        return false;
+    }
     // 当前输入带着生效的句中辅助码约束（候选是筛过的）。默认没有。
     virtual bool has_mid_sentence_helpcode() const
     {

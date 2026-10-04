@@ -40,6 +40,9 @@ set(METASEQUOIA_IME_ENGINE_SOURCES
     core/input_session_composition.cpp
     core/input_session_editing.cpp
     core/input_session_candidates.cpp
+    direct_helpcode/direct_lattice.cpp
+    direct_helpcode/direct_resolver.cpp
+    direct_helpcode/spelling_graph.cpp
     english/english_dictionary.cpp
     japanese/japanese_matrix_search.cpp
     japanese/japanese_sentence_decoder.cpp
@@ -252,6 +255,10 @@ if(BUILD_TESTING)
     target_compile_definitions(test_frequency_input_session PRIVATE METASEQUOIA_FREQUENCY_TESTS_ONLY)
     target_link_libraries(test_frequency_input_session PRIVATE MetasequoiaIme::Engine)
     add_test(NAME frequency_input_session COMMAND test_frequency_input_session)
+
+    add_executable(test_direct_helpcode tests/src/test_direct_helpcode.cpp)
+    target_link_libraries(test_direct_helpcode PRIVATE MetasequoiaIme::Engine)
+    add_test(NAME direct_helpcode COMMAND test_direct_helpcode)
 
     add_executable(test_english_input_session tests/src/test_english_input_session.cpp)
     target_link_libraries(test_english_input_session PRIVATE MetasequoiaIme::Engine)

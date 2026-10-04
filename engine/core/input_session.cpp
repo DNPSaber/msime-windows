@@ -1,6 +1,7 @@
 #include "input_session.h"
 
 #include "../common/helpcode_utils.h"
+#include "../contracts/direct_helpcode.h"
 #include "../local_modes/date_time_query.h"
 #include "../local_modes/emoji_query.h"
 #include "../local_modes/jianpin_query.h"
@@ -169,11 +170,15 @@ KeyResult InputSession::handle_character(char character, bool shift_only)
                                      accepts_mid_sentence_helpcode_marker();
     // 句中辅助码：反引号后的第一码大小写都收，紧跟的大写字母是第二码，与辅助码开关无关。
     const bool mid_sentence_code = accepts_mid_sentence_code_at(get_pinyin_sequence_with_cases().size(), character);
-    const bool active_helpcode = character >= 'A' && character <= 'Z' && has_composition() &&
-                                 ((scheme() == SchemeType::Quanpin && quanpin_helpcode_enabled_) ||
-                                  (scheme() == SchemeType::Shuangpin && shuangpin_helpcode_enabled_));
+    // 直接辅助码：辅码可以用大写敲（万象的大写变体），四码后接 / 终止。
+    const bool direct_slash = character == '/' && has_composition() &&
+                              accepts_direct_helpcode_slash_at(get_pinyin_sequence_with_cases().size());
+    const bool active_helpcode =
+        character >= 'A' && character <= 'Z' && has_composition() &&
+        ((scheme() == SchemeType::Quanpin && quanpin_helpcode_enabled_) ||
+         (scheme() == SchemeType::Shuangpin && (shuangpin_helpcode_enabled_ || direct_helpcode_enabled_)));
     if (!lowercase_letter && !active_helpcode && !mid_sentence_code && !mid_sentence_marker && character != '\'' &&
-        !semicolon_final)
+        !semicolon_final && !direct_slash)
     {
         return {};
     }
@@ -185,6 +190,7 @@ KeyResult InputSession::handle_character(char character, bool shift_only)
     const std::string previous_preedit = preedit();
     const auto unsigned_character = static_cast<unsigned char>(character);
     const ImeKeyCode key_code = character == '\''     ? ImeKey::Apostrophe
+                                : direct_slash        ? ImeKey::Slash
                                 : mid_sentence_marker ? ImeKey::Backquote
                                 : semicolon_final     ? ImeKey::Semicolon
                                                       : static_cast<ImeKeyCode>(std::toupper(unsigned_character));
@@ -390,6 +396,29 @@ void InputSession::set_mid_sentence_helpcode_enabled(bool enabled)
     online_requests_.invalidate();
 }
 
+void InputSession::set_direct_helpcode_enabled(bool enabled)
+{
+    if (direct_helpcode_enabled_ == enabled)
+    {
+        return;
+    }
+    direct_helpcode_enabled_ = enabled;
+    engine_.set_direct_helpcode_enabled(enabled);
+    update_mixed_candidates();
+    online_requests_.invalidate();
+}
+
+bool InputSession::accepts_direct_helpcode_slash_at(std::size_t caret) const
+{
+    if (!direct_helpcode_enabled_ || !is_shuangpin() || dedicated_english_mode_ ||
+        local_input_mode_ != LocalInputMode::None)
+    {
+        return false;
+    }
+    const std::string &typed = get_pinyin_sequence_with_cases();
+    return FanyImeDirectHelpcode::AcceptsSlashAt(typed.data(), typed.size(), caret);
+}
+
 bool InputSession::accepts_mid_sentence_helpcode_marker() const
 {
     return accepts_mid_sentence_helpcode_marker_at(caret_position());
@@ -397,7 +426,8 @@ bool InputSession::accepts_mid_sentence_helpcode_marker() const
 
 bool InputSession::accepts_mid_sentence_helpcode_marker_at(std::size_t caret) const
 {
-    if (!mid_sentence_helpcode_enabled_ || !is_shuangpin() || dedicated_english_mode_ ||
+    // 直接辅助码开着时反引号不再是编码键：两套辅码同时生效，同一个音节会被约束两遍。
+    if (!mid_sentence_helpcode_enabled_ || direct_helpcode_enabled_ || !is_shuangpin() || dedicated_english_mode_ ||
         local_input_mode_ != LocalInputMode::None)
     {
         return false;
@@ -408,8 +438,8 @@ bool InputSession::accepts_mid_sentence_helpcode_marker_at(std::size_t caret) co
 bool InputSession::accepts_mid_sentence_code_at(std::size_t caret, char character) const
 {
     const std::string &typed = get_pinyin_sequence_with_cases();
-    if (!mid_sentence_helpcode_enabled_ || !is_shuangpin() || character < 'A' || character > 'Z' || caret == 0 ||
-        caret > typed.size())
+    if (!mid_sentence_helpcode_enabled_ || direct_helpcode_enabled_ || !is_shuangpin() || character < 'A' ||
+        character > 'Z' || caret == 0 || caret > typed.size())
     {
         return false;
     }
@@ -420,8 +450,8 @@ bool InputSession::accepts_mid_sentence_code_at(std::size_t caret, char characte
 
 bool InputSession::has_mid_sentence_helpcode() const
 {
-    return mid_sentence_helpcode_enabled_ && !dedicated_english_mode_ && local_input_mode_ == LocalInputMode::None &&
-           !request().syllable_helpcodes.empty();
+    return (mid_sentence_helpcode_enabled_ || direct_helpcode_enabled_) && !dedicated_english_mode_ &&
+           local_input_mode_ == LocalInputMode::None && !request().syllable_helpcodes.empty();
 }
 
 std::vector<WordItem> InputSession::candidates_without_mid_sentence_helpcode()

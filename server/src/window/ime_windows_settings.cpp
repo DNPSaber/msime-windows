@@ -358,6 +358,7 @@ LRESULT CALLBACK WndProcSettingsWindow(HWND hwnd, UINT message, WPARAM wParam, L
             const std::wstring previous_mid_sentence_helpcode = FormatMidSentenceHelpcodeWorkerPayload();
             const std::wstring previous_mid_sentence_helpcode_semicolon =
                 FormatMidSentenceHelpcodeSemicolonWorkerPayload();
+            const std::wstring previous_direct_helpcode = FormatDirectHelpcodeWorkerPayload();
             const std::wstring previous_paging_worker_payload = FormatPagingCommaPeriodWorkerPayload();
             const std::string previous_theme_mode = GetConfiguredThemeMode();
             const std::string previous_theme_cand = GetConfiguredThemeCand();
@@ -515,6 +516,12 @@ LRESULT CALLBACK WndProcSettingsWindow(HWND hwnd, UINT message, WPARAM wParam, L
                     BroadcastToTsfWorkerThreadViaNamedpipe(
                         Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeSemicolonChanged,
                         FormatMidSentenceHelpcodeSemicolonWorkerPayload());
+                }
+                if (previous_direct_helpcode != FormatDirectHelpcodeWorkerPayload())
+                {
+                    BroadcastToTsfWorkerThreadViaNamedpipe(
+                        Global::DataFromServerMsgTypeToTsfWorkerThread::DirectHelpcodeChanged,
+                        FormatDirectHelpcodeWorkerPayload());
                 }
                 PostSettingsConfig();
             }

@@ -384,6 +384,16 @@ std::string decorate_mid_sentence_segmentation(const std::string &segmentation, 
     {
         return segmentation;
     }
+    return decorate_segmentation(segmentation, parse_mid_sentence_helpcodes(raw_input_with_cases, profile).decorations);
+}
+
+std::string decorate_segmentation(const std::string &segmentation,
+                                  const std::vector<std::pair<std::size_t, std::string>> &decorations)
+{
+    if (decorations.empty() || segmentation.empty())
+    {
+        return segmentation;
+    }
     std::vector<std::string> parts;
     std::size_t start = 0;
     while (true)
@@ -395,7 +405,7 @@ std::string decorate_mid_sentence_segmentation(const std::string &segmentation, 
             break;
         start = separator + 1;
     }
-    for (const auto &[syllable, text] : parse_mid_sentence_helpcodes(raw_input_with_cases, profile).decorations)
+    for (const auto &[syllable, text] : decorations)
     {
         if (syllable < parts.size())
             parts[syllable] += text;

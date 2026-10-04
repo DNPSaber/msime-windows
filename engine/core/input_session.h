@@ -62,6 +62,16 @@ class InputSession
     // 仍按标点处理。不带参数的版本按会话自己的光标；光标由宿主维护时传宿主的光标。
     bool accepts_mid_sentence_helpcode_marker() const;
     bool accepts_mid_sentence_helpcode_marker_at(std::size_t caret) const;
+    // 双拼直接辅助码（万象式，不要引导键，见 engine/direct_helpcode/）。默认关闭；开着时末尾辅助码
+    // 和反引号句中辅助码都让位给它。
+    void set_direct_helpcode_enabled(bool enabled);
+    bool direct_helpcode_enabled() const
+    {
+        return direct_helpcode_enabled_;
+    }
+    // 宿主在决定是否把 / 当作编码键（四码后的终止键）之前问这一句，规则见
+    // FanyImeDirectHelpcode::AcceptsSlashAt。不满足时 / 仍按标点处理。
+    bool accepts_direct_helpcode_slash_at(std::size_t caret) const;
     // 当前输入带着生效的句中辅助码约束：候选是筛过的，排位不能当调频的参照。
     bool has_mid_sentence_helpcode() const;
     // 同一输入去掉句中辅助码约束后的引擎候选。用户下次不敲辅助码时看到的就是这份排序，
@@ -341,6 +351,7 @@ class InputSession
     bool quanpin_helpcode_enabled_ = true;
     bool shuangpin_helpcode_enabled_ = true;
     bool mid_sentence_helpcode_enabled_ = false;
+    bool direct_helpcode_enabled_ = false;
     bool chinese_punctuation_enabled_ = true;
     bool candidate_learning_enabled_ = true;
     PunctuationPolicy punctuation_;

@@ -44,6 +44,29 @@ ImeSession::ImeSession(SchemeType scheme_type, const ShuangpinProfile &shuangpin
       scheme_(create_scheme(scheme_type))
 {
     bind_wubi_scheme();
+    bind_shuangpin_scheme();
+}
+
+void ImeSession::bind_shuangpin_scheme()
+{
+    if (auto *shuangpin_scheme = dynamic_cast<ShuangpinScheme *>(scheme_.get()))
+    {
+        shuangpin_scheme->set_direct_helpcode(enable_direct_helpcode_);
+    }
+}
+
+void ImeSession::set_direct_helpcode_enabled(bool enabled)
+{
+    enable_direct_helpcode_ = enabled;
+    bind_shuangpin_scheme();
+}
+
+void ImeSession::resolve_direct_helpcode(QueryRequest &request)
+{
+    if (enable_direct_helpcode_ && request.valid && request.scheme == SchemeType::Shuangpin)
+    {
+        provider_registry_.resolve_direct_helpcode(request);
+    }
 }
 
 void ImeSession::bind_wubi_scheme()
@@ -77,6 +100,7 @@ void ImeSession::switch_scheme(SchemeType scheme_type)
 {
     scheme_ = create_scheme(scheme_type);
     bind_wubi_scheme();
+    bind_shuangpin_scheme();
     state_ = CompositionState{};
 }
 
@@ -202,6 +226,7 @@ std::vector<WordItem> ImeSession::query_raw_candidates(const std::string &raw_in
     QueryRequest request = query_scheme->build_request();
     apply_request_options(request);
     ApplyShuangpinHelpcodeSegmentation(request, shuangpin_profile_);
+    resolve_direct_helpcode(request);
     if (!request.valid)
     {
         return {};
@@ -301,6 +326,14 @@ void ImeSession::apply_request_options(QueryRequest &request) const
 {
     request.enable_shuangpin_helpcode = enable_shuangpin_helpcode_;
     request.enable_mid_sentence_helpcode = enable_mid_sentence_helpcode_;
+    if (enable_direct_helpcode_ && request.scheme == SchemeType::Shuangpin)
+    {
+        // 直接辅助码接管辅码：末尾单码/双码那套判断会把辅码字母当成别的东西，关掉；约束由解析器
+        // 改写请求时再打开。
+        request.enable_shuangpin_helpcode = false;
+        request.enable_mid_sentence_helpcode = false;
+        request.enable_direct_helpcode = true;
+    }
     request.enable_quanpin_helpcode = enable_quanpin_helpcode_;
     request.enable_quanpin_autocorrect_transposition =
         (quanpin_autocorrect_types_ & quanpin::kAutocorrectTransposition) != 0;
@@ -316,6 +349,7 @@ void ImeSession::refresh_candidates()
     state_.request = scheme_->build_request();
     apply_request_options(state_.request);
     ApplyShuangpinHelpcodeSegmentation(state_.request, shuangpin_profile_);
+    resolve_direct_helpcode(state_.request);
 
     if (!state_.request.valid)
     {

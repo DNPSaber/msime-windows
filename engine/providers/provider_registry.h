@@ -14,6 +14,11 @@ class ProviderRegistry
     ICandidateProvider &resolve(SchemeType scheme_type);
     std::optional<WordItem> find_candidate(SchemeType scheme_type, const std::string &key, const std::string &value);
     bool expand_initial_candidates(const QueryRequest &request, std::vector<WordItem> &candidates);
+    // 双拼直接辅助码只出在拼音 provider 上，见 PinyinCandidateProvider::resolve_direct_helpcode。
+    bool resolve_direct_helpcode(QueryRequest &request)
+    {
+        return pinyin_provider_.resolve_direct_helpcode(request);
+    }
     void reset_cache(SchemeType scheme_type);
     // 整句（词格 + 神经重排）只出在拼音 provider 上，五笔混输查的也是它。
     void reset_sentence_cache()

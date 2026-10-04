@@ -25,6 +25,12 @@
 #include <optional>
 #include <boost/algorithm/string.hpp>
 
+struct QueryRequest;
+namespace direct_helpcode
+{
+class Resolver;
+}
+
 class ShuangpinDictionary
 {
   public:
@@ -82,6 +88,14 @@ class ShuangpinDictionary
     // 候选覆盖到受约束的音节时，那个位置上的字必须满足约束，不满足的去掉。
     void filter_by_syllable_helpcodes(std::vector<WordItem> &candidates) const;
 
+    // 直接辅助码：整句解码选出切分，把请求改写成句中辅助码的形状，见 direct_helpcode/direct_resolver.h。
+    bool resolve_direct_helpcode(QueryRequest &request);
+    // 直接辅助码开着时，词格的跨度查询与解析器共用一份缓存（见 lattice_lookup）；关着时照旧直查。
+    void set_direct_span_cache_enabled(bool enabled)
+    {
+        direct_span_cache_enabled_ = enabled;
+    }
+
     explicit ShuangpinDictionary(const ShuangpinProfile &profile = GetXiaoheShuangpinProfile(),
                                  metasequoia::RuntimePaths paths = metasequoia::RuntimePaths::legacy());
     ~ShuangpinDictionary();
@@ -114,6 +128,18 @@ class ShuangpinDictionary
     SyllableHelpcodes syllable_helpcodes_;
     std::string syllable_helpcodes_signature_;
     std::unordered_map<std::string, sqlite3_stmt *> quanpin_statement_cache_;
+    // 直接辅助码开着时才建。
+    std::unique_ptr<direct_helpcode::Resolver> direct_resolver_;
+    // 解析器上一次解出的最优整句及它对应的 generateSeries 缓存键，词格合并时直接用它而不重解。
+    std::optional<std::pair<std::string, quanpin::LatticePath>> direct_sentence_;
+    // 词库里全部单字行（全拼读音、单字），直接辅助码建辅码索引用。
+    std::vector<std::pair<std::string, std::string>> query_single_char_rows();
+    // 词格的跨度查询（键与跨度完全相等，至多 limit 行）。直接辅助码开着时套一层按（跨度, limit）的缓存：
+    // 解析器选切分时已经查过同样的跨度，词典层整句解码不必再打一遍 SQL。结果与直查逐行相同；词库一变
+    // （reset_cache）缓存随之清空。
+    quanpin::WordLatticeLookup lattice_lookup(int limit);
+    bool direct_span_cache_enabled_ = false;
+    std::unordered_map<std::string, std::vector<quanpin::LatticeLexeme>> direct_span_cache_;
     void reset_cache_if_database_changed();
     // 这个字能不能落在 helpcode 约束的音节上。
     bool accepts_syllable_char(const SyllableHelpcode &helpcode, const std::string &hanzi) const;

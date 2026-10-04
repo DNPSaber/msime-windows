@@ -124,9 +124,22 @@ std::vector<WordItem> ShuangpinEngine::query(const QueryRequest &request)
     // 句中辅助码约束也随请求下发；开关关着时不筛（串里本就敲不进反引号，这里只是兜底）。
     dictionary_.set_syllable_helpcodes(request.enable_mid_sentence_helpcode ? request.syllable_helpcodes
                                                                             : SyllableHelpcodes{});
+    // 直接辅助码开着时词格的跨度查询走与解析器共用的缓存，见 ShuangpinDictionary::lattice_lookup。
+    dictionary_.set_direct_span_cache_enabled(request.enable_direct_helpcode);
     auto candidates = query_unfiltered(request);
     dictionary_.filter_by_syllable_helpcodes(candidates);
     return candidates;
+}
+
+bool ShuangpinEngine::resolve_direct_helpcode(QueryRequest &request)
+{
+    if (!request.valid)
+    {
+        return false;
+    }
+    // 解码要用的搭配模型跟着整句选项走，先下发，和 query 的顺序一致。
+    dictionary_.set_sentence_association(request.sentence_association);
+    return dictionary_.resolve_direct_helpcode(request);
 }
 
 std::vector<WordItem> ShuangpinEngine::query_unfiltered(const QueryRequest &request)

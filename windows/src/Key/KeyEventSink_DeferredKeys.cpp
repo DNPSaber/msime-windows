@@ -520,8 +520,11 @@ bool CMetasequoiaIME::_ClassifyDeferredKeyDown(_In_ ITfContext *pContext, WPARAM
         {
             isInputKey = true;
         }
+        // 直接辅助码开着时 ; 韵母不看奇偶（辅码会打乱奇偶），交给下面的 IsDirectHelpcodeInputKey，与同步路径和
+        // Server 用同一条规则；这里再按奇偶放行，uiab/; 这类输入两边就会分叉。
         if (!isInputKey && Global::MicrosoftShuangpinEnabled.load(std::memory_order_relaxed) &&
-            *classifiedCode == VK_OEM_1 && *classifiedWch == L';' && !shadow.rawInput.empty())
+            !Global::DirectHelpcodeEnabled.load(std::memory_order_relaxed) && *classifiedCode == VK_OEM_1 &&
+            *classifiedWch == L';' && !shadow.rawInput.empty())
         {
             const size_t caret = min(shadow.caret, shadow.rawInput.size());
             const size_t separator = caret == 0 ? std::wstring::npos : shadow.rawInput.rfind(L'\'', caret - 1);
@@ -532,6 +535,12 @@ bool CMetasequoiaIME::_ClassifyDeferredKeyDown(_In_ ITfContext *pContext, WPARAM
         if (!isInputKey)
         {
             isInputKey = CCompositionProcessorEngine::IsMidSentenceHelpcodeTriggerKey(
+                *classifiedCode, *classifiedWch, shadow.rawInput.data(), shadow.rawInput.size(), shadow.caret);
+        }
+        // 直接辅助码的 / 与不看奇偶的 ; 韵母，同样按影子状态算。
+        if (!isInputKey)
+        {
+            isInputKey = CCompositionProcessorEngine::IsDirectHelpcodeInputKey(
                 *classifiedCode, *classifiedWch, shadow.rawInput.data(), shadow.rawInput.size(), shadow.caret);
         }
         if (shadow.inputLength == 0 && (GetKeyState(VK_CAPITAL) & 0x0001) != 0 && *classifiedWch >= L'A' &&
