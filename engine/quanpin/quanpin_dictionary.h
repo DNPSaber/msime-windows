@@ -42,6 +42,9 @@ struct SeriesQueryResolution
     // cheaper tier by dictionary frequency, so they are appended after the
     // primary tier rather than merged into it.
     std::vector<quanpin::Segments> costlier_corrected_cuts;
+    // 合法输入上的换位手误读法（quanpin::legal_input_transposition_cuts）。主切仍是
+    // 用户敲出的合法切分，这些读法与它按整句打分争领衔，见 arbitrate_legal_corrections。
+    std::vector<quanpin::AutocorrectCut> legal_corrected_cuts;
     bool corrected_input = false;
 };
 
@@ -122,6 +125,14 @@ class QuanpinDictionary
         const std::string &raw_input, const std::string &primary_segmentation,
         const quanpin::Segments &primary_segments, const std::vector<quanpin::Segments> &alternative_segmentations,
         std::vector<WordItem> result);
+    std::vector<WordItem> arbitrate_legal_corrections(const std::string &raw_input,
+                                                      const quanpin::Segments &plain_segments,
+                                                      const std::vector<quanpin::AutocorrectCut> &corrected_cuts,
+                                                      std::vector<WordItem> result);
+    // 词格对一条完整切分的最佳路径分（加载了 sc.lm 时是 log10，否则是启发式的 ln）。
+    // 与整句候选开关无关；单音节也能打分。不是全合法音节或解不出路径时为空。
+    std::optional<double> lattice_best_path_score(const quanpin::Segments &cut);
+    bool user_prefers_reading(const std::string &key);
     static void append_unique_words(std::vector<WordItem> &result, const std::vector<WordItem> &extra);
     void mark_autocorrect_candidates(std::vector<WordItem> &candidates, const std::string &raw_input);
 

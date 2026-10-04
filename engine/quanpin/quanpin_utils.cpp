@@ -8,6 +8,7 @@
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 
 namespace quanpin
 {
@@ -995,6 +996,121 @@ std::vector<AutocorrectCut> autocorrect_cut_kbest(const std::string &pinyin, con
         results.push_back(std::move(cut));
     }
     return results;
+}
+
+namespace
+{
+// 罕见合法音节 -> 它的换位常用音节。人工收录、不由生成器派生：两侧都常用的换位对
+// （hou/huo、bei/bie、dou/duo）放开后每个按键都要多解码几条读法，先量过再说。
+constexpr std::pair<std::string_view, std::string_view> kRareLegalTranspositions[] = {
+    {"lia", "lai"},
+    {"dia", "dai"},
+};
+
+// 合法输入上一条读法最多带几处换位。再多就几乎都是巧合拼出来的读法。
+constexpr size_t kMaxLegalInputCorrections = 2;
+
+bool is_zero_initial_syllable(const std::string &syllable)
+{
+    return !syllable.empty() && (syllable[0] == 'a' || syllable[0] == 'o' || syllable[0] == 'e');
+}
+
+bool same_syllables(const AutocorrectCut &lhs, const AutocorrectCut &rhs)
+{
+    return std::equal(lhs.segments.begin(), lhs.segments.end(), rhs.segments.begin(), rhs.segments.end(),
+                      [](const auto &a, const auto &b) { return a.syllable == b.syllable; });
+}
+} // namespace
+
+std::vector<AutocorrectCut> legal_input_transposition_cuts(const std::string &pinyin, const Segments &segments,
+                                                           const unsigned autocorrect_types, const std::size_t k)
+{
+    if (k == 0 || (autocorrect_types & kAutocorrectTransposition) == 0 || segments.empty() ||
+        pinyin.find('\'') != std::string::npos || !has_only_complete_pinyin_segments(segments))
+    {
+        return {};
+    }
+    // segments 必须与 pinyin 逐字母一致：ü 别名归一（jv -> ju）会改写字母，那时
+    // 下面的原始区间对不上，整条路径不出读法。
+    std::vector<std::pair<size_t, size_t>> zero_initial_spans;
+    std::string letters;
+    for (size_t i = 0; i < segments.size(); ++i)
+    {
+        if (i > 0 && is_zero_initial_syllable(segments[i]))
+        {
+            zero_initial_spans.emplace_back(letters.size(), letters.size() + segments[i].size());
+        }
+        letters += segments[i];
+    }
+    if (letters != pinyin)
+    {
+        return {};
+    }
+
+    std::vector<AutocorrectCut> cuts;
+    const auto add_cut = [&cuts](AutocorrectCut cut) {
+        const bool seen = std::any_of(cuts.begin(), cuts.end(),
+                                      [&](const AutocorrectCut &existing) { return same_syllables(existing, cut); });
+        if (!seen)
+        {
+            cuts.push_back(std::move(cut));
+        }
+    };
+
+    // 换位把元音挤出原音节时，字面切分里会多出一个非首位零声母音节（zi'a、ji'o'a、
+    // ni'a），这是合法输入上换位手误的标志。纠正的那段必须盖住这样一个音节：不然
+    // k-best 会跨音节边界重切任何普通输入，道路 dao'lu 读成 da + olu->lou「大楼」、
+    // 会的 hui'de 读成 hu + ide->die「蝴蝶」——词库扫描里第 2 位的噪声几乎全是这种。
+    for (auto &cut : zero_initial_spans.empty() ? std::vector<AutocorrectCut>{}
+                                                : autocorrect_cut_kbest(pinyin, kAutocorrectTransposition, k))
+    {
+        const bool covers_zero_initial =
+            std::any_of(cut.segments.begin(), cut.segments.end(), [&](const AutocorrectCutSegment &segment) {
+                const size_t end = segment.start + segment.raw_text.size();
+                return segment.corrected &&
+                       std::any_of(zero_initial_spans.begin(), zero_initial_spans.end(),
+                                   [&](const auto &span) { return segment.start < span.second && span.first < end; });
+            });
+        if (covers_zero_initial && cut.edge_count <= kMaxLegalInputCorrections)
+        {
+            add_cut(std::move(cut));
+        }
+    }
+
+    // 罕见音节本身合法，k-best 只给非法片段找纠正，走不到这里。单音节输入没有上下文，
+    // 打的就是这个字的可能性太大（lia 单打多半就是要「俩」），不替换。
+    if (segments.size() >= 2)
+    {
+        AutocorrectCut replaced;
+        size_t start = 0;
+        for (const auto &syllable : segments)
+        {
+            AutocorrectCutSegment segment{syllable, syllable, start, false};
+            for (const auto &[rare, common] : kRareLegalTranspositions)
+            {
+                if (syllable == rare)
+                {
+                    segment.syllable = std::string(common);
+                    segment.corrected = true;
+                    ++replaced.edge_count;
+                    replaced.weight += kAutocorrectTranspositionWeight;
+                    break;
+                }
+            }
+            start += syllable.size();
+            replaced.segments.push_back(std::move(segment));
+        }
+        if (replaced.edge_count > 0 && replaced.edge_count <= kMaxLegalInputCorrections)
+        {
+            add_cut(std::move(replaced));
+        }
+    }
+
+    if (cuts.size() > k)
+    {
+        cuts.resize(k);
+    }
+    return cuts;
 }
 
 AutocorrectCut autocorrect_cut_detail(const std::string &pinyin, const unsigned autocorrect_types)

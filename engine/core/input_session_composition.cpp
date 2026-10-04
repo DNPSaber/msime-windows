@@ -1,5 +1,6 @@
 #include "input_session.h"
 #include "../common/helpcode_utils.h"
+#include "../quanpin/quanpin_query.h"
 #include "../quanpin/quanpin_utils.h"
 #include "../shuangpin/shuangpin_query.h"
 #include "../shuangpin/shuangpin_utils.h"
@@ -410,6 +411,34 @@ std::string BuildQuanpinAutocorrectDisplay(const QueryRequest &request)
     // delimiters are part of what was typed, so they stay ("mihng'").
     return letters_rewritten ? cased : base;
 }
+
+// 合法输入上的换位纠错领衔时（ziazheliya 出「在这里呀」），预编辑按领衔读法的音节
+// 分隔成 zia'zhe'li'ya，而不是字面切分 zi'a'zhe'li'ya——后者和首选对不上。换位不改
+// 字母数，边界直接取读法各音节的长度。只在整串是合法拼音、首选带纠错标记、读法字母
+// 数与输入一致时生效（辅助码、手动分隔符、长度会变的纠错都不满足），否则返回空串。
+std::string BuildQuanpinDisplayFromLeadingCorrection(const QueryRequest &request, const WordItem &head)
+{
+    const std::string &cased = request.raw_input_with_cases.empty() ? request.raw_input : request.raw_input_with_cases;
+    if (head.corrected_from.empty() || request.raw_input.find('\'') != std::string::npos ||
+        cased.size() != request.raw_input.size() || !quanpin::is_complete_pinyin_input(request.raw_input))
+    {
+        return {};
+    }
+    const auto syllables = quanpin::split_segments(head.pinyin);
+    std::vector<size_t> boundaries;
+    size_t end = 0;
+    for (const auto &syllable : syllables)
+    {
+        end += syllable.size();
+        boundaries.push_back(end);
+    }
+    if (syllables.empty() || end != request.raw_input.size())
+    {
+        return {};
+    }
+    boundaries.pop_back();
+    return RebuildQuanpinDisplayAtBoundaries(cased, boundaries);
+}
 } // namespace
 
 void InputSession::handle_engine_key(ImeKeyCode vk, ImeModifierMask modifiers_down, ImeCharacter wch)
@@ -551,6 +580,14 @@ std::string InputSession::build_pinyin_segmentation_with_cases(bool shuangpin_ra
     }
     if (current_scheme_type() == SchemeType::Quanpin)
     {
+        if (!candidates().empty())
+        {
+            std::string display = BuildQuanpinDisplayFromLeadingCorrection(request(), candidates().front());
+            if (!display.empty())
+            {
+                return display;
+            }
+        }
         return BuildQuanpinAutocorrectDisplay(request());
     }
     std::string preedit =

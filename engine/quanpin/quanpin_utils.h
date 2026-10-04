@@ -175,6 +175,21 @@ Segments autocorrect_cut(const std::string &pinyin, unsigned autocorrect_types);
 std::vector<AutocorrectCut> autocorrect_cut_kbest(const std::string &pinyin, unsigned autocorrect_types,
                                                   std::size_t k = 3);
 
+// 合法输入上的换位手误读法：普通切分全是合法音节时，resolve_series_query 不进上面
+// 的纠错（那条路按「切不成合法音节」设闸），可 ziazheliya 切成 zi'a'zhe'li'ya、
+// jioa 切成 ji'o'a、nia 切成 ni'a 都合法，换位表却各有一种读法（zia -> zai、
+// jioa -> jiao、nia -> nai）。这里只负责列出读法，不判断哪条对：
+// - 换位表在原始字母上给出的 k-best 读法，至多 kMaxLegalInputCorrections 处换位，
+//   且纠正的那段必须盖住字面切分里某个非首位零声母音节（zi'a 的 a、ji'o'a 的 o）——
+//   换位挤出元音是合法输入上换位手误的标志，没有它 k-best 会跨边界重切任何普通输入；
+// - 罕见合法音节换位成常用音节（lia -> lai、dia -> dai），k-best 只给非法片段找
+//   纠正、走不到这一种。只在多音节输入里认，单打 lia 多半就是要「俩」。
+// 取舍交给查询层按整句打分（语言模型分 + 每处换位的手误代价）。只用换位：它不改变
+// 字母数，选前缀字时按读音长度消耗原始字母仍然对得上。返回至多 k 条，每条至少一处
+// 纠正；segments 必须是 pinyin 的逐字母切分，否则返回空。
+std::vector<AutocorrectCut> legal_input_transposition_cuts(const std::string &pinyin, const Segments &segments,
+                                                           unsigned autocorrect_types, std::size_t k);
+
 // True when the input reads as one or more legal syllables plus at most one trailing
 // letter ("zheg" = zhe + g): a jianpin-intent shape, which is user intent and never
 // a typo. Deliberately NOT true for all-consonant strings of 3+ letters: the engine

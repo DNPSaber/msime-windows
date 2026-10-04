@@ -572,6 +572,206 @@ void run_autocorrect_context_user_choice_tests(const std::filesystem::path &data
     }
 }
 
+// 合法输入上的换位手误：ziazheliya 切成 zi'a'zhe'li'ya、jioa 切成 ji'o'a、nia 切成
+// ni'a，每一段都合法，纠错入口的闸原本把它们整个挡在外面。现在按噪声信道整句打分：
+// 词格路径分 + 每处换位 -2.0，原读法代价 0。fixture 无 sc.lm，词格走启发式（单字
+// ln(w/1e6)，词组 ln(w)+3×音节数），下面每组的分数都按它算好写在注释里。
+void run_legal_input_transposition_tests(const std::filesystem::path &data_directory)
+{
+    const auto readings = [](const std::string &pinyin, const quanpin::Segments &segments, unsigned types) {
+        std::vector<std::string> keys;
+        for (const auto &cut : quanpin::legal_input_transposition_cuts(pinyin, segments, types, 3))
+        {
+            quanpin::Segments syllables;
+            for (const auto &segment : cut.segments)
+            {
+                syllables.push_back(segment.syllable);
+            }
+            keys.push_back(quanpin::join_segments(syllables));
+        }
+        return keys;
+    };
+    const auto offers = [](const std::vector<std::string> &keys, const char *key) {
+        return std::find(keys.begin(), keys.end(), key) != keys.end();
+    };
+    const unsigned transposition = quanpin::kAutocorrectTransposition;
+    require(offers(readings("ziazheliya", {"zi", "a", "zhe", "li", "ya"}, transposition), "zai'zhe'li'ya"),
+            "A transposition inside a longer sentence must still offer the corrected reading.");
+    require(offers(readings("jioa", {"ji", "o", "a"}, transposition), "jiao"), "jioa must read as jiao.");
+    require(offers(readings("nia", {"ni", "a"}, transposition), "nai"), "nia must read as nai.");
+    require(offers(readings("liazheli", {"lia", "zhe", "li"}, transposition), "lai'zhe'li"),
+            "A rare legal syllable must offer its common transposition.");
+    require(readings("lia", {"lia"}, transposition).empty(),
+            "A single rare syllable has no context and must stay uncorrected.");
+    require(readings("ziazheli", {"zi", "a", "zhe", "li"}, quanpin::kAutocorrectNeighbor).empty(),
+            "The legal-input readings must follow the transposition switch.");
+    require(readings("nihao", {"ni", "hao"}, transposition).empty(),
+            "An ordinary legal input must not produce correction readings.");
+
+    const std::filesystem::path directory = data_directory / "legal-input-transposition";
+    std::filesystem::create_directories(directory);
+    {
+        Database database(directory / "msime.db");
+        database.execute("CREATE TABLE tbl_1_z(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_z VALUES('zi', 'z', '字', 800000);"
+                         "INSERT INTO tbl_1_z VALUES('zai', 'z', '在', 900000);"
+                         "INSERT INTO tbl_1_z VALUES('zhe', 'z', '这', 900000);");
+        database.execute("CREATE TABLE tbl_3_z(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_3_z VALUES('zai''zhe''li', 'zzl', '在这里', 5000);");
+        database.execute("CREATE TABLE tbl_1_a(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_a VALUES('a', 'a', '啊', 600000);");
+        database.execute("CREATE TABLE tbl_1_o(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_o VALUES('o', 'o', '哦', 300000);");
+        database.execute("CREATE TABLE tbl_1_y(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_y VALUES('ya', 'y', '呀', 500000);");
+        database.execute("CREATE TABLE tbl_1_l(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_l VALUES('li', 'l', '里', 900000);"
+                         "INSERT INTO tbl_1_l VALUES('lia', 'l', '俩', 500000);"
+                         "INSERT INTO tbl_1_l VALUES('lai', 'l', '来', 900000);");
+        database.execute("CREATE TABLE tbl_3_l(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_3_l VALUES('lai''zhe''li', 'lzl', '来这里', 3000);");
+        database.execute("CREATE TABLE tbl_1_j(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_j VALUES('jiao', 'j', '叫', 2000000);"
+                         "INSERT INTO tbl_1_j VALUES('jiao', 'j', '教', 1500000);"
+                         "INSERT INTO tbl_1_j VALUES('ji', 'j', '几', 800000);");
+        database.execute("CREATE TABLE tbl_1_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_n VALUES('ni', 'n', '你', 900000);"
+                         "INSERT INTO tbl_1_n VALUES('nai', 'n', '奶', 900000);");
+        database.execute("CREATE TABLE tbl_3_w(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_3_w VALUES('wo''men''lia', 'wml', '我们俩', 2000);"
+                         "INSERT INTO tbl_3_w VALUES('wo''men''lai', 'wml', '我们来', 2500);");
+        database.execute("CREATE TABLE tbl_2_w(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_w VALUES('wo''men', 'wm', '我们', 3000);");
+    }
+
+    metasequoia::RuntimePaths paths;
+    paths.resources = directory;
+    paths.user_data = directory;
+    paths.cache = directory;
+    paths.dictionaries = directory;
+    const unsigned both = quanpin::kAutocorrectTransposition | quanpin::kAutocorrectNeighbor;
+    SentenceAssociationOptions lattice_only;
+    lattice_only.word_lattice = true;
+
+    const auto first_two = [](const metasequoia::InputSession &session, const char *first, const char *second) {
+        return session.candidates().size() >= 2 && session.candidates()[0].word == first &&
+               session.candidates()[1].word == second;
+    };
+
+    // 句中纠错：在这里呀 = 在这里(ln5000+9) + 呀(ln0.5) - 2 = 14.8，字啊这里呀全是单字
+    // = -1.6。纠错领衔，原读法的整句紧跟在第 2 位；预编辑按领衔读法分隔。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        session.set_sentence_association(lattice_only);
+        type(session, "ziazheliya");
+        require(first_two(session, "在这里呀", "字啊这里呀"),
+                "ziazheliya must lead with 在这里呀 and keep the uncorrected sentence second.");
+        require(session.candidates()[0].corrected_from == "ziazheliya",
+                "The legal-input correction must carry the corrected_from mark.");
+        require(session.candidates()[1].corrected_from.empty(), "The uncorrected reading must stay unmarked.");
+        require(session.get_pinyin_segmentation_with_cases() == "zia'zhe'li'ya",
+                "The preedit must follow the leading corrected reading.");
+
+        // 选纠错读法里的前缀词：换位不改字母数，消耗 ziazheli 八个字母，剩下 ya。
+        (void)session.select_candidate(candidate_index(session, "在这里"));
+        require(session.has_composition() && session.preedit() == "ya",
+                "Selecting a corrected prefix must consume exactly the letters it covers.");
+    }
+    // 整句开关关着照样纠：判断读音不看显示开关，只是首选退回整键/前缀词。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "ziazheliya");
+        require(first_two(session, "在这里", "字"),
+                "With sentence candidates off the corrected prefix word must still lead.");
+    }
+
+    // jiao 叫 = ln2 - 2 = -1.3，几哦啊 = ln0.8 + ln0.3 + ln0.6 = -1.9：纠错领衔。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "jioa");
+        require(first_two(session, "叫", "几"), "jioa must lead with jiao and keep the uncorrected reading second.");
+        require(find_candidate_index(session, "教") < session.candidates().size(),
+                "The rest of the corrected reading must follow.");
+        require(session.get_pinyin_segmentation_with_cases() == "jioa",
+                "A single corrected syllable must drop the literal ji'o'a separators.");
+    }
+    // 罕见音节：来这里 = ln3000+9-2 = 15.0，俩这里 = -0.9。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "liazheli");
+        require(first_two(session, "来这里", "俩"),
+                "liazheli must lead with 来这里 and keep the uncorrected reading second.");
+    }
+
+    // 没有上下文时原读法占优：你啊 = ln0.9 + ln0.6 = -0.6，奶 = ln0.9 - 2 = -2.1。
+    // 原读法领衔，分差 1.5 在 3.0 以内，纠错读法占第 2 位。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "nia");
+        require(first_two(session, "你", "奶"), "nia must keep 你 first and offer 奶 second.");
+        require(session.get_pinyin_segmentation_with_cases() == "ni'a",
+                "The preedit must keep the literal reading while it leads.");
+    }
+
+    // 两边都是整词：我们俩 = ln2000+9 = 16.6，我们来 = ln2500+9-2 = 14.8。原读法领衔，
+    // 纠错第 2 位。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "womenlia");
+        require(first_two(session, "我们俩", "我们来"),
+                "A close correction must take the second slot under the leading typed reading.");
+    }
+    // 纠错读法远远落后（我们来 降到 20：最好的路径 我们+来 = 11.9，差 4.7 > 3.0）：不出现。
+    {
+        Database database(directory / "msime.db");
+        database.execute("UPDATE tbl_3_w SET weight = 20 WHERE value = '我们来';");
+    }
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "womenlia");
+        require(session.candidates().front().word == "我们俩" &&
+                    find_candidate_index(session, "我们来") == session.candidates().size(),
+                "A correction far behind the typed reading must not appear at all.");
+    }
+    // 纠错读法分数更高（我们来 = ln50000+9-2 = 17.8 > 16.6），但字面切分本身就是词库
+    // 里的真词：首位留给它，纠错只排第 2。
+    {
+        Database database(directory / "msime.db");
+        database.execute("UPDATE tbl_3_w SET weight = 50000 WHERE value = '我们来';");
+    }
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "womenlia");
+        require(first_two(session, "我们俩", "我们来"),
+                "A correction must never displace a literal dictionary word from the first slot.");
+    }
+
+    // 同一条规则也管已有的辅音复制别名：yongan 被读成 yong'gan，勇敢权重再高也不能压过
+    // 字面整词永安。同一串字母的另一种切分不受影响（见 fangan 的方案/反感）。
+    {
+        Database database(directory / "msime.db");
+        database.execute("CREATE TABLE tbl_2_y(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_y VALUES('yong''an', 'ya', '永安', 100);"
+                         "INSERT INTO tbl_2_y VALUES('yong''gan', 'yg', '勇敢', 100000);");
+    }
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "yongan");
+        require(session.candidates().front().word == "永安",
+                "An alias reading that rewrites the letters must not displace the literal dictionary word.");
+    }
+
+    // 纠错关闭：合法输入照原样查。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, 0, true, true, true, paths);
+        type(session, "ziazheli");
+        require(find_candidate_index(session, "在这里") == session.candidates().size(),
+                "The legal-input correction must stay off with autocorrection disabled.");
+    }
+
+    std::filesystem::remove_all(directory);
+}
+
 // 阶段 2 生成式纠错空间（任务 quanpin-autocorrect-generated-space）：静态表
 // 形状之外的单编辑手误由生成式索引兜底，权重落贵档（15）。隔离 fixture：
 // - shatg = shang 的 n→t（t 非邻键，远键替换）
@@ -1639,6 +1839,7 @@ int run_test()
     run_autocorrect_context_ranking_tests(data_directory);
     run_autocorrect_context_layering_tests(data_directory);
     run_autocorrect_context_user_choice_tests(data_directory);
+    run_legal_input_transposition_tests(data_directory);
 
     run_autocorrect_generated_space_tests(data_directory);
 #endif
