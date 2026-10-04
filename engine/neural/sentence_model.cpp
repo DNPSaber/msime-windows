@@ -930,31 +930,46 @@ std::vector<float> SentenceModel::target_log_probs(const std::vector<float> &hid
     }
 
     std::vector<float> logits(active_rows.size() * vocab, 0.0f);
-    // Output-major over the vocabulary, and widening each row's int8 once, for the same reasons as
-    // linear(): the tied embedding table is the single largest matrix in the model.
-    std::vector<float> scratch(token_.quantized ? n_embd : 0, 0.0f);
-    for (std::size_t id = 0; id < vocab; ++id)
+#if defined(MSIME_NEURAL_AVX2)
+    static const bool use_avx2 = detail::supports_avx2_fma();
+    if (token_.quantized && use_avx2)
     {
-        const float *weights;
-        float scale = 1.0f;
-        if (token_.quantized)
-        {
-            const std::int8_t *source = &token_.ints[id * n_embd];
-            for (std::size_t i = 0; i < n_embd; ++i)
-            {
-                scratch[i] = static_cast<float>(source[i]);
-            }
-            weights = scratch.data();
-            scale = token_.scales[id];
-        }
-        else
-        {
-            weights = &token_.floats[id * n_embd];
-        }
+        std::vector<float> active_hidden(active_rows.size() * n_embd);
         for (std::size_t slot = 0; slot < active_rows.size(); ++slot)
         {
-            const std::size_t row = active_rows[slot];
-            logits[slot * vocab + id] = dot(&hidden[row * n_embd], weights, n_embd) * scale;
+            std::memcpy(&active_hidden[slot * n_embd], &hidden[active_rows[slot] * n_embd], n_embd * sizeof(float));
+        }
+        detail::linear_int8_avx2(active_hidden.data(), token_.ints.data(), token_.scales.data(), nullptr,
+                                 active_rows.size(), n_embd, vocab, logits.data());
+    }
+    else
+#endif
+    {
+        // The scalar path widens one vocabulary row once for all active rows.
+        std::vector<float> scratch(token_.quantized ? n_embd : 0, 0.0f);
+        for (std::size_t id = 0; id < vocab; ++id)
+        {
+            const float *weights;
+            float scale = 1.0f;
+            if (token_.quantized)
+            {
+                const std::int8_t *source = &token_.ints[id * n_embd];
+                for (std::size_t i = 0; i < n_embd; ++i)
+                {
+                    scratch[i] = static_cast<float>(source[i]);
+                }
+                weights = scratch.data();
+                scale = token_.scales[id];
+            }
+            else
+            {
+                weights = &token_.floats[id * n_embd];
+            }
+            for (std::size_t slot = 0; slot < active_rows.size(); ++slot)
+            {
+                const std::size_t row = active_rows[slot];
+                logits[slot * vocab + id] = dot(&hidden[row * n_embd], weights, n_embd) * scale;
+            }
         }
     }
 
