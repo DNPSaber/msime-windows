@@ -490,6 +490,88 @@ void run_autocorrect_context_layering_tests(const std::filesystem::path &data_di
     }
 }
 
+// 用户在主切读音上的选择优先于上下文接管。加载 LM 时路径分只剩 dictionary_tiebreak
+// 一点点词库权重，调频翻不过接管边际，所以前两组 fixture 的启发式打分测不出来：这里
+// 放一份手写 ARPA 当 sc.lm（kenlm 按文本格式载入），让 LM 稳定偏向办证（log10 差 2.5），
+// 同时把班长的词库权重设成调频后的样子——越过办证。
+void run_autocorrect_context_user_choice_tests(const std::filesystem::path &data_directory)
+{
+    const auto make_fixture = [&data_directory](const char *name, int banzhang_weight) {
+        const std::filesystem::path directory = data_directory / name;
+        std::filesystem::create_directories(directory);
+        {
+            Database database(directory / "msime.db");
+            database.execute("CREATE TABLE tbl_2_b(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                             "INSERT INTO tbl_2_b VALUES('ban''zheng', 'bz', '办证', 100000);"
+                             "INSERT INTO tbl_2_b VALUES('ban''zheng', 'bz', '辩证', 10);"
+                             "INSERT INTO tbl_2_b VALUES('ban''zhang', 'bz', '搬账', 4000);");
+            const std::string banzhang =
+                "INSERT INTO tbl_2_b VALUES('ban''zhang', 'bz', '班长', " + std::to_string(banzhang_weight) + ");";
+            database.execute(banzhang.c_str());
+        }
+        // 二进制写：文本模式在 Windows 上会把换行写成 \r\n，kenlm 的 ARPA 解析不认。
+        std::ofstream arpa(directory / metasequoia::assets::language_model, std::ios::binary);
+        arpa << "\\data\\\n"
+                "ngram 1=7\n"
+                "ngram 2=1\n"
+                "\n"
+                "\\1-grams:\n"
+                "-1.0\t<unk>\t0\n"
+                "-99\t<s>\t0\n"
+                "-1.0\t</s>\t0\n"
+                "-1.0\t办证\t0\n"
+                "-3.5\t班长\t0\n"
+                "-3.5\t搬账\t0\n"
+                "-4.0\t辩证\t0\n"
+                "\n"
+                "\\2-grams:\n"
+                "-0.5\t<s> 办证\n"
+                "\n"
+                "\\end\\\n";
+        require(static_cast<bool>(arpa), "Failed to write the user-choice language model fixture.");
+        metasequoia::RuntimePaths paths;
+        paths.resources = directory;
+        paths.user_data = directory;
+        paths.cache = directory;
+        paths.dictionaries = directory;
+        return paths;
+    };
+    const unsigned both = quanpin::kAutocorrectTransposition | quanpin::kAutocorrectNeighbor;
+    SentenceAssociationOptions lattice_only;
+    lattice_only.word_lattice = true;
+    const auto first_word = [both, &lattice_only](const metasequoia::RuntimePaths &paths) {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        session.set_sentence_association(lattice_only);
+        type(session, "banzhng");
+        require(!session.candidates().empty(), "The user-choice fixture produced no candidates.");
+        return session.candidates().front().word;
+    };
+
+    {
+        const auto paths = make_fixture("autocorrect-context-user-choice", 150000);
+        // 没有用户记录：班长权重再高也只是出货词频，仍交给上下文裁决。这一步同时确认
+        // ARPA 真的载入了——启发式打分下班长权重更高，不会是办证领衔。
+        require(first_word(paths) == "办证",
+                "Without a user record the language model must still let the context reading lead.");
+
+        require(user_dictionary::record_upsert(metasequoia::path_to_utf8(paths.user(metasequoia::assets::user_journal)),
+                                               user_dictionary::DictionaryKind::Pinyin, "ban'zhang", "班长", 150000),
+                "Failed to write the user-choice journal record.");
+        require(first_word(paths) == "班长",
+                "A word the user ranked above the context winner must not be displaced by the context takeover.");
+    }
+
+    {
+        // 用户动过主切的键，但主切首位仍低于胜出切分首位：用户并没有把这组读音选到前面，照常接管。
+        const auto paths = make_fixture("autocorrect-context-user-touched", 5000);
+        require(user_dictionary::record_upsert(metasequoia::path_to_utf8(paths.user(metasequoia::assets::user_journal)),
+                                               user_dictionary::DictionaryKind::Pinyin, "ban'zhang", "搬账", 4000),
+                "Failed to write the user-touched journal record.");
+        require(first_word(paths) == "办证",
+                "A user record that does not outrank the context winner must not block the takeover.");
+    }
+}
+
 // 阶段 2 生成式纠错空间（任务 quanpin-autocorrect-generated-space）：静态表
 // 形状之外的单编辑手误由生成式索引兜底，权重落贵档（15）。隔离 fixture：
 // - shatg = shang 的 n→t（t 非邻键，远键替换）
@@ -1487,6 +1569,7 @@ int run_test()
     run_caret_prefix_session_tests(data_directory);
     run_autocorrect_context_ranking_tests(data_directory);
     run_autocorrect_context_layering_tests(data_directory);
+    run_autocorrect_context_user_choice_tests(data_directory);
 
     run_autocorrect_generated_space_tests(data_directory);
 #endif

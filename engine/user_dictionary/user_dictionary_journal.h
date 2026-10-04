@@ -28,6 +28,9 @@ bool record_delete(const std::string &user_db_path, DictionaryKind kind, const s
                    const std::string &value);
 bool is_user_inserted(const std::string &user_db_path, DictionaryKind kind, const std::string &key,
                       const std::string &value);
+// 该键下是否有用户留下的权重（调频或造词的 upsert，不看具体词）。删除记录不算：
+// 它表达的是「不要这个词」，不是对这组读音的偏好。
+bool has_user_upsert_for_key(const std::string &user_db_path, DictionaryKind kind, const std::string &key);
 bool ensure_user_database(const std::string &user_db_path);
 // Switch an existing dictionary database (msime.db) to WAL so the key thread's
 // queries never wait for a learning write's commit. The user journal does this

@@ -581,6 +581,17 @@ bool is_user_inserted(const std::string &user_db_path, DictionaryKind kind, cons
            sqlite3_column_int(stmt.get(), 0) != 0;
 }
 
+bool has_user_upsert_for_key(const std::string &user_db_path, DictionaryKind kind, const std::string &key)
+{
+    UserDatabase db(user_db_path);
+    if (!db)
+        return false;
+    auto stmt = prepare(db.get(), "SELECT 1 FROM user_dictionary_operations "
+                                  "WHERE dictionary=?1 AND key=?2 AND operation='upsert' LIMIT 1");
+    return stmt && bind_text(stmt.get(), 1, kind_name(kind)) && bind_text(stmt.get(), 2, key) &&
+           sqlite3_step(stmt.get()) == SQLITE_ROW;
+}
+
 bool record_pinyin_upsert_from_database(const std::string &main_db_path, const std::string &key,
                                         const std::string &value, const std::string &user_db_path)
 {

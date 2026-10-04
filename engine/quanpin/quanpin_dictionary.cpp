@@ -483,6 +483,7 @@ std::vector<WordItem> QuanpinDictionary::query_exact(const std::string &raw_inpu
                                  [](const auto &lhs, const auto &rhs) { return lhs.first > rhs.first; });
                 // 第一遍只解路径分选胜者，只为胜出切分付完整管线的钱。
                 std::optional<double> winner_score;
+                std::int64_t winner_top_weight = 0;
                 quanpin::Segments winner_segments;
                 for (size_t i = 0; i < decode_pool.size() && i < kAutocorrectContextDecodeLimit; ++i)
                 {
@@ -491,10 +492,25 @@ std::vector<WordItem> QuanpinDictionary::query_exact(const std::string &raw_inpu
                         cut_score.has_value() && (!winner_score.has_value() || *cut_score > *winner_score))
                     {
                         winner_score = cut_score;
+                        winner_top_weight = decode_pool[i].first;
                         winner_segments = cut;
                     }
                 }
-                if (winner_score.has_value() && *winner_score - *primary_score >= kAutocorrectContextMarginLog)
+                // 用户在主切读音上的选择优先于上下文。调频只改词库权重，而加载 LM 时
+                // 路径分里的权重只剩 dictionary_tiebreak（≤0.07）和 reading_prior，翻不过
+                // 1.0 的边际：不拦的话，用户每次都选班长，办证系照样每次领衔。调频把选中词
+                // 抬到它越过的词之上，所以「主切整键首位权重不低于胜出切分首位」正是用户已经
+                // 把主切读音选到前面的样子；再要求主切键有用户 upsert，把这条限制在用户
+                // 表达过偏好的键上，出货词频本身仍交给上下文裁决。不接管时走下面的静态
+                // 合并，它按权重排序，调频照常生效。只在边际达标后才查日志，不给每次按键加查询。
+                const auto user_prefers_primary = [&] {
+                    return primary_top_weight >= winner_top_weight &&
+                           user_dictionary::has_user_upsert_for_key(
+                               metasequoia::path_to_utf8(paths_.user(metasequoia::assets::user_journal)),
+                               user_dictionary::DictionaryKind::Pinyin, primary_key);
+                };
+                if (winner_score.has_value() && *winner_score - *primary_score >= kAutocorrectContextMarginLog &&
+                    !user_prefers_primary())
                 {
                     // 边际达标：胜出切分领衔。merge_alternative_segmentations 假定传入
                     // result 的头部是主切词库行，所以这里仍以主切为锚组装其余列表（从
