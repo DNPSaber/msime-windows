@@ -427,6 +427,12 @@ bool LoadImeConfig()
         g_shuangpin_mid_sentence_helpcode_uppercase =
             tbl["helpcode"]["shuangpin_mid_sentence_helpcode_uppercase"].value_or(false);
         g_shuangpin_direct_helpcode_enabled = tbl["helpcode"]["shuangpin_direct_helpcode"].value_or(false);
+        // 两者互斥（设置页开一个会关另一个）。互斥之前存下的配置可能两个都开着，那时实际生效的本来就是
+        // 直接辅助码；这里只在内存里把句中辅助码视为关闭，让设置页显示与行为一致，不改写用户的配置文件。
+        if (g_shuangpin_direct_helpcode_enabled)
+        {
+            g_shuangpin_mid_sentence_helpcode_enabled = false;
+        }
         g_quanpin_helpcode_enabled = tbl["helpcode"]["quanpin_helpcode"].value_or(true);
         const std::string shuangpin_helpcode_schema =
             tbl["helpcode"]["shuangpin_helpcode_schema"].value_or(std::string("lantian"));

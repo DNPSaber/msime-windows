@@ -8,6 +8,8 @@
 #include <windows.h>
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
+#include <iterator>
 #include <system_error>
 
 namespace
@@ -1570,6 +1572,60 @@ TEST_CASE(EngineShuangpinMidSentenceHelpcodeConstrainsSentenceSources)
         REQUIRE_EQ(first_code(HelpcodeUtils::get_first_han_char(item.word)), code);
     }
     REQUIRE(has_sentence);
+}
+
+TEST_CASE(ShuangpinDirectAndMidSentenceHelpcodeAreMutuallyExclusive)
+{
+    struct ReloadConfigOnExit
+    {
+        ~ReloadConfigOnExit()
+        {
+            InitImeConfig();
+        }
+    } reload;
+    ScopedConfigRoot config_root;
+    InitImeConfig();
+
+    // 开一个就关另一个，两个方向都是。
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeEnabled(true));
+    REQUIRE(SetConfiguredShuangpinDirectHelpcodeEnabled(true));
+    REQUIRE(GetConfiguredShuangpinDirectHelpcodeEnabled());
+    REQUIRE(!GetConfiguredShuangpinMidSentenceHelpcodeEnabled());
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeEnabled(true));
+    REQUIRE(GetConfiguredShuangpinMidSentenceHelpcodeEnabled());
+    REQUIRE(!GetConfiguredShuangpinDirectHelpcodeEnabled());
+    // 关掉一个不会把另一个打开。
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeEnabled(false));
+    REQUIRE(!GetConfiguredShuangpinMidSentenceHelpcodeEnabled());
+    REQUIRE(!GetConfiguredShuangpinDirectHelpcodeEnabled());
+    // 互斥是落盘的：重新加载配置后还是同一个状态。
+    REQUIRE(SetConfiguredShuangpinDirectHelpcodeEnabled(true));
+    InitImeConfig();
+    REQUIRE(GetConfiguredShuangpinDirectHelpcodeEnabled());
+    REQUIRE(!GetConfiguredShuangpinMidSentenceHelpcodeEnabled());
+
+    // 互斥之前存下的配置可能两个都是 true：加载时按直接辅助码生效，句中辅助码显示为关。
+    wchar_t config_dir[32768];
+    const DWORD length = GetEnvironmentVariableW(L"METASEQUOIA_IME_CONFIG_DIR", config_dir, 32768);
+    REQUIRE(length > 0);
+    const std::filesystem::path config_path = std::filesystem::path(std::wstring(config_dir, length)) / L"config.toml";
+    std::string text;
+    {
+        std::ifstream in(config_path, std::ios::binary);
+        REQUIRE(static_cast<bool>(in));
+        text.assign(std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>());
+    }
+    const std::string off = "shuangpin_mid_sentence_helpcode = false";
+    const auto at = text.find(off);
+    REQUIRE(at != std::string::npos);
+    text.replace(at, off.size(), "shuangpin_mid_sentence_helpcode = true");
+    {
+        std::ofstream out(config_path, std::ios::binary | std::ios::trunc);
+        out << text;
+    }
+    InitImeConfig();
+    REQUIRE(GetConfiguredShuangpinDirectHelpcodeEnabled());
+    REQUIRE(!GetConfiguredShuangpinMidSentenceHelpcodeEnabled());
 }
 
 TEST_CASE(EngineShuangpinMidSentenceUppercaseTriggerActsAsBacktick)

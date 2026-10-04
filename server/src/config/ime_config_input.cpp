@@ -359,6 +359,16 @@ bool GetConfiguredShuangpinMidSentenceHelpcodeEnabled()
 
 bool SetConfiguredShuangpinMidSentenceHelpcodeEnabled(bool enabled)
 {
+    // 句中辅助码与直接辅助码互斥：开这个就先关掉那个，设置页随回推的配置快照一起更新。先关后开，
+    // 写到一半失败时最多两个都关着，不会出现两个都开着。
+    if (enabled && g_shuangpin_direct_helpcode_enabled)
+    {
+        if (!WriteConfiguredValue("helpcode", "shuangpin_direct_helpcode", "false"))
+        {
+            return false;
+        }
+        g_shuangpin_direct_helpcode_enabled = false;
+    }
     if (!WriteConfiguredValue("helpcode", "shuangpin_mid_sentence_helpcode", enabled ? "true" : "false"))
     {
         return false;
@@ -434,6 +444,15 @@ bool GetConfiguredShuangpinDirectHelpcodeEnabled()
 
 bool SetConfiguredShuangpinDirectHelpcodeEnabled(bool enabled)
 {
+    // 与句中辅助码互斥，规则同 SetConfiguredShuangpinMidSentenceHelpcodeEnabled。
+    if (enabled && g_shuangpin_mid_sentence_helpcode_enabled)
+    {
+        if (!WriteConfiguredValue("helpcode", "shuangpin_mid_sentence_helpcode", "false"))
+        {
+            return false;
+        }
+        g_shuangpin_mid_sentence_helpcode_enabled = false;
+    }
     if (!WriteConfiguredValue("helpcode", "shuangpin_direct_helpcode", enabled ? "true" : "false"))
     {
         return false;

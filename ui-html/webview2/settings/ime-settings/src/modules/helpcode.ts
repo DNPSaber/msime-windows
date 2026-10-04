@@ -1,4 +1,4 @@
-import { setupDropdownMenu, setupToggleButton } from './shared';
+import { applyToggleState, setupDropdownMenu, setupToggleButton } from './shared';
 import { updateConfig } from './config-sync';
 import { updateCandidatePreviewHelpcode } from './appearance';
 import { serializeHostMessage } from '../../../../shared/messages';
@@ -58,13 +58,14 @@ export function setupHelpcode(): void {
     updateCandidatePreviewHelpcode({ shuangpin_helpcode: active });
   });
 
-  // 双拼句中辅助码开关
+  // 双拼句中辅助码与直接辅助码（万象式）互斥：开一个就关另一个。宿主写配置时同样会关掉另一个并回推
+  // 快照，这里先在页面上关掉，免得两个开关同时亮着一瞬。
   setupToggleButton('midSentenceHelpcodeToggleBtn', (active) => {
+    if (active) applyToggleState('directHelpcodeToggleBtn', false);
     updateConfig('helpcode.shuangpin_mid_sentence_helpcode', active);
   });
-
-  // 双拼直接辅助码（万象式）开关
   setupToggleButton('directHelpcodeToggleBtn', (active) => {
+    if (active) applyToggleState('midSentenceHelpcodeToggleBtn', false);
     updateConfig('helpcode.shuangpin_direct_helpcode', active);
   });
 

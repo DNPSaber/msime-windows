@@ -314,8 +314,9 @@ shuangpin_mid_sentence_helpcode_semicolon = false
 # 第二码仍要大写（ulpbXYih ≡ ulpb`xYih）。开启后这个位置的大写字母不再当末尾双码辅助
 shuangpin_mid_sentence_helpcode_uppercase = false
 # 双拼直接辅助码（万象式）：不要引导键，音节后直接接辅码。三码（双拼 + 第一位辅码，如 uia）自动识别、
-# 整句断句；四码（双拼 + 两位辅码）单独敲时直接定字，句中要在后面补一个 /（如 uiab/）。开启后
-# 末尾辅助码与上面的句中辅助码（反引号/分号）都让位给它
+# 整句断句；四码（双拼 + 两位辅码）单独敲时直接定字，句中要在后面补一个 /（如 uiab/）。与上面的句中
+# 辅助码互斥：设置页开启其中一个会自动关闭另一个；两个都写成 true 时按直接辅助码生效。开启后末尾辅助码
+# 也让位给它
 shuangpin_direct_helpcode = false
 # 全拼辅助码
 quanpin_helpcode = true
