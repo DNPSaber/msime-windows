@@ -146,6 +146,44 @@ TEST_CASE(date_time_query_tags_each_candidate_with_a_stable_format_id)
     REQUIRE_EQ(metasequoia::local_modes::date_time_format_ids("xq").size(), static_cast<size_t>(4));
 }
 
+// Shift+T 后面写数字：指定的日期时间沿用唤醒词的格式 ID，学到的顺序、置顶、固定位置跟着走。
+TEST_CASE(date_time_query_formats_a_specific_date_or_time)
+{
+    const LocalDateTime now = SampleTime();
+    const auto date = metasequoia::local_modes::query_date_time("20241225", &now);
+    REQUIRE_EQ(date.size(), static_cast<size_t>(15));
+    REQUIRE_EQ(date[0].word, std::string("2024年12月25日"));
+    REQUIRE_EQ(date[9].word, std::string("2024年12月25日 星期三"));
+    REQUIRE_EQ(date[0].pinyin, std::string("date:ymd_cn"));
+    REQUIRE_EQ(metasequoia::local_modes::date_time_category("20241225"), std::string("date"));
+
+    const auto month_day = metasequoia::local_modes::query_date_time("1/5", &now);
+    REQUIRE_EQ(month_day[0].word, std::string("2026年1月5日"));
+
+    const auto year_month = metasequoia::local_modes::query_date_time("2024/12", &now);
+    REQUIRE_EQ(year_month.size(), static_cast<size_t>(5));
+    REQUIRE_EQ(year_month[0].word, std::string("2024年12月"));
+    const auto date_ids = metasequoia::local_modes::date_time_format_ids("rq");
+    for (const auto &item : year_month)
+        REQUIRE(std::find(date_ids.begin(), date_ids.end(), item.pinyin) != date_ids.end());
+    // 年月几种在唤醒词下给不出，rq 的候选不变。
+    REQUIRE_EQ(metasequoia::local_modes::query_date_time("rq", &now).size(), static_cast<size_t>(17));
+
+    const auto time = metasequoia::local_modes::query_date_time("9:05", &now);
+    REQUIRE_EQ(time[0].word, std::string("09:05"));
+    REQUIRE_EQ(time[0].pinyin, std::string("time:hm"));
+    REQUIRE_EQ(metasequoia::local_modes::date_time_category("9:05"), std::string("time"));
+
+    const auto date_time = metasequoia::local_modes::query_date_time("2024122514:30", &now);
+    REQUIRE_EQ(date_time[0].word, std::string("2024-12-25 14:30:00"));
+    REQUIRE_EQ(metasequoia::local_modes::date_time_category("2024122514:30"), std::string("time"));
+
+    REQUIRE(metasequoia::local_modes::is_date_time_query("2024/2/29", &now));
+    REQUIRE(!metasequoia::local_modes::is_date_time_query("2023/2/29", &now));
+    REQUIRE(!metasequoia::local_modes::is_date_time_query("1225", &now));
+    REQUIRE(metasequoia::local_modes::query_date_time("25:00", &now).empty());
+}
+
 TEST_CASE(date_time_query_rejects_unknown_words_and_honors_limit)
 {
     const LocalDateTime now = SampleTime();

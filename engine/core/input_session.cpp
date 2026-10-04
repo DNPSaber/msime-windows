@@ -1,6 +1,7 @@
 #include "input_session.h"
 
 #include "../common/helpcode_utils.h"
+#include "../contracts/date_time_input.h"
 #include "../contracts/direct_helpcode.h"
 #include "../local_modes/date_time_query.h"
 #include "../local_modes/emoji_query.h"
@@ -910,7 +911,13 @@ KeyResult InputSession::handle_local_character(char character)
     }
     if (local_input_mode_ == LocalInputMode::DateTime)
     {
-        if (character < 'a' || character > 'z')
+        // 唤醒词只收小写字母；数字开头的指定日期时间收数字、/ 和 :，形状与 TSF、Server 共用
+        // contracts/date_time_input.h。
+        const bool keyword_letter = character >= 'a' && character <= 'z' &&
+                                    std::all_of(local_preedit_.begin() + 1, local_preedit_.end(),
+                                                [](char ch) { return ch >= 'a' && ch <= 'z'; });
+        if (!keyword_letter && !FanyImeDateTimeInput::AcceptsAt(local_preedit_.data(), local_preedit_.size(),
+                                                                local_preedit_.size(), character))
         {
             return {true, std::nullopt, std::nullopt};
         }

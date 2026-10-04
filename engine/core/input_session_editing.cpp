@@ -1,4 +1,5 @@
 #include "input_session.h"
+#include "../contracts/date_time_input.h"
 #include "../contracts/direct_helpcode.h"
 #include "../shuangpin/shuangpin_query.h"
 #include "../shuangpin/shuangpin_utils.h"
@@ -192,7 +193,8 @@ KeyResult InputSession::insert_at_caret(char character)
             accepted = lower;
             break;
         case LocalInputMode::DateTime:
-            accepted = false;
+            // 唤醒词不在中间插字；指定的日期时间按与 TSF、Server 同一条形状规则收数字、/ 和 :。
+            accepted = FanyImeDateTimeInput::AcceptsAt(text.data(), text.size(), caret, character);
             break;
         case LocalInputMode::None:
             accepted = lower || (upper && ((scheme() == SchemeType::Quanpin && quanpin_helpcode_enabled_) ||

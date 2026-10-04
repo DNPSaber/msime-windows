@@ -19,6 +19,7 @@
 #include "FanyLog.h"
 #include "EditSession.h"
 #include "TfTextLayoutSink.h"
+#include "../../../engine/contracts/date_time_input.h"
 #include "../../../engine/contracts/direct_helpcode.h"
 #include "../../../engine/contracts/mid_sentence_helpcode.h"
 #include <new>
@@ -281,6 +282,19 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeed( //
     }
     if (IsUnicodeModeComposition() && _keystrokeBuffer.GetLength() == 1 && uCode == VK_OEM_PLUS && pwch &&
         *pwch == L'+')
+    {
+        if (pKeyState)
+        {
+            pKeyState->Category = CATEGORY_COMPOSING;
+            pKeyState->Function = FUNCTION_INPUT;
+        }
+        return TRUE;
+    }
+
+    // T-mode: digits, '/' and ':' that still extend a date/time are input. The rest keep their usual
+    // meaning below (digits select, '/' and ':' are punctuation); Shift+digit never matches here.
+    if (IsDateTimeInputKey(uCode, pwch ? *pwch : 0, _keystrokeBuffer.Get(), _keystrokeBuffer.GetLength(),
+                           _caretPosition))
     {
         if (pKeyState)
         {
@@ -877,6 +891,20 @@ bool CCompositionProcessorEngine::IsDirectHelpcodeInputKey(UINT uCode, WCHAR wch
     return IsDirectHelpcodeSlashKey(uCode, wch, buffer, length, caret) ||
            (Global::DirectHelpcodeEnabled.load(std::memory_order_relaxed) &&
             IsMicrosoftShuangpinIngKeyAt(uCode, wch, buffer, length, caret));
+}
+
+// Server 按同一条形状规则改输入串（engine/contracts/date_time_input.h）。看不到 T 模式开没开，只认开头的 T，
+// Server 也一样不看，两边才不会分叉。小键盘数字也算：Server 收到时已经把它归一成主键盘数字。
+bool CCompositionProcessorEngine::IsDateTimeInputKey(UINT uCode, WCHAR wch, const WCHAR *buffer, DWORD_PTR length,
+                                                     DWORD_PTR caret)
+{
+    const bool digit_key = (uCode >= L'0' && uCode <= L'9') || (uCode >= VK_NUMPAD0 && uCode <= VK_NUMPAD9);
+    const bool digit = digit_key && wch >= L'0' && wch <= L'9';
+    const bool slash = uCode == VK_OEM_2 && wch == L'/';
+    const bool colon = uCode == VK_OEM_1 && wch == L':';
+    return (digit || slash || colon) && buffer != nullptr &&
+           FanyImeDateTimeInput::AcceptsAt(buffer, static_cast<std::size_t>(length),
+                                           static_cast<std::size_t>(min(caret, length)), wch);
 }
 
 // 分号触发的句中辅助码段在按键缓冲里记成反引号，与 Server 的 raw 一致。在加入缓冲之前、按与吃键

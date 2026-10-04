@@ -9,6 +9,7 @@
 #include "ipc/candidate_text_policy.h"
 #include "ipc/candidate_translation_policy.h"
 #include "ipc/input_key_policy.h"
+#include "engine/contracts/date_time_input.h"
 #include "engine/contracts/direct_helpcode.h"
 #include "engine/contracts/ipc_negotiation.h"
 #include "engine/contracts/mid_sentence_helpcode.h"
@@ -153,6 +154,27 @@ bool IsDirectHelpcodeSlashKey(UINT keycode, WCHAR wch, const std::string &raw_in
     return g_inputSession->accepts_direct_helpcode_slash(caret);
 }
 
+// Shift+T 指定日期时间的数字、/ 和 :：插入后 T 后面那一串还能接成某种日期时间形状时它是编码键，否则数字
+// 仍是选词键、/ 和 : 仍是标点；Shift+数字的字符不是数字，始终选词。TSF 看不到配置，只按开头的 T 和同一条
+// 形状规则（FanyImeDateTimeInput::AcceptsAt）预判吃键，所以这里也不看 T 模式开没开，两边的输入串才不会
+// 分叉。小键盘数字到这里时已经归一成主键盘数字（NormalizeNumpadDigitKey），TSF 同样收它。光标按
+// IsDirectHelpcodeSlashKey 同样的方式算。
+bool IsDateTimeInputKey(UINT keycode, WCHAR wch, const std::string &raw_input)
+{
+    const bool digit = keycode >= '0' && keycode <= '9' && wch >= L'0' && wch <= L'9';
+    const bool slash = keycode == VK_OEM_2 && wch == L'/';
+    const bool colon = keycode == VK_OEM_1 && wch == L':';
+    if ((!digit && !slash && !colon) || g_inputSession == nullptr)
+    {
+        return false;
+    }
+    const auto &composition = GlobalIme::composition;
+    const size_t caret = composition.raw_input_with_cases != raw_input && composition.caret_position == 0
+                             ? raw_input.size()
+                             : (std::min)(composition.caret_position, raw_input.size());
+    return FanyImeDateTimeInput::AcceptsAt(raw_input.data(), raw_input.size(), caret, static_cast<char>(wch));
+}
+
 bool IsMicrosoftShuangpinIngKey(UINT keycode, WCHAR wch, const std::string &raw_input)
 {
     return IsMicrosoftShuangpinIngKeyAt(keycode, wch, raw_input,
@@ -197,7 +219,8 @@ bool IsSelectionKey(UINT keycode)
             const bool shift_only = (Global::ModifiersDown & 0b00000111u) == 0b00000001u;
             return shift_only && keycode >= '1' && keycode <= '9';
         }
-        return true;
+        // T 模式指定日期时间：接得上的数字是编码键。
+        return !IsDateTimeInputKey(keycode, Global::Wch, raw);
     }
     return false;
 }
@@ -413,6 +436,10 @@ bool ApplyCompositionEditKey(UINT keycode, WCHAR wch, UINT modifiers_down, bool 
         else if (IsJapaneseLongVowelKey(keycode, wch))
         {
             input = '-';
+        }
+        else if (IsDateTimeInputKey(keycode, wch, raw))
+        {
+            input = static_cast<char>(wch);
         }
         else if (IsUnicodeCompositionActive(raw) && keycode >= '0' && keycode <= '9')
         {
@@ -881,6 +908,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     const bool is_mid_sentence_helpcode_marker =
         IsMidSentenceHelpcodeMarkerKey(Global::Keycode, Global::Wch, input_before_key);
     const bool is_direct_helpcode_slash = IsDirectHelpcodeSlashKey(Global::Keycode, Global::Wch, input_before_key);
+    const bool is_date_time_input_key = IsDateTimeInputKey(Global::Keycode, Global::Wch, input_before_key);
     // 日语模式下 '-' 是长音符输入键，既不翻页也不做词转字。
     const bool is_japanese_long_vowel = IsJapaneseLongVowelKey(Global::Keycode, Global::Wch);
     const int word_character_direction =
@@ -890,7 +918,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     const bool is_commit_with_highlighted_candidate_punctuation =
         word_character_direction != 0 ||
         (!is_manual_pinyin_separator && !is_microsoft_shuangpin_ing_key && !is_mid_sentence_helpcode_marker &&
-         !is_direct_helpcode_slash &&
+         !is_direct_helpcode_slash && !is_date_time_input_key &&
          IsCommitWithHighlightedCandidatePunctuationInCandidateMode(Global::Keycode, Global::Wch));
     const bool is_selection_key = IsSelectionKey(Global::Keycode);
     const bool is_unicode_shift_digit_selection =
@@ -902,7 +930,8 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
         Global::Keycode == VK_LEFT || Global::Keycode == VK_RIGHT || Global::Keycode == VK_BACK ||
         Global::Keycode == VK_DELETE || (Global::Keycode >= 'A' && Global::Keycode <= 'Z') ||
         is_manual_pinyin_separator || is_microsoft_shuangpin_ing_key || is_mid_sentence_helpcode_marker ||
-        is_direct_helpcode_slash || is_unicode_hex_digit || is_unicode_plus || is_japanese_long_vowel;
+        is_direct_helpcode_slash || is_unicode_hex_digit || is_unicode_plus || is_japanese_long_vowel ||
+        is_date_time_input_key;
     const bool should_forward_key_to_session = !is_commit_with_highlighted_candidate_punctuation && !is_selection_key &&
                                                !is_paging_key && !is_composition_edit_key;
 
@@ -1192,7 +1221,8 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     //
     if (FanyImeIpc::ShouldSendCompositionReply(Global::Keycode >= 'A' && Global::Keycode <= 'Z',
                                                is_manual_pinyin_separator, is_microsoft_shuangpin_ing_key,
-                                               is_unicode_hex_digit, is_unicode_plus, is_japanese_long_vowel))
+                                               is_unicode_hex_digit, is_unicode_plus, is_japanese_long_vowel,
+                                               is_date_time_input_key))
     {
         if (IsUiLessMode())
         {
@@ -1283,10 +1313,10 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     // 空格和数字键可能会触发造词，如果数字键上屏的汉字字符串所对应的拼音比实际的拼音要短的话，
     // 那么，就可能会触发造词事件，那么，就要适时改变候选框的状态
     //
-    /* VK_SPACE, Digits (U-mode: Shift+1..9) */
+    /* VK_SPACE, Digits (U-mode: Shift+1..9; T-mode digits that extend a date/time are input) */
     if (Global::Keycode == VK_SPACE || is_unicode_shift_digit_selection ||
-        (!IsUnicodeCompositionActive(GlobalIme::composition.raw_input_with_cases) && Global::Keycode > '0' &&
-         Global::Keycode <= '9'))
+        (!IsUnicodeCompositionActive(GlobalIme::composition.raw_input_with_cases) && !is_date_time_input_key &&
+         Global::Keycode > '0' && Global::Keycode <= '9'))
     {
         ProcessSelectionKey(Global::Keycode, client_id, activation_epoch);
         SendCurrentDataToClient(client_id, activation_epoch, request_id);

@@ -1,3 +1,4 @@
+#include "../date_time_input.h"
 #include "../direct_helpcode.h"
 #include "../ipc_negotiation.h"
 #include "../mid_sentence_helpcode.h"
@@ -187,6 +188,35 @@ int main()
     // 关着时与原来的规则一致（只看最后一个 '）；开着时大写段不算键：nihkXb 里 b 后面接 ; 是 b; 音节。
     CHECK(semicolon_at(L"nihkb", false) && !semicolon_at(L"nihkXb", false) && semicolon_at(L"nihkXb", true));
     CHECK(semicolon_at(L"ni'b", false) && !semicolon_at(L"nihk", true));
+    // Shift+T 指定日期时间的形状规则，TSF（WCHAR）、Server 与引擎（char）共用。
+    const auto date_time_at = [](const std::wstring &text, std::size_t caret, wchar_t ch) {
+        return FanyImeDateTimeInput::AcceptsAt(text.data(), text.size(), caret, ch);
+    };
+    const auto date_time_end = [&](const std::wstring &text, wchar_t ch) {
+        return date_time_at(text, text.size(), ch);
+    };
+    CHECK(date_time_end(L"T", L'2') && date_time_end(L"T2024122", L'5') && date_time_end(L"T20241225", L'1'));
+    CHECK(date_time_end(L"T2024122514", L':') && date_time_end(L"T2024122514:30", L':'));
+    CHECK(!date_time_end(L"T2024122514:30:00", L'1') && !date_time_end(L"T20241225", L':'));
+    CHECK(date_time_end(L"T2024", L'/') && date_time_end(L"T2024/1", L'2') && date_time_end(L"T2024/12", L'/'));
+    CHECK(!date_time_end(L"T2024/12/25", L'1') && !date_time_end(L"T2024/12/25", L'/'));
+    CHECK(date_time_end(L"T12", L'/') && date_time_end(L"T9", L':') && date_time_end(L"T9:0", L'5'));
+    CHECK(!date_time_end(L"T123", L'/') && !date_time_end(L"T123", L':') && !date_time_end(L"T12/25", L':'));
+    CHECK(!date_time_end(L"T", L'/') && !date_time_end(L"T", L':') && !date_time_end(L"Trq", L'1'));
+    CHECK(!date_time_end(L"U12", L'3') && !date_time_end(L"T2024", L'a') && !date_time_end(L"T", L'!'));
+    // 光标在中间：插入后的整串仍要能接成某种形状；光标不能停在开头的 T 前面。
+    CHECK(!date_time_at(L"T2024/12", 1, L'1') && date_time_at(L"T202412", 5, L'1') && !date_time_at(L"T2", 0, L'1'));
+    CHECK(FanyImeDateTimeInput::MatchComplete("20241225", 8).shape == FanyImeDateTimeInput::Shape::Date);
+    CHECK(FanyImeDateTimeInput::MatchComplete("2024122514", 10).shape == FanyImeDateTimeInput::Shape::DateTime);
+    CHECK(FanyImeDateTimeInput::MatchComplete("2024122514:30:05", 16).group_count == 3);
+    CHECK(FanyImeDateTimeInput::MatchComplete("2024/1/5", 8).shape == FanyImeDateTimeInput::Shape::YearMonthDay);
+    CHECK(FanyImeDateTimeInput::MatchComplete("2024/12", 7).shape == FanyImeDateTimeInput::Shape::YearMonth);
+    CHECK(FanyImeDateTimeInput::MatchComplete("12/25", 5).shape == FanyImeDateTimeInput::Shape::MonthDay);
+    CHECK(FanyImeDateTimeInput::MatchComplete("9:05", 4).shape == FanyImeDateTimeInput::Shape::Time);
+    CHECK(FanyImeDateTimeInput::MatchComplete("1430", 4).shape == FanyImeDateTimeInput::Shape::None);
+    CHECK(FanyImeDateTimeInput::MatchComplete("12/", 3).shape == FanyImeDateTimeInput::Shape::None);
+    CHECK(FanyImeDateTimeInput::MatchComplete("9:5", 3).shape == FanyImeDateTimeInput::Shape::None);
+    static_assert(FanyImeDateTimeInput::AcceptsAt("T2024", 5, 5, '/'), "the date shape must be usable at compile time");
     const std::wstring voice(1000, L'x');
     const auto frames = FanyImeVoiceCompositionPipe::EncodeSnapshot(voice, 7);
     CHECK(FanyImeVoiceCompositionPipe::AssembleFrames(frames) == voice);

@@ -172,7 +172,7 @@ bool IsDateTimeInput(const std::string &raw)
 {
     if (!IsDateTimeCompositionActive(raw) || raw.size() <= 1)
         return false;
-    return metasequoia::local_modes::is_date_time_keyword(raw.substr(1));
+    return metasequoia::local_modes::is_date_time_query(raw.substr(1));
 }
 
 bool IsEmojiInput(const std::string &raw)

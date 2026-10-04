@@ -28,6 +28,7 @@
 #include "ai/ai_assistant.h"
 #include "english/english_ime.h"
 #include "config/ime_config.h"
+#include "engine/contracts/date_time_input.h"
 #include "conversion/chinese_converter.h"
 #include "log/candidate_diag_log.h"
 #include "ipc/event_listener_internal.h"
@@ -229,9 +230,13 @@ bool IsUnicodeCompositionActive(const std::string &raw)
                        [](unsigned char ch) { return IsHexChar(ch); });
 }
 
+// T 后面是小写唤醒词，或者以数字开头的指定日期时间（形状见 engine/contracts/date_time_input.h）。后者
+// 不再看其余字符：字母键照常进输入串，T2024a 仍算 T 模式，只是没有候选。
 bool IsDateTimeCompositionActive(const std::string &raw)
 {
-    return g_date_time_mode_triggered && !raw.empty() && raw.front() == 'T' &&
+    if (!g_date_time_mode_triggered || raw.empty() || raw.front() != 'T')
+        return false;
+    return FanyImeDateTimeInput::IsSpecificBody(raw.data() + 1, raw.size() - 1) ||
            std::all_of(raw.begin() + 1, raw.end(), [](unsigned char ch) { return ch >= 'a' && ch <= 'z'; });
 }
 

@@ -2364,6 +2364,34 @@ int run_test()
                 date_time_session.local_input_mode() == metasequoia::LocalInputMode::None,
             "Backspace on a bare date/time prefix did not leave the mode.");
 
+    // 指定的日期时间：数字、/ 和 : 接得上形状才收，接不上的吞掉，预编辑保持原样。
+    require(date_time_session.handle_character('T', true).handled, "Date/time mode could not be re-entered.");
+    type(date_time_session, "2024/12/25");
+    require(date_time_session.preedit() == "T2024/12/25" && date_time_session.candidates().size() == 15 &&
+                date_time_session.candidates().front().word == "2024年12月25日",
+            "A specific date did not produce candidates for that day.");
+    require(date_time_session.handle_character('1').handled && date_time_session.handle_character(':').handled &&
+                date_time_session.preedit() == "T2024/12/25",
+            "A key that cannot extend the date leaked into the preedit.");
+    require(date_time_session.handle_command(metasequoia::Command::MoveLeft).handled &&
+                date_time_session.handle_command(metasequoia::Command::MoveLeft).handled &&
+                date_time_session.handle_command(metasequoia::Command::MoveLeft).handled &&
+                date_time_session.handle_command(metasequoia::Command::Backspace).handled &&
+                date_time_session.preedit() == "T2024/1/25" && date_time_session.handle_character('1').handled &&
+                date_time_session.preedit() == "T2024/11/25" &&
+                date_time_session.candidates().front().word == "2024年11月25日",
+            "Editing a specific date in the middle did not follow the shared shape rule.");
+    const auto specific_commit = date_time_session.select_candidate(1);
+    require(specific_commit.handled && specific_commit.commit == "2024-11-25" &&
+                date_time_session.local_input_mode() == metasequoia::LocalInputMode::None,
+            "Committing a specific date candidate did not leave date/time mode.");
+    require(date_time_session.handle_character('T', true).handled, "Date/time mode could not be re-entered.");
+    type(date_time_session, "9:05");
+    require(date_time_session.preedit() == "T9:05" && date_time_session.candidates().front().word == "09:05",
+            "A specific time did not produce candidates.");
+    require(date_time_session.handle_command(metasequoia::Command::Cancel).handled,
+            "Cancel did not leave the specific time.");
+
     metasequoia::LocalModeOptions disabled_date_time_options;
     disabled_date_time_options.date_time = false;
     metasequoia::InputSession disabled_date_time(SchemeType::Quanpin);

@@ -147,6 +147,72 @@ int run_test()
                 metasequoia::local_modes::query_date_time("rq", &now, 3).size() == 3,
             "Date/time query limit or unknown-keyword handling was incorrect.");
 
+    // 指定的日期：星期按那一天算，不带此刻的时分。
+    const std::array<const char *, 15> expected_christmas = {
+        "2024年12月25日",
+        "2024-12-25",
+        "2024/12/25",
+        "2024.12.25",
+        "20241225",
+        "24年12月25日",
+        "12月25日",
+        "12-25",
+        "1225",
+        "2024年12月25日 星期三",
+        "12月25日 周三",
+        "2024-12-25 Wed",
+        "二〇二四年十二月二十五日",
+        "贰零贰肆年壹贰月贰伍日",
+        "甲辰年十一月二十五日",
+    };
+    for (const char *input : std::array<const char *, 2>{"20241225", "2024/12/25"})
+    {
+        require_words(metasequoia::local_modes::query_date_time(input, &now), expected_christmas,
+                      "A specific date did not produce the date formats for that day.");
+    }
+    const auto month_day = metasequoia::local_modes::query_date_time("1/5", &now);
+    require(!month_day.empty() && month_day.front().word == "2026年1月5日" &&
+                month_day[9].word == "2026年1月5日 星期一" && month_day.front().pinyin == "date:ymd_cn",
+            "A month/day input did not take the current year.");
+    const std::array<const char *, 5> expected_year_month = {"2024年12月", "2024-12", "2024/12", "2024.12",
+                                                             "二〇二四年十二月"};
+    require_words(metasequoia::local_modes::query_date_time("2024/12", &now), expected_year_month,
+                  "A year/month input did not produce the year/month formats.");
+
+    // 指定的时间：写了秒就只给带秒的格式，没写秒就不补 :00；日期加时间只给带日期的格式。
+    const std::array<const char *, 7> expected_morning = {
+        "09:05", "0905", "上午9:05", "上午9点05分", "上午九点五分", "9:05 AM", "9:05am",
+    };
+    require_words(metasequoia::local_modes::query_date_time("9:05", &now), expected_morning,
+                  "A specific time did not produce the hour/minute formats.");
+    const std::array<const char *, 3> expected_seconds = {"21:05:09", "210509", "09:05:09 PM"};
+    require_words(metasequoia::local_modes::query_date_time("21:05:09", &now), expected_seconds,
+                  "A specific time with seconds did not keep the seconds.");
+    const std::array<const char *, 3> expected_date_time = {"2024-12-25 14:30:00", "2024年12月25日 14:30",
+                                                            "12月25日 下午2:30"};
+    require_words(metasequoia::local_modes::query_date_time("2024122514:30", &now), expected_date_time,
+                  "A specific date and time did not produce the combined formats.");
+    const std::array<const char *, 1> expected_date_time_seconds = {"2024-12-25 08:00:07"};
+    require_words(metasequoia::local_modes::query_date_time("2024122508:00:07", &now), expected_date_time_seconds,
+                  "A specific date and time with seconds dropped the seconds.");
+    require(metasequoia::local_modes::query_date_time("2024122508", &now).front().word == "2024-12-25 08:00:00",
+            "A date with only the hour did not default the minutes to zero.");
+
+    // 取值不对、没写完或形状不对都不出候选，也不算查询。
+    for (const char *input : std::array<const char *, 9>{"20241325", "20230229", "2024/2/30", "24:00", "9:60", "1225",
+                                                         "2024/", "12/25/1", "2024122514:30:61"})
+    {
+        require(metasequoia::local_modes::query_date_time(input, &now).empty() &&
+                    !metasequoia::local_modes::is_date_time_query(input, &now),
+                "An invalid or incomplete date/time input produced candidates.");
+    }
+    require(metasequoia::local_modes::is_date_time_query("20240229", &now) &&
+                metasequoia::local_modes::is_date_time_query("rq", &now) &&
+                metasequoia::local_modes::date_time_category("2024/12") == "date" &&
+                metasequoia::local_modes::date_time_category("2024122514") == "time" &&
+                metasequoia::local_modes::date_time_category("9:05") == "time",
+            "Specific date/time recognition or grouping was incorrect.");
+
     const auto suffix = std::to_string(std::chrono::high_resolution_clock::now().time_since_epoch().count());
     const std::filesystem::path quick_phrase_directory =
         std::filesystem::temp_directory_path() / ("metasequoia-quick-phrase-" + suffix);

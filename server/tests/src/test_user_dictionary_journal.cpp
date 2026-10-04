@@ -862,6 +862,11 @@ TEST_CASE(DateTimeFormatOrderIsLearnedPinnedAndFixedByFormatId)
     // 置顶不计数。
     REQUIRE(user_dictionary::pin_date_time_format(user_path, "date", default_ids, "date:md_cn"));
     REQUIRE_EQ(first("rq"), std::string("date:md_cn"));
+    // Shift+T 后面写的指定日期沿用同一组格式 ID，学到的顺序跟着走；只写年月时只有年月几种，不受影响。
+    const auto christmas = ordered("20241225");
+    REQUIRE_EQ(christmas[0].pinyin, std::string("date:md_cn"));
+    REQUIRE_EQ(christmas[0].word, std::string("12月25日"));
+    REQUIRE_EQ(first("2024/12"), std::string("date:ym_cn"));
 
     // 固定位置按格式 ID 摆，压过学到的顺序；取消后回到学到的顺序。
     const std::string context = user_dictionary::date_time_fixed_position_context("date");
@@ -870,7 +875,8 @@ TEST_CASE(DateTimeFormatOrderIsLearnedPinnedAndFixedByFormatId)
     REQUIRE_EQ(items[0].pinyin, std::string("date:ymd_slash"));
     REQUIRE_EQ(items[0].fixed_position, 1);
     REQUIRE_EQ(items[1].pinyin, std::string("date:md_cn"));
-    REQUIRE_EQ(items.size(), default_ids.size());
+    // 固定位置只挪位置，不多不少。格式表里还有唤醒词给不出的年月几种，所以拿未排序的结果比。
+    REQUIRE_EQ(items.size(), metasequoia::local_modes::query_date_time("rq", &now).size());
     REQUIRE(user_dictionary::clear_fixed_position(user_path, context, "date:ymd_slash", "date:ymd_slash"));
     REQUIRE_EQ(first("rq"), std::string("date:md_cn"));
     items = ordered("rq");

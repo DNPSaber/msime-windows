@@ -53,6 +53,10 @@ class CCompositionProcessorEngine
     // engine/contracts/direct_helpcode.h。
     static bool IsDirectHelpcodeInputKey(UINT uCode, WCHAR wch, _In_reads_opt_(length) const WCHAR *buffer,
                                          DWORD_PTR length, DWORD_PTR caret);
+    // Shift+T 指定日期时间收的编码键：buffer 以 T 开头、插入后还能接成某种日期时间形状的数字、/ 和 :。
+    // 规则见 engine/contracts/date_time_input.h。接不上的数字仍是选词键，Shift+数字始终选词。
+    static bool IsDateTimeInputKey(UINT uCode, WCHAR wch, _In_reads_opt_(length) const WCHAR *buffer, DWORD_PTR length,
+                                   DWORD_PTR caret);
     // 当句中辅助码触发键的分号在缓冲里记成反引号（与 Server 的 raw 一致），其余字符原样返回。
     static WCHAR NormalizeMidSentenceHelpcodeTrigger(WCHAR wch, _In_reads_opt_(length) const WCHAR *buffer,
                                                      DWORD_PTR length, DWORD_PTR caret);

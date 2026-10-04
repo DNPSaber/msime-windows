@@ -77,6 +77,8 @@ TEST_CASE(composition_reply_includes_microsoft_shuangpin_ing_key)
     REQUIRE(FanyImeIpc::ShouldSendCompositionReply(false, false, true, false, false, false));
     REQUIRE(FanyImeIpc::ShouldSendCompositionReply(true, false, false, false, false, false));
     REQUIRE(!FanyImeIpc::ShouldSendCompositionReply(false, false, false, false, false, false));
+    // T 模式指定日期时间的数字、/ 和 : 进输入串，TSF 同样在等这一帧。
+    REQUIRE(FanyImeIpc::ShouldSendCompositionReply(false, false, false, false, false, false, true));
 }
 
 TEST_CASE(backspace_retracts_the_last_selected_segment_before_deleting)

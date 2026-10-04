@@ -544,6 +544,12 @@ bool CMetasequoiaIME::_ClassifyDeferredKeyDown(_In_ ITfContext *pContext, WPARAM
             isInputKey = CCompositionProcessorEngine::IsDirectHelpcodeInputKey(
                 *classifiedCode, *classifiedWch, shadow.rawInput.data(), shadow.rawInput.size(), shadow.caret);
         }
+        // T 模式指定日期时间的数字、/ 和 :，与同步路径同一条形状规则，按影子状态算。
+        if (!isInputKey)
+        {
+            isInputKey = CCompositionProcessorEngine::IsDateTimeInputKey(
+                *classifiedCode, *classifiedWch, shadow.rawInput.data(), shadow.rawInput.size(), shadow.caret);
+        }
         if (shadow.inputLength == 0 && (GetKeyState(VK_CAPITAL) & 0x0001) != 0 && *classifiedWch >= L'A' &&
             *classifiedWch <= L'Z' && *classifiedCode >= L'A' && *classifiedCode <= L'Z')
         {
