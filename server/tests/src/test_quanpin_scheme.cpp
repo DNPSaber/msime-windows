@@ -669,7 +669,7 @@ TEST_CASE(QuanpinAutocorrectInsertionTableEntriesAreLegal)
     }
 }
 
-TEST_CASE(QuanpinAutocorrectCutGatesEachTypeIndependently)
+TEST_CASE(QuanpinAutocorrectCutTypeBitSwitchMatrix)
 {
     const unsigned none = 0;
     const unsigned transposition_only = quanpin::kAutocorrectTransposition;
@@ -722,6 +722,24 @@ TEST_CASE(QuanpinJianpinShapeGuardBlocksCorrection)
     REQUIRE(!quanpin::looks_like_syllable_with_jianpin_tail("wj"));
 }
 
+// The counterpart of QuanpinJianpinShapeGuardBlocksCorrection: the shape predicate
+// says "jianpin intent", and the correction search still cuts it anyway. Both are
+// correct -- the guard is applied by the callers, not here.
+TEST_CASE(QuanpinAutocorrectCutExplainsJianpinShapeByGeneratedSubstitution)
+{
+    const unsigned both = quanpin::kAutocorrectTransposition | quanpin::kAutocorrectNeighbor;
+    // "keneng" is ken + eng with zero corrected letters. That guard is the CALLERS'
+    // responsibility (quanpin_dictionary.cpp, input_session_composition.cpp) and
+    // autocorrect_cut deliberately does not consult it -- test_pinyin.cpp's "zher"
+    // case documents that same contract, where the correction cut exists by design.
+    // What the generated space changed is coverage, not the guard: it supplies
+    // "eng" -> "ang" as an out-of-table substitution, so the search now explains an
+    // input the static tables happened not to. develop returned empty here only
+    // because no static deletion pair happened to exist, not because a guard fired.
+    // The mask is unreachable in production: see QuanpinAutocorrectCutTypeBitSwitchMatrix.
+    REQUIRE_EQ(quanpin::join_segments(quanpin::autocorrect_cut("keneng", both)), std::string("ken'ang"));
+}
+
 TEST_CASE(QuanpinAutocorrectCutSingleSyllableTranspositions)
 {
     const unsigned both = quanpin::kAutocorrectTransposition | quanpin::kAutocorrectNeighbor;
@@ -752,7 +770,7 @@ TEST_CASE(QuanpinAutocorrectCutPrefersFewestCorrections)
     REQUIRE_EQ(quanpin::join_segments(quanpin::autocorrect_cut("sahnguai", both)), std::string("shan'guai"));
 }
 
-TEST_CASE(QuanpinAutocorrectCutRejectsInputsOutOfScope)
+TEST_CASE(QuanpinAutocorrectCutRejectsInputsWithNoCorrectionPath)
 {
     const unsigned both = quanpin::kAutocorrectTransposition | quanpin::kAutocorrectNeighbor;
     // The mask short-circuits before any table lookup.
@@ -760,17 +778,6 @@ TEST_CASE(QuanpinAutocorrectCutRejectsInputsOutOfScope)
     // Legal input: the caller must only invoke autocorrect when the correction
     // cut already failed, so a fully legal spelling yields no correction.
     REQUIRE(quanpin::autocorrect_cut("shang", both).empty());
-    // "keneng" is a jianpin intent shape: ken + eng with zero corrected letters,
-    // and looks_like_syllable_with_jianpin_tail agrees (pinned by
-    // QuanpinJianpinShapeGuardBlocksCorrection below). That guard is the callers'
-    // responsibility (quanpin_dictionary.cpp, input_session_composition.cpp) and
-    // autocorrect_cut deliberately does not consult it -- test_pinyin.cpp's "zher"
-    // case documents that same contract, where the correction cut exists by design.
-    // What changed here is coverage, not the guard: the generated space supplies
-    // "eng" -> "ang" as an out-of-table substitution, so the search now explains the
-    // input where the static tables happened not to. Unreachable in production for
-    // the same mask reason as QuanpinAutocorrectCutGatesEachTypeIndependently.
-    REQUIRE_EQ(quanpin::join_segments(quanpin::autocorrect_cut("keneng", both)), std::string("ken'ang"));
     // Manual delimiter: user-intended boundary, never rewritten.
     REQUIRE(quanpin::autocorrect_cut("xi'an", both).empty());
     // No correction path: unresolvable garbage.
@@ -883,7 +890,7 @@ TEST_CASE(QuanpinAutocorrectCutMixedDeletionAndNeighbor)
     REQUIRE(quanpin::autocorrect_cut("sahngzh", all).empty());
 }
 
-TEST_CASE(QuanpinAutocorrectCutGatesDeletionIndependently)
+TEST_CASE(QuanpinAutocorrectCutDeletionBitSwitchMatrix)
 {
     const unsigned none = 0;
     const unsigned transposition_only = quanpin::kAutocorrectTransposition;
