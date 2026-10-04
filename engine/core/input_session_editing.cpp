@@ -76,6 +76,39 @@ std::vector<std::size_t> QuanpinRawBoundaries(const std::string &raw, const std:
     boundaries.erase(std::unique(boundaries.begin(), boundaries.end()), boundaries.end());
     return boundaries;
 }
+
+std::string LowercaseWithoutSeparators(const std::string &text)
+{
+    std::string result;
+    result.reserve(text.size());
+    for (const char ch : text)
+    {
+        if (ch != '\'')
+        {
+            result.push_back(static_cast<char>(std::tolower(static_cast<unsigned char>(ch))));
+        }
+    }
+    return result;
+}
+
+// 带辅助码段的双拼（句中辅助码的反引号段 / 大写段、直接辅助码解析出的辅码字母）：按请求里的
+// 段布局切单元，每个音节和挂在它后面的辅码段各算一个单元，按段删除可以只删辅码，光标也能停在
+// 音节与辅码之间。布局对不上原串时不给边界，宿主退回逐字符编辑。
+std::vector<std::size_t> SyllableHelpcodeRawBoundaries(const std::string &raw, const QueryRequest &request)
+{
+    auto units = request.syllable_helpcode_decorations;
+    for (auto &unit : units)
+    {
+        unit.second.insert(unit.second.begin(), '\'');
+    }
+    const std::string &segmentation = request.raw_segmentation.empty() ? request.raw_input : request.raw_segmentation;
+    const std::string display = shuangpin::decorate_segmentation(segmentation, units);
+    if (LowercaseWithoutSeparators(display) != LowercaseWithoutSeparators(raw))
+    {
+        return {};
+    }
+    return QuanpinRawBoundaries(raw, display);
+}
 } // namespace
 
 std::vector<std::size_t> InputSession::segment_raw_boundaries() const
@@ -96,12 +129,11 @@ std::vector<std::size_t> InputSession::segment_raw_boundaries() const
 
     if (current_scheme_type() == SchemeType::Shuangpin)
     {
-        // 带句中辅助码的串没有逐音节的单元模型：按段删除、按段跳光标和光标前缀重算都退回逐字符。
-        // 直接辅助码同理：辅码字母混在音节之间，贪心切分算不出单元边界。
-        if (shuangpin::has_mid_sentence_helpcode(raw_with_cases, engine_.mid_sentence_uppercase_trigger_active()) ||
-            direct_helpcode_enabled_)
+        // 句中辅助码段和直接辅助码的辅码字母混在音节之间，贪心切分算不出单元边界，改按请求带着的
+        // 段布局切。直接辅助码没解析出辅码时请求原样放行，下面的普通切分就是它的切分。
+        if (request().has_syllable_helpcode_layout)
         {
-            return {};
+            return SyllableHelpcodeRawBoundaries(raw_with_cases, request());
         }
         const std::size_t helpcode_length =
             shuangpin::detect_active_double_helpcode_length(raw, raw_with_cases, shuangpin_profile_);

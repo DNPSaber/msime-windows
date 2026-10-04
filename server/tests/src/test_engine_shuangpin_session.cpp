@@ -1428,6 +1428,52 @@ TEST_CASE(SegmentBoundariesKeepHelpcodeAndJianpinTailAsTheirOwnUnits)
     REQUIRE_EQ(jianpin.segment_raw_boundaries(), std::vector<std::size_t>({0, 3, 4}));
 }
 
+TEST_CASE(SegmentBoundariesKeepShuangpinHelpcodeBlocksAsTheirOwnUnits)
+{
+    // Ctrl+Backspace / Ctrl+方向在辅助码串上也按单元走：每个音节和挂在它后面的辅码段各算一个单元。
+    struct ReloadConfigOnExit
+    {
+        ~ReloadConfigOnExit()
+        {
+            InitImeConfig();
+        }
+    } reload;
+    ScopedConfigRoot config_root;
+    InitImeConfig();
+    REQUIRE(SetConfiguredShuangpinMidSentenceHelpcodeEnabled(true));
+    REQUIRE(SetConfiguredShuangpinHelpcodeSchema("ziranma"));
+
+    const auto apply = [](EngineInputSession &session, const std::string &raw) {
+        session.set_pinyin_sequence(raw);
+        session.set_pinyin_sequence_with_cases(raw);
+        session.recompute_candidates();
+    };
+
+    // 句中辅助码：ba`f | wo | kj | ui`d | le。
+    EngineInputSession mid_sentence(SchemeType::Shuangpin, GetXiaoheShuangpinProfile());
+    apply(mid_sentence, "ba`fwokjui`dle");
+    REQUIRE_EQ(mid_sentence.segment_raw_boundaries(), std::vector<std::size_t>({0, 2, 4, 6, 8, 10, 12, 14}));
+
+    // 手动分隔符跟在辅码段后面：边界落在下一个音节的首字母上，删掉前一段后不会留下空段。
+    EngineInputSession delimited(SchemeType::Shuangpin, GetXiaoheShuangpinProfile());
+    apply(delimited, "ba`f'wo");
+    REQUIRE_EQ(delimited.segment_raw_boundaries(), std::vector<std::size_t>({0, 2, 5, 7}));
+
+    // 直接辅助码：三码 uiX 拆成 ui | X 两个单元（石狮 = uiX uiY）。
+    REQUIRE(SetConfiguredShuangpinDirectHelpcodeEnabled(true));
+    EngineInputSession direct(SchemeType::Shuangpin, GetXiaoheShuangpinProfile());
+    const auto first_code = [&direct](const std::string &hanzi) {
+        const std::string annotation = direct.get_helpcode_annotation(hanzi, false);
+        return annotation.size() > 1 ? static_cast<char>(std::tolower(static_cast<unsigned char>(annotation[1])))
+                                     : '\0';
+    };
+    const char stone = first_code("石");
+    const char lion = first_code("狮");
+    REQUIRE(stone != '\0' && lion != '\0');
+    apply(direct, std::string("ui") + stone + "ui" + lion);
+    REQUIRE_EQ(direct.segment_raw_boundaries(), std::vector<std::size_t>({0, 2, 3, 5, 6}));
+}
+
 TEST_CASE(EngineShuangpinDirectHelpcodeDecodesWithoutGuideKey)
 {
     // 直接辅助码（万象式）走 Server 的真实路径：整串写回会话再重算，真实词库、词格与 Google 整句都开着。

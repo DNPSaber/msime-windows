@@ -1944,8 +1944,17 @@ int run_test()
             type(caret, "cD");
             require(caret.preedit() == "ni`cDhc" && caret.caret_position() == 5,
                     "The mid-composition helpcode letters were not inserted at the caret.");
+            // 辅码段是音节后面单独的一个单元：按段删除、按段跳光标都能只落在它上面。
+            require(caret.segment_raw_boundaries() == std::vector<std::size_t>({0, 2, 5, 7}),
+                    "The mid-sentence helpcode block was not a unit of its own.");
+            // 光标停在辅码段后面：候选跟着光标前缀走，不再是整串的词；回到串尾再按整串解码。
+            require(!has_word(caret, "拟好") && !has_word(caret, "你好"),
+                    "The caret prefix after a mid-sentence helpcode block was not decoded on its own.");
+            require(caret.handle_command(metasequoia::Command::MoveEnd).handled, "The caret did not move to the end.");
             require(has_word(caret, "拟好") && !has_word(caret, "你好"),
                     "A helpcode inserted in the middle did not filter its syllable.");
+            for (int step = 0; step < 2; ++step)
+                require(caret.handle_command(metasequoia::Command::MoveLeft).handled, "The caret did not move left.");
             for (int step = 0; step < 3; ++step)
                 require(caret.handle_command(metasequoia::Command::MoveLeft).handled, "The caret did not move left.");
             require(caret.caret_position() == 2 && !caret.handle_character('`').handled && caret.preedit() == "ni`cDhc",
@@ -1976,6 +1985,8 @@ int run_test()
                     "An uppercase letter after a complete syllable did not open a mid-sentence helpcode block.");
             require(first.get_pinyin_segmentation_with_cases() == "niC'hc",
                     "The uppercase helpcode block was not shown after its syllable.");
+            require(first.segment_raw_boundaries() == std::vector<std::size_t>({0, 2, 3, 5}),
+                    "The uppercase helpcode block was not a unit of its own.");
             require(has_word(first, "拟好") && !has_word(first, "你好"),
                     "The uppercase first code did not filter the constrained syllable.");
             // 大写段之后照样能接反引号段，这一节从大写段之后算起。

@@ -258,6 +258,9 @@ void run_session_tests()
                     on->candidates().size() == off->candidates().size(),
                 "Plain shuangpin changed when direct helpcode was turned on.");
         require(on->get_pinyin_sequence() == "uiui", "Plain shuangpin was rewritten by the resolver.");
+        require(on->segment_raw_boundaries() == std::vector<std::size_t>({0, 2, 4}) &&
+                    on->segment_raw_boundaries() == off->segment_raw_boundaries(),
+                "Plain shuangpin lost its unit boundaries when direct helpcode was turned on.");
     }
 
     {
@@ -272,6 +275,9 @@ void run_session_tests()
         require(session->get_pinyin_sequence() == "ui'ui", "The resolver did not strip the helpcode letters.");
         require(session->get_pinyin_segmentation_with_cases() == "uia'uiq",
                 "The helpcode letters were not shown after their syllables.");
+        // 按段删除 / 跳光标的单元：每个音节和它后面的辅码各算一个。
+        require(session->segment_raw_boundaries() == std::vector<std::size_t>({0, 2, 3, 5, 6}),
+                "The direct helpcode letters were not units of their own.");
     }
 
     {
@@ -311,6 +317,8 @@ void run_session_tests()
         require(first_word(*session) == "石狮", "uiab/ui did not keep 石 on the first syllable.");
         require(session->get_pinyin_segmentation_with_cases() == "uiab/'ui",
                 "The four-key code and its slash were not shown after their syllable.");
+        require(session->segment_raw_boundaries() == std::vector<std::size_t>({0, 2, 5, 7}),
+                "The four-key code and its slash were not one unit.");
     }
 
     {
