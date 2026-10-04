@@ -16,7 +16,10 @@
 // 用法（在仓库根目录执行）：
 //   eval_quanpin_autocorrect --db <msime.db> [--samples N] [--seed S]
 //       [--rates 10,25,50,100] [--model mixed|deletion|ambiguous|insertion]
-//       [--resource <dir>] [--csv <path>] [--dump N]
+//       [--resource <dir>] [--csv <path>] [--dump N] [--word-lattice]
+//
+// --word-lattice 打开词格整句联想（产品默认开）：纠错的上下文消解（同档消解、
+// 贵档读法按整句分领衔）只在词格开启时生效，不加这个参数测到的是纯静态排序。
 //
 // 报告分节：混合/漏字/多字模型输出注错率—召回曲线；漏字与多字模型额外输出
 // gate breakdown（字典层两道门把样本切成简拼形/完整合法拼读/纠错可服务三类，
@@ -114,6 +117,9 @@ struct Options
     std::string csv_path;
     std::string seeds_path;
     int dump = 0;
+    // 打开词格整句联想（产品默认开）。纠错的上下文消解只在词格开启时生效，不开时
+    // 测到的是纯静态排序。
+    bool word_lattice = false;
 };
 
 void usage_exit(const std::string &message)
@@ -124,7 +130,8 @@ void usage_exit(const std::string &message)
     }
     std::cerr << "usage: eval_quanpin_autocorrect --db <msime.db> [--samples N] [--seed S]\n"
               << "           [--rates 10,25,50,100] [--model mixed|deletion|ambiguous|insertion|outside]\n"
-              << "           [--resource <dir>] [--csv <path>] [--seeds-file <path>] [--dump N]\n";
+              << "           [--resource <dir>] [--csv <path>] [--seeds-file <path>] [--dump N]\n"
+              << "           [--word-lattice]\n";
     std::exit(2);
 }
 
@@ -251,6 +258,10 @@ Options parse_options(int argc, char *argv[])
             {
                 usage_exit("--dump must be non-negative");
             }
+        }
+        else if (argument == "--word-lattice")
+        {
+            options.word_lattice = true;
         }
         else
         {
@@ -1119,6 +1130,12 @@ int main(int argc, char *argv[])
     const auto staged_user = stage_user_dictionary(options.resource);
     const metasequoia::RuntimePaths paths{options.resource, staged_user, staged_user, options.resource};
     QuanpinDictionary dictionary(options.db_path, paths);
+    if (options.word_lattice)
+    {
+        SentenceAssociationOptions association;
+        association.word_lattice = true;
+        dictionary.set_sentence_association(association);
+    }
 
     std::vector<RateReport> reports;
     AmbiguousReport ambiguous_report;

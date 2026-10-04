@@ -572,15 +572,16 @@ void run_autocorrect_context_user_choice_tests(const std::filesystem::path &data
     }
 }
 
-// 合法输入上的换位手误：ziazheliya 切成 zi'a'zhe'li'ya、jioa 切成 ji'o'a、nia 切成
-// ni'a，每一段都合法，纠错入口的闸原本把它们整个挡在外面。现在按噪声信道整句打分：
-// 词格路径分 + 每处换位 -2.0，原读法代价 0。fixture 无 sc.lm，词格走启发式（单字
-// ln(w/1e6)，词组 ln(w)+3×音节数），下面每组的分数都按它算好写在注释里。
-void run_legal_input_transposition_tests(const std::filesystem::path &data_directory)
+// 合法输入上的手误：ziazheliya 切成 zi'a'zhe'li'ya、jioa 切成 ji'o'a、jiuzheeyang 切成
+// jiu'zhe'e'yang，每一段都合法，纠错入口的闸原本把它们整个挡在外面。现在按噪声信道
+// 整句打分：词格路径分 - 每处纠正的代价（换位 2.0，多字/漏字 3.0），原读法代价 0。
+// fixture 无 sc.lm，词格走启发式
+// （单字 ln(w/1e6)，词组 ln(w)+3×音节数），下面每组的分数都按它算好写在注释里。
+void run_legal_input_correction_tests(const std::filesystem::path &data_directory)
 {
     const auto readings = [](const std::string &pinyin, const quanpin::Segments &segments, unsigned types) {
         std::vector<std::string> keys;
-        for (const auto &cut : quanpin::legal_input_transposition_cuts(pinyin, segments, types, 3))
+        for (const auto &cut : quanpin::legal_input_correction_cuts(pinyin, segments, types, 3))
         {
             quanpin::Segments syllables;
             for (const auto &segment : cut.segments)
@@ -603,12 +604,17 @@ void run_legal_input_transposition_tests(const std::filesystem::path &data_direc
             "A rare legal syllable must offer its common transposition.");
     require(readings("lia", {"lia"}, transposition).empty(),
             "A single rare syllable has no context and must stay uncorrected.");
+    require(
+        offers(readings("jiuzheeyang", {"jiu", "zhe", "e", "yang"}, quanpin::kAutocorrectInsertion), "jiu'zhe'yang"),
+        "An extra letter that splits off a zero-initial syllable must offer the corrected reading.");
     require(readings("ziazheli", {"zi", "a", "zhe", "li"}, quanpin::kAutocorrectNeighbor).empty(),
-            "The legal-input readings must follow the transposition switch.");
-    require(readings("nihao", {"ni", "hao"}, transposition).empty(),
-            "An ordinary legal input must not produce correction readings.");
+            "Neighbor substitutions must stay off on legal input.");
+    require(
+        readings("nihao", {"ni", "hao"}, transposition | quanpin::kAutocorrectInsertion | quanpin::kAutocorrectDeletion)
+            .empty(),
+        "An ordinary legal input must not produce correction readings.");
 
-    const std::filesystem::path directory = data_directory / "legal-input-transposition";
+    const std::filesystem::path directory = data_directory / "legal-input-correction";
     std::filesystem::create_directories(directory);
     {
         Database database(directory / "msime.db");
@@ -623,7 +629,8 @@ void run_legal_input_transposition_tests(const std::filesystem::path &data_direc
         database.execute("CREATE TABLE tbl_1_o(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                          "INSERT INTO tbl_1_o VALUES('o', 'o', '哦', 300000);");
         database.execute("CREATE TABLE tbl_1_y(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
-                         "INSERT INTO tbl_1_y VALUES('ya', 'y', '呀', 500000);");
+                         "INSERT INTO tbl_1_y VALUES('ya', 'y', '呀', 500000);"
+                         "INSERT INTO tbl_1_y VALUES('yang', 'y', '养', 500000);");
         database.execute("CREATE TABLE tbl_1_l(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                          "INSERT INTO tbl_1_l VALUES('li', 'l', '里', 900000);"
                          "INSERT INTO tbl_1_l VALUES('lia', 'l', '俩', 500000);"
@@ -633,7 +640,22 @@ void run_legal_input_transposition_tests(const std::filesystem::path &data_direc
         database.execute("CREATE TABLE tbl_1_j(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                          "INSERT INTO tbl_1_j VALUES('jiao', 'j', '叫', 2000000);"
                          "INSERT INTO tbl_1_j VALUES('jiao', 'j', '教', 1500000);"
-                         "INSERT INTO tbl_1_j VALUES('ji', 'j', '几', 800000);");
+                         "INSERT INTO tbl_1_j VALUES('ji', 'j', '几', 800000);"
+                         "INSERT INTO tbl_1_j VALUES('jiu', 'j', '就', 900000);");
+        database.execute("CREATE TABLE tbl_3_j(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_3_j VALUES('jiu''zhe''yang', 'jzy', '就这样', 5000);");
+        database.execute("CREATE TABLE tbl_1_e(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_e VALUES('e', 'e', '恶', 300000);");
+        database.execute("CREATE TABLE tbl_2_x(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_x VALUES('xie''e', 'xe', '邪恶', 1000);");
+        database.execute("CREATE TABLE tbl_1_x(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_x VALUES('xie', 'x', '写', 2000000);"
+                         "INSERT INTO tbl_1_x VALUES('xie', 'x', '些', 1500000);");
+        database.execute("CREATE TABLE tbl_2_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_s VALUES('shu''e', 'se', '数额', 1000);");
+        database.execute("CREATE TABLE tbl_1_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_s VALUES('she', 's', '社', 2000000);"
+                         "INSERT INTO tbl_1_s VALUES('shu', 's', '数', 900000);");
         database.execute("CREATE TABLE tbl_1_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
                          "INSERT INTO tbl_1_n VALUES('ni', 'n', '你', 900000);"
                          "INSERT INTO tbl_1_n VALUES('nai', 'n', '奶', 900000);");
@@ -695,6 +717,44 @@ void run_legal_input_transposition_tests(const std::filesystem::path &data_direc
         require(session.get_pinyin_segmentation_with_cases() == "jioa",
                 "A single corrected syllable must drop the literal ji'o'a separators.");
     }
+    // 多打一个 e（改变字母数，代价 3.0）：就这样 = ln5000+9-3 = 14.5，就这恶养全是单字
+    // = -2.2。字面切分不是真词，
+    // 纠错领衔，原读法紧跟在第 2 位；预编辑按纠错切分的原始区间分隔，整词上屏吃掉全部字母。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "jiuzheeyang");
+        require(first_two(session, "就这样", "就"),
+                "jiuzheeyang must lead with 就这样 and keep the uncorrected reading second.");
+        require(session.get_pinyin_segmentation_with_cases() == "jiu'zhee'yang",
+                "The preedit must follow the raw spans of the leading insertion correction.");
+        const auto committed = session.select_candidate(static_cast<std::size_t>(0));
+        require(committed.commit == "就这样" && !session.has_composition(),
+                "Selecting the insertion-corrected sentence must consume every typed letter.");
+    }
+
+    // 字面切分是真词（数额）时不认改变字母数的读法：shue 按多一个 u 读成 she 的「社」
+    // 不出现——少一个音节的句子在真实语言模型里常常分更高，会稳定挂在第 2 位。候选里
+    // 不应有任何纠错标记（社 作为 shu 的前缀单字以外不该出现）。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "shue");
+        require(session.candidates().front().word == "数额" &&
+                    std::none_of(session.candidates().begin(), session.candidates().end(),
+                                 [](const WordItem &item) { return !item.corrected_from.empty(); }),
+                "A length-changing correction must not be offered over a literal dictionary word.");
+    }
+    // 被裁掉的纠错读法不能波及原读法：xiee 按多一个 e 读成 xie 被丢掉之后，邪恶 后面的
+    // 前缀单字 写/些 读音也是 xie，曾因此全被标成纠错。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "xiee");
+        require(!session.candidates().empty() && session.candidates().front().word == "邪恶" &&
+                    find_candidate_index(session, "写") < session.candidates().size() &&
+                    std::none_of(session.candidates().begin(), session.candidates().end(),
+                                 [](const WordItem &item) { return !item.corrected_from.empty(); }),
+                "A discarded correction reading must not mark the literal reading's prefix characters.");
+    }
+
     // 罕见音节：来这里 = ln3000+9-2 = 15.0，俩这里 = -0.9。
     {
         metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
@@ -767,6 +827,144 @@ void run_legal_input_transposition_tests(const std::filesystem::path &data_direc
         type(session, "ziazheli");
         require(find_candidate_index(session, "在这里") == session.candidates().size(),
                 "The legal-input correction must stay off with autocorrection disabled.");
+    }
+
+    std::filesystem::remove_all(directory);
+}
+
+// 贵档读法在上下文明显更好时可以领衔：shiideya 的换位读法 shi + ide->die（权重 10，
+// 是爹呀）比多字读法 shii->shi（权重 12，是的呀）便宜一档，按旧规则贵档永远排在最后。
+// fixture 无 sc.lm，启发式打分：是的(ln10000+6) + 呀(ln0.5) - 2.4 = 14.1，
+// 是 + 爹 + 呀 全是单字 = ln0.9 + ln0.01 + ln0.5 - 2.0 = -7.4。
+void run_autocorrect_costlier_context_tests(const std::filesystem::path &data_directory)
+{
+    const std::filesystem::path directory = data_directory / "autocorrect-costlier-context";
+    std::filesystem::create_directories(directory);
+    {
+        Database database(directory / "msime.db");
+        database.execute("CREATE TABLE tbl_1_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_s VALUES('shi', 's', '是', 900000);");
+        database.execute("CREATE TABLE tbl_2_s(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_s VALUES('shi''de', 'sd', '是的', 10000);");
+        database.execute("CREATE TABLE tbl_1_d(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_d VALUES('die', 'd', '爹', 10000);"
+                         "INSERT INTO tbl_1_d VALUES('de', 'd', '的', 900000);");
+        database.execute("CREATE TABLE tbl_1_y(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_y VALUES('ya', 'y', '呀', 500000);");
+    }
+
+    metasequoia::RuntimePaths paths;
+    paths.resources = directory;
+    paths.user_data = directory;
+    paths.cache = directory;
+    paths.dictionaries = directory;
+    const unsigned both = quanpin::kAutocorrectTransposition | quanpin::kAutocorrectNeighbor;
+    SentenceAssociationOptions lattice_only;
+    lattice_only.word_lattice = true;
+
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        session.set_sentence_association(lattice_only);
+        type(session, "shiideya");
+        require(!session.candidates().empty() && session.candidates().front().word == "是的呀",
+                "A costlier correction the context clearly prefers must lead.");
+        require(find_candidate_index(session, "是爹呀") < session.candidates().size(),
+                "The cheaper correction must stay available.");
+        require(session.get_pinyin_segmentation_with_cases() == "shii'de'ya",
+                "The preedit must follow the leading costlier correction.");
+    }
+    // 只开万象重排、不显示 Trigram 整句（用户实际配置）：上下文消解照样生效。fixture
+    // 没有 .gram，重排不出整句行，贵档胜者由它的最长前缀词「是的」领衔。
+    {
+        SentenceAssociationOptions rerank_only;
+        rerank_only.collocation_rerank = true;
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        session.set_sentence_association(rerank_only);
+        type(session, "shiideya");
+        require(!session.candidates().empty() && session.candidates().front().word == "是的",
+                "The context rerank must run whenever any sentence source is on, not only the Trigram row.");
+    }
+
+    std::filesystem::remove_all(directory);
+}
+
+// 多字、漏字纠错的读音和原始字母不等长，选词时要按纠错切分记录的原始区间消耗字母，
+// 不能按读音长度：buuhui 选「不会」曾剩下一个 i，选「张」会把 zhngg 一起吞掉。
+void run_autocorrect_selection_consumption_tests(const std::filesystem::path &data_directory)
+{
+    const unsigned both = quanpin::kAutocorrectTransposition | quanpin::kAutocorrectNeighbor;
+    const unsigned all_types = both | quanpin::kAutocorrectDeletion | quanpin::kAutocorrectInsertion;
+    require(quanpin::corrected_reading_raw_length("buuhui", {"bu", "hui"}, all_types) == std::optional<size_t>(6),
+            "An insertion correction must cover every typed letter.");
+    // 多出的 u 归前归后两可（buu -> bu 或 uhui -> hui，代价相同），两种都对，只要剩下的
+    // 部分仍能纠回「会」；不能出现的是按读音长度把 hui 吞掉一截。
+    const auto prefix_length = quanpin::corrected_reading_raw_length("buuhui", {"bu"}, all_types);
+    require(prefix_length == std::optional<size_t>(2) || prefix_length == std::optional<size_t>(3),
+            "A corrected prefix must cover exactly the letters of one explanation.");
+    require(quanpin::corrected_reading_raw_length("zhngguo", {"zhang"}, all_types) == std::optional<size_t>(4),
+            "A deletion correction must cover only the letters actually typed.");
+    require(!quanpin::corrected_reading_raw_length("nihao", {"ni"}, all_types).has_value(),
+            "A plain prefix of a legal input must keep the reading-length consumption.");
+
+    const std::filesystem::path directory = data_directory / "autocorrect-selection-consumption";
+    std::filesystem::create_directories(directory);
+    {
+        Database database(directory / "msime.db");
+        database.execute("CREATE TABLE tbl_2_b(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_b VALUES('bu''hui', 'bh', '不会', 1000);");
+        database.execute("CREATE TABLE tbl_1_b(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_b VALUES('bu', 'b', '不', 900000);");
+        database.execute("CREATE TABLE tbl_1_h(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_h VALUES('hui', 'h', '会', 900000);"
+                         "INSERT INTO tbl_1_h VALUES('hao', 'h', '好', 900000);");
+        database.execute("CREATE TABLE tbl_1_z(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_z VALUES('zhang', 'z', '张', 900000);");
+        database.execute("CREATE TABLE tbl_1_g(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_g VALUES('guo', 'g', '国', 900000);");
+        database.execute("CREATE TABLE tbl_1_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_1_n VALUES('ni', 'n', '你', 900000);");
+        database.execute("CREATE TABLE tbl_2_n(key TEXT,jp TEXT,value TEXT,weight INTEGER);"
+                         "INSERT INTO tbl_2_n VALUES('ni''hao', 'nh', '你好', 1000);");
+    }
+
+    metasequoia::RuntimePaths paths;
+    paths.resources = directory;
+    paths.user_data = directory;
+    paths.cache = directory;
+    paths.dictionaries = directory;
+
+    // 多打一个 u：整词上屏后不能剩下 i。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "buuhui");
+        const auto committed = session.select_candidate(candidate_index(session, "不会"));
+        require(committed.commit == "不会" && !session.has_composition(),
+                "Selecting the insertion-corrected word must consume the whole input.");
+    }
+    // 只选前缀「不」：剩下的部分（hui 或 uhui）仍要能出「会」。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "buuhui");
+        (void)session.select_candidate(candidate_index(session, "不"));
+        require(session.has_composition() && (session.preedit() == "hui" || session.preedit() == "uhui") &&
+                    find_candidate_index(session, "会") < session.candidates().size(),
+                "After a corrected prefix the rest must still read as hui.");
+    }
+    // 漏打一个 a：选「张」只消耗 zhng，剩下 guo。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "zhngguo");
+        (void)session.select_candidate(candidate_index(session, "张"));
+        require(session.has_composition() && session.preedit() == "guo",
+                "A deletion-corrected prefix must not swallow the following letters.");
+    }
+    // 合法输入照旧按读音长度消耗。
+    {
+        metasequoia::InputSession session(SchemeType::Quanpin, both, true, true, true, paths);
+        type(session, "nihao");
+        (void)session.select_candidate(candidate_index(session, "你"));
+        require(session.has_composition() && session.preedit() == "hao",
+                "A plain prefix of a legal input must keep its consumption.");
     }
 
     std::filesystem::remove_all(directory);
@@ -1839,7 +2037,9 @@ int run_test()
     run_autocorrect_context_ranking_tests(data_directory);
     run_autocorrect_context_layering_tests(data_directory);
     run_autocorrect_context_user_choice_tests(data_directory);
-    run_legal_input_transposition_tests(data_directory);
+    run_legal_input_correction_tests(data_directory);
+    run_autocorrect_selection_consumption_tests(data_directory);
+    run_autocorrect_costlier_context_tests(data_directory);
 
     run_autocorrect_generated_space_tests(data_directory);
 #endif

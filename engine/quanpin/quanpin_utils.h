@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <optional>
 #include <string>
 #include <unordered_set>
 #include <vector>
@@ -99,6 +100,9 @@ struct AutocorrectCutSegment
     std::string raw_text;
     size_t start = 0;
     bool corrected = false;
+    // 这一段纠正的表权重（kAutocorrect*Weight，生成式为 kAutocorrectGeneratedShapeWeight），
+    // 未纠正为 0。用来区分结构性手误（换位、漏字、多字）与邻键、生成式这类噪声面大的纠正。
+    int weight = 0;
 };
 
 struct AutocorrectCut
@@ -112,6 +116,9 @@ struct AutocorrectCut
     // (neighbor gau -> gai, weight 13) regardless of dictionary frequency.
     size_t edge_count = 0;
     int weight = 0;
+    // 读法里有生成式空间的边（静态表之外的远键替换、任意字母插入）。合法输入上的
+    // 纠错（legal_input_correction_cuts）不认这种读法。
+    bool has_generated = false;
 
     bool empty() const
     {
@@ -175,20 +182,36 @@ Segments autocorrect_cut(const std::string &pinyin, unsigned autocorrect_types);
 std::vector<AutocorrectCut> autocorrect_cut_kbest(const std::string &pinyin, unsigned autocorrect_types,
                                                   std::size_t k = 3);
 
-// 合法输入上的换位手误读法：普通切分全是合法音节时，resolve_series_query 不进上面
-// 的纠错（那条路按「切不成合法音节」设闸），可 ziazheliya 切成 zi'a'zhe'li'ya、
-// jioa 切成 ji'o'a、nia 切成 ni'a 都合法，换位表却各有一种读法（zia -> zai、
-// jioa -> jiao、nia -> nai）。这里只负责列出读法，不判断哪条对：
-// - 换位表在原始字母上给出的 k-best 读法，至多 kMaxLegalInputCorrections 处换位，
-//   且纠正的那段必须盖住字面切分里某个非首位零声母音节（zi'a 的 a、ji'o'a 的 o）——
-//   换位挤出元音是合法输入上换位手误的标志，没有它 k-best 会跨边界重切任何普通输入；
+// 合法输入上的手误读法：普通切分全是合法音节时，resolve_series_query 不进上面的
+// 纠错（那条路按「切不成合法音节」设闸），可 ziazheliya 切成 zi'a'zhe'li'ya、
+// jioa 切成 ji'o'a、jiuzheeyang 切成 jiu'zhe'e'yang 都合法，纠错表却各有一种读法
+// （zia -> zai 换位、jioa -> jiao 换位、zhee -> zhe 多字）。这里只负责列出读法，
+// 不判断哪条对：
+// - 静态表（换位、多字、漏字，不含邻键与生成式空间）在原始字母上给出的 k-best
+//   读法，至多 kMaxLegalInputCorrections 处纠正，且纠正的那段必须盖住字面切分里
+//   某个非首位零声母音节（zi'a 的 a、jiu'zhe'e'yang 的 e）——挤出或多出的元音是
+//   合法输入上手误的标志，没有它 k-best 会跨边界重切任何普通输入；
 // - 罕见合法音节换位成常用音节（lia -> lai、dia -> dai），k-best 只给非法片段找
-//   纠正、走不到这一种。只在多音节输入里认，单打 lia 多半就是要「俩」。
-// 取舍交给查询层按整句打分（语言模型分 + 每处换位的手误代价）。只用换位：它不改变
-// 字母数，选前缀字时按读音长度消耗原始字母仍然对得上。返回至多 k 条，每条至少一处
-// 纠正；segments 必须是 pinyin 的逐字母切分，否则返回空。
-std::vector<AutocorrectCut> legal_input_transposition_cuts(const std::string &pinyin, const Segments &segments,
-                                                           unsigned autocorrect_types, std::size_t k);
+//   纠正、走不到这一种。只在多音节输入里认，单打 lia 多半就是要「俩」；跟随换位开关。
+// 取舍交给查询层按整句打分（语言模型分 + 每处纠正的手误代价）。返回至多 k 条，每条
+// 至少一处纠正；segments 必须是 pinyin 的逐字母切分，否则返回空。
+std::vector<AutocorrectCut> legal_input_correction_cuts(const std::string &pinyin, const Segments &segments,
+                                                        unsigned autocorrect_types, std::size_t k);
+
+// 纠错切分里音节前缀与 reading 相同的那条（k-best 次序里最靠前的），找不到返回空。
+// 用来把一个纠错读音对回原始字母：它的各段 start / raw_text 就是读音每个音节实际
+// 盖住的原始区间。
+std::optional<AutocorrectCut> correction_cut_for_reading(const std::string &raw_letters, const Segments &reading,
+                                                         unsigned autocorrect_types);
+
+// 选中的读音来自纠错切分时，它在原始输入里实际盖住了几个字母。多字、漏字纠错的读音
+// 与原始字母不等长（buuhui -> bu'hui，zhngguo -> zhang'guo），按读音长度消耗会剩下
+// 或多吞字母：多打一个 u 时选「不会」会剩个 i，选「张」会把 zhngg 一起吞掉。这里在
+// 纠错切分里找音节前缀与读音相同的那条，用它记录的原始区间。整串是合法拼音且读音
+// 就是原始字母前缀、或找不到对应切分时返回空，调用方照旧按读音长度消耗（换位纠错
+// 长度不变，也走那条路）。raw_letters 是不含分隔符的原始字母。
+std::optional<size_t> corrected_reading_raw_length(const std::string &raw_letters, const Segments &reading,
+                                                   unsigned autocorrect_types);
 
 // True when the input reads as one or more legal syllables plus at most one trailing
 // letter ("zheg" = zhe + g): a jianpin-intent shape, which is user intent and never

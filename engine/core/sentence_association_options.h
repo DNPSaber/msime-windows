@@ -30,6 +30,14 @@ struct SentenceAssociationOptions
     bool collocation_rerank = false;         // n-best 重排开关
     double collocation_rerank_weight = 0.05; // 重排的线性权重
 
+    // 任一整句来源开着。纠错的上下文消解（quanpin_dictionary.cpp）用它而不是只看
+    // word_lattice：只开万象重排或神经模型时词格照样在内部解码，判断用户想打哪个读音
+    // 不该跟着「显示不显示 Trigram 整句」这个开关走。
+    bool any_sentence_source() const
+    {
+        return word_lattice || google || neural_desktop || neural_keyboard || collocation_rerank;
+    }
+
     bool operator==(const SentenceAssociationOptions &other) const
     {
         return word_lattice == other.word_lattice && google == other.google && neural_desktop == other.neural_desktop &&

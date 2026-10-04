@@ -770,6 +770,8 @@ struct AutocorrectEdge
     // hypotheses (see the finalize comparator) so in-table inputs keep their
     // baseline cut set.
     bool generated = false;
+    // 这条边自己的纠正权重（未纠正为 0），随切分交给 AutocorrectCutSegment::weight。
+    int weight = 0;
 };
 
 // One propagated cut hypothesis, ranked by (edge_count, weight, arrival):
@@ -901,6 +903,7 @@ std::vector<AutocorrectCut> autocorrect_cut_kbest(const std::string &pinyin, con
         child.arrival = arrival++;
         child.weight = parent.weight + edge_weight;
         child.edge = edge;
+        child.edge.weight = edge_weight;
         child.has_generated = parent.has_generated || edge.generated;
         child.seq_hash = extend_sequence_hash(parent.seq_hash, edge.syllable);
         best[end].push_back(std::move(child));
@@ -981,6 +984,7 @@ std::vector<AutocorrectCut> autocorrect_cut_kbest(const std::string &pinyin, con
         AutocorrectCut cut;
         cut.edge_count = hypothesis.edge_count;
         cut.weight = hypothesis.weight;
+        cut.has_generated = hypothesis.has_generated;
         size_t position = length;
         const SearchHypothesis *current = &hypothesis;
         while (current->prev_index != kNoPredecessor)
@@ -988,7 +992,7 @@ std::vector<AutocorrectCut> autocorrect_cut_kbest(const std::string &pinyin, con
             const size_t segment_start = position - current->edge.raw_length;
             cut.segments.push_back(AutocorrectCutSegment{std::string(current->edge.syllable),
                                                          pinyin.substr(segment_start, current->edge.raw_length),
-                                                         segment_start, current->edge.corrected});
+                                                         segment_start, current->edge.corrected, current->edge.weight});
             position = segment_start;
             current = &best[position][current->prev_index];
         }
@@ -1007,8 +1011,12 @@ constexpr std::pair<std::string_view, std::string_view> kRareLegalTranspositions
     {"dia", "dai"},
 };
 
-// 合法输入上一条读法最多带几处换位。再多就几乎都是巧合拼出来的读法。
+// 合法输入上一条读法最多带几处纠正。再多就几乎都是巧合拼出来的读法。
 constexpr size_t kMaxLegalInputCorrections = 2;
+// 合法输入上认的纠错类型：换位、多字、漏字。邻键替换不认——合法输入里几乎每个字母
+// 都有邻键能换成另一个合法读法，那是噪声面最大的一类。
+constexpr unsigned kLegalInputCorrectionTypes =
+    kAutocorrectTransposition | kAutocorrectDeletion | kAutocorrectInsertion;
 
 bool is_zero_initial_syllable(const std::string &syllable)
 {
@@ -1022,11 +1030,12 @@ bool same_syllables(const AutocorrectCut &lhs, const AutocorrectCut &rhs)
 }
 } // namespace
 
-std::vector<AutocorrectCut> legal_input_transposition_cuts(const std::string &pinyin, const Segments &segments,
-                                                           const unsigned autocorrect_types, const std::size_t k)
+std::vector<AutocorrectCut> legal_input_correction_cuts(const std::string &pinyin, const Segments &segments,
+                                                        const unsigned autocorrect_types, const std::size_t k)
 {
-    if (k == 0 || (autocorrect_types & kAutocorrectTransposition) == 0 || segments.empty() ||
-        pinyin.find('\'') != std::string::npos || !has_only_complete_pinyin_segments(segments))
+    const unsigned types = autocorrect_types & kLegalInputCorrectionTypes;
+    if (k == 0 || types == 0 || segments.empty() || pinyin.find('\'') != std::string::npos ||
+        !has_only_complete_pinyin_segments(segments))
     {
         return {};
     }
@@ -1057,12 +1066,17 @@ std::vector<AutocorrectCut> legal_input_transposition_cuts(const std::string &pi
         }
     };
 
-    // 换位把元音挤出原音节时，字面切分里会多出一个非首位零声母音节（zi'a、ji'o'a、
-    // ni'a），这是合法输入上换位手误的标志。纠正的那段必须盖住这样一个音节：不然
-    // k-best 会跨音节边界重切任何普通输入，道路 dao'lu 读成 da + olu->lou「大楼」、
-    // 会的 hui'de 读成 hu + ide->die「蝴蝶」——词库扫描里第 2 位的噪声几乎全是这种。
+    // 合法输入上的手误几乎都在字面切分里留下一个非首位零声母音节：换位挤出元音
+    // （zi'a、ji'o'a、ni'a），多打一个元音（jiu'zhe'e'yang），漏打声母（jiu'zhe'ang）。
+    // 纠正的那段必须盖住这样一个音节：不然 k-best 会跨音节边界重切任何普通输入，
+    // 道路 dao'lu 读成 da + olu->lou「大楼」、会的 hui'de 读成 hu + ide->die「蝴蝶」——
+    // 词库扫描里第 2 位的噪声几乎全是这种。生成式空间（静态表之外的远键替换、任意字母
+    // 插入）也不认：它是给切不成合法音节的输入兜底的，放到合法输入上只会拼出巧合。
+    // 先多搜几条再过滤：长句里前几名常被别处更便宜、却不盖零声母音节的纠正占满
+    // （jintianjiuzheeyangba 取 3 条时一条都留不下）。与查询层同一个 k。
+    constexpr std::size_t kSearchKBest = 9;
     for (auto &cut : zero_initial_spans.empty() ? std::vector<AutocorrectCut>{}
-                                                : autocorrect_cut_kbest(pinyin, kAutocorrectTransposition, k))
+                                                : autocorrect_cut_kbest(pinyin, types, std::max(k, kSearchKBest)))
     {
         const bool covers_zero_initial =
             std::any_of(cut.segments.begin(), cut.segments.end(), [&](const AutocorrectCutSegment &segment) {
@@ -1071,7 +1085,11 @@ std::vector<AutocorrectCut> legal_input_transposition_cuts(const std::string &pi
                        std::any_of(zero_initial_spans.begin(), zero_initial_spans.end(),
                                    [&](const auto &span) { return segment.start < span.second && span.first < end; });
             });
-        if (covers_zero_initial && cut.edge_count <= kMaxLegalInputCorrections)
+        // 末尾音节是按漏字读出来的（nia -> nian）：这多半是还没打完，不是手误。
+        const auto &tail = cut.segments.back();
+        const bool unfinished_tail = tail.corrected && tail.raw_text.size() < tail.syllable.size();
+        if (covers_zero_initial && !unfinished_tail && !cut.has_generated &&
+            cut.edge_count <= kMaxLegalInputCorrections)
         {
             add_cut(std::move(cut));
         }
@@ -1079,7 +1097,7 @@ std::vector<AutocorrectCut> legal_input_transposition_cuts(const std::string &pi
 
     // 罕见音节本身合法，k-best 只给非法片段找纠正，走不到这里。单音节输入没有上下文，
     // 打的就是这个字的可能性太大（lia 单打多半就是要「俩」），不替换。
-    if (segments.size() >= 2)
+    if ((types & kAutocorrectTransposition) != 0 && segments.size() >= 2)
     {
         AutocorrectCut replaced;
         size_t start = 0;
@@ -1092,6 +1110,7 @@ std::vector<AutocorrectCut> legal_input_transposition_cuts(const std::string &pi
                 {
                     segment.syllable = std::string(common);
                     segment.corrected = true;
+                    segment.weight = kAutocorrectTranspositionWeight;
                     ++replaced.edge_count;
                     replaced.weight += kAutocorrectTranspositionWeight;
                     break;
@@ -1111,6 +1130,53 @@ std::vector<AutocorrectCut> legal_input_transposition_cuts(const std::string &pi
         cuts.resize(k);
     }
     return cuts;
+}
+
+std::optional<AutocorrectCut> correction_cut_for_reading(const std::string &raw_letters, const Segments &reading,
+                                                         const unsigned autocorrect_types)
+{
+    if (reading.empty())
+    {
+        return std::nullopt;
+    }
+    // 与查询层同一个 k：读音可能来自主切之外的备选切分。
+    constexpr std::size_t kAlignmentKBest = 9;
+    for (auto &cut : autocorrect_cut_kbest(raw_letters, autocorrect_types, kAlignmentKBest))
+    {
+        if (cut.segments.size() >= reading.size() &&
+            std::equal(reading.begin(), reading.end(), cut.segments.begin(),
+                       [](const std::string &syllable, const AutocorrectCutSegment &segment) {
+                           return syllable == segment.syllable;
+                       }))
+        {
+            return std::move(cut);
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<size_t> corrected_reading_raw_length(const std::string &raw_letters, const Segments &reading,
+                                                   const unsigned autocorrect_types)
+{
+    std::string reading_letters;
+    for (const auto &syllable : reading)
+    {
+        reading_letters += syllable;
+    }
+    // 读音是原始字母的前缀，且整串本身是合法拼音：没有纠错在起作用，按读音长度即可。
+    // 只看前缀不够：buuhui 里单选「不」，bu 碰巧也是原始前缀，可它实际盖住的是 buu。
+    if (reading.empty() ||
+        (raw_letters.compare(0, reading_letters.size(), reading_letters) == 0 && is_complete_pinyin_input(raw_letters)))
+    {
+        return std::nullopt;
+    }
+    const auto cut = correction_cut_for_reading(raw_letters, reading, autocorrect_types);
+    if (!cut.has_value())
+    {
+        return std::nullopt;
+    }
+    const auto &last = cut->segments[reading.size() - 1];
+    return last.start + last.raw_text.size();
 }
 
 AutocorrectCut autocorrect_cut_detail(const std::string &pinyin, const unsigned autocorrect_types)

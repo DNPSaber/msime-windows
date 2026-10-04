@@ -46,4 +46,6 @@ cmake --build build --config Release --target <imetest | eval_quanpin_autocorrec
     --csv eval-mixed.csv > eval-mixed.md
 ```
 
+产品默认开着词格整句联想，纠错的上下文消解（同档消解、结构性贵档读法按整句分领衔）只在词格开启时生效。要量产品实际的排序，加 `--word-lattice`，并让 `--resource` 指向带 `sc.lm` 的目录；不加时测到的是纯静态排序，与历史基线口径一致。
+
 参数细节与报告分节说明见 `src/eval_quanpin_autocorrect.cpp` 文件头注释。

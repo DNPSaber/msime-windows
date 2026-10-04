@@ -412,27 +412,48 @@ std::string BuildQuanpinAutocorrectDisplay(const QueryRequest &request)
     return letters_rewritten ? cased : base;
 }
 
-// 合法输入上的换位纠错领衔时（ziazheliya 出「在这里呀」），预编辑按领衔读法的音节
-// 分隔成 zia'zhe'li'ya，而不是字面切分 zi'a'zhe'li'ya——后者和首选对不上。换位不改
-// 字母数，边界直接取读法各音节的长度。只在整串是合法拼音、首选带纠错标记、读法字母
-// 数与输入一致时生效（辅助码、手动分隔符、长度会变的纠错都不满足），否则返回空串。
+// 合法输入上的纠错领衔时（ziazheliya 出「在这里呀」、jiuzheeyang 出「就这样」），预编辑
+// 按领衔读法分隔成 zia'zhe'li'ya、jiu'zhee'yang，而不是字面切分 zi'a'zhe'li'ya——后者
+// 和首选对不上。边界取纠错切分记录的原始区间（多字、漏字纠错和原始字母不等长）；
+// 罕见音节替换（lia -> lai）不在 k-best 里，它是换位、字母数不变，按读法音节长度分。
+// 切不成合法音节的输入同理：上下文把贵档读法提到首位时（shiideya 出「是的呀」），
+// 预编辑要跟着它分成 shii'de'ya，而不是 k-best 首条的 shi'ide'ya。
+// 只在首选带纠错标记、读法恰好盖住整串时生效（辅助码、手动分隔符都不满足），否则
+// 返回空串。
 std::string BuildQuanpinDisplayFromLeadingCorrection(const QueryRequest &request, const WordItem &head)
 {
     const std::string &cased = request.raw_input_with_cases.empty() ? request.raw_input : request.raw_input_with_cases;
     if (head.corrected_from.empty() || request.raw_input.find('\'') != std::string::npos ||
-        cased.size() != request.raw_input.size() || !quanpin::is_complete_pinyin_input(request.raw_input))
+        cased.size() != request.raw_input.size())
     {
         return {};
     }
     const auto syllables = quanpin::split_segments(head.pinyin);
+    if (syllables.empty())
+    {
+        return {};
+    }
     std::vector<size_t> boundaries;
     size_t end = 0;
-    for (const auto &syllable : syllables)
+    const auto cut =
+        quanpin::correction_cut_for_reading(request.raw_input, syllables, QuanpinAutocorrectTypes(request));
+    if (cut.has_value() && cut->segments.size() == syllables.size())
     {
-        end += syllable.size();
-        boundaries.push_back(end);
+        for (const auto &segment : cut->segments)
+        {
+            end = segment.start + segment.raw_text.size();
+            boundaries.push_back(end);
+        }
     }
-    if (syllables.empty() || end != request.raw_input.size())
+    else
+    {
+        for (const auto &syllable : syllables)
+        {
+            end += syllable.size();
+            boundaries.push_back(end);
+        }
+    }
+    if (end != request.raw_input.size())
     {
         return {};
     }
@@ -908,12 +929,25 @@ InputSession::SelectionTransition InputSession::advance_composition_after_select
     const std::string raw_input_with_cases_without_helpcodes =
         quanpin::strip_active_helpcodes_with_cases(request().raw_input, request().raw_input_with_cases);
 
+    // 纠错读音按它在原始输入里盖住的字母消耗：多字、漏字纠错和原始字母不等长，按读音
+    // 长度消耗会剩下或多吞字母（buuhui 选「不会」剩个 i）。
+    size_t consumed_letters = selected_pure_pinyin.size();
+    const unsigned autocorrect_types = QuanpinAutocorrectTypes(request());
+    if (autocorrect_types != 0 && raw_input_without_helpcodes.find('\'') == std::string::npos)
+    {
+        if (const auto aligned = quanpin::corrected_reading_raw_length(
+                raw_input_without_helpcodes, quanpin::split_segments(selected_pinyin), autocorrect_types))
+        {
+            consumed_letters = *aligned;
+        }
+    }
+
     size_t consumed_raw_length =
-        shuangpin::raw_length_for_effective_prefix(raw_input_with_cases_without_helpcodes, selected_pure_pinyin.size());
+        shuangpin::raw_length_for_effective_prefix(raw_input_with_cases_without_helpcodes, consumed_letters);
     transition.consumed_raw_input_with_cases = raw_input_with_cases_without_helpcodes.substr(0, consumed_raw_length);
 
     transition.continues_composition = !selected_pure_pinyin.empty() &&
-                                       selected_pure_pinyin.size() < transition.full_pure_pinyin.size() &&
+                                       consumed_letters < transition.full_pure_pinyin.size() &&
                                        consumed_raw_length < raw_input_without_helpcodes.size();
 
     if (transition.continues_composition)

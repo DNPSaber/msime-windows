@@ -40,9 +40,19 @@ struct SeriesQueryResolution
     // reading gau -> gai, weight 13, when the primary is the transposition
     // gau -> gua, weight 10). They stay visible but must never outrank the
     // cheaper tier by dictionary frequency, so they are appended after the
-    // primary tier rather than merged into it.
+    // primary tier rather than merged into it. 例外是词格整句打分：只由结构性手误
+    // （换位、漏字、多字）构成的贵档读法，语言模型分扣掉手误代价后明显胜出时可以领衔
+    // （shiideya：多字的「是的呀」胜过换位的「是爹呀」）。
     std::vector<quanpin::Segments> costlier_corrected_cuts;
-    // 合法输入上的换位手误读法（quanpin::legal_input_transposition_cuts）。主切仍是
+    // 纠错表权重之和（AutocorrectCut::weight）：主切所在档一个，贵档逐条一个，
+    // 与 costlier_corrected_cuts 平行。整句打分时换算成手误代价。
+    int corrected_weight = 0;
+    std::vector<int> costlier_weights;
+    // 与 costlier_corrected_cuts 平行：这条贵档读法能否被上下文提到首位。含邻键替换
+    // 或生成式纠正的读法不能——邻键只比漏字贵 0.4 分，常用词（作为、实力）的语言
+    // 模型优势轻松盖过它，会把 zhowei 的「周围」、sholi 的「受理」挤下去。
+    std::vector<bool> costlier_promotable;
+    // 合法输入上的手误读法（quanpin::legal_input_correction_cuts）。主切仍是
     // 用户敲出的合法切分，这些读法与它按整句打分争领衔，见 arbitrate_legal_corrections。
     std::vector<quanpin::AutocorrectCut> legal_corrected_cuts;
     bool corrected_input = false;
