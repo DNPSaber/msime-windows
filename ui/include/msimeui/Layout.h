@@ -397,18 +397,20 @@ class Card : public Panel
     SizeF childSize_ = {};
 
     // All blur passes composed into one bitmap. Rebuilding the blur inputs and
-    // effects on every frame dominated repaints that do not change the card's
-    // size (selection moves, late candidate enrichment); the bitmap is reused
-    // while the key below matches and belongs to cachedShadowTarget_.
+    // effects dominated the card's repaints; the bitmap is reused while the key
+    // below matches and belongs to cachedShadowTarget_. Far enough from the
+    // corners a blurred edge no longer changes along it, so the bitmap is built
+    // for a card just long enough to reach that straight stretch and drawn
+    // nine-sliced: a card that only grows or shrinks keeps the same bitmap.
     Microsoft::WRL::ComPtr<ID2D1RenderTarget> cachedShadowTarget_;
     Microsoft::WRL::ComPtr<ID2D1Bitmap> cachedShadowBitmap_;
+    // Size of the card the bitmap was blurred for, not of the card drawn now.
     SizeF cachedShadowSize_ = {};
     float cachedShadowRadius_ = 0.0f;
     float cachedShadowScale_ = 0.0f;
     float cachedShadowOpacity_ = 0.0f;
     float cachedShadowDpiX_ = 0.0f;
     float cachedShadowDpiY_ = 0.0f;
-    float cachedShadowPad_ = 0.0f;
     std::vector<ShadowPass> cachedShadowPasses_;
 };
 

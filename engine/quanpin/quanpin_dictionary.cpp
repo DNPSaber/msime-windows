@@ -321,9 +321,9 @@ std::string escape_sql_text(std::string text)
 } // namespace
 
 QuanpinDictionary::QuanpinDictionary(std::string db_path, metasequoia::RuntimePaths paths)
-    : cache_(128), series_cache_(128), segmentation_cache_(128), resolution_cache_(128), paths_(std::move(paths)),
-      decoder_(paths_.resource(metasequoia::assets::pinyin_model),
-               paths_.user(metasequoia::assets::pinyin_user_dictionary)),
+    : cache_(128), series_cache_(128), segmentation_cache_(128), prefix_miss_cache_(128), resolution_cache_(128),
+      paths_(std::move(paths)), decoder_(paths_.resource(metasequoia::assets::pinyin_model),
+                                         paths_.user(metasequoia::assets::pinyin_user_dictionary)),
       language_model_(&ngram::shared_language_model(paths_.resource(metasequoia::assets::language_model))),
       neural_desktop_model_(metasequoia::path_to_utf8(paths_.resource(metasequoia::assets::neural_model_desktop))),
       neural_keyboard_model_(metasequoia::path_to_utf8(paths_.resource(metasequoia::assets::neural_model_keyboard))),
@@ -780,10 +780,13 @@ std::vector<WordItem> QuanpinDictionary::query_series(const std::string &raw_inp
         quanpin::Segments partial_segments(segments.begin(), segments.begin() + static_cast<std::ptrdiff_t>(count));
         const std::string partial_segmentation = quanpin::join_segments(partial_segments);
         const std::string partial_input = remove_delimiters(partial_segmentation);
-        auto partial_result = query_single_path(partial_input, partial_segmentation, partial_segments);
         // 整句联想只对完整输入出一句。前缀查不到词时 query_single_path 会补一条 Google 整句，
         // 留着就会在长句后面缀上一串越来越短的子串整句；前缀只取词库里真有的词，
         // 查不到就交给更短的前缀。
+        auto partial_result = count < segments.size()
+                                  ? query_prefix_path(partial_input, partial_segmentation, partial_segments)
+                                  : query_single_path(partial_input, partial_segmentation, partial_segments);
+        // 前缀命中的 cache_ 条目可能是这串当初作为完整输入时查的，带着兜底整句。
         if (count < segments.size())
         {
             partial_result.erase(std::remove_if(partial_result.begin(), partial_result.end(),
@@ -907,6 +910,33 @@ std::vector<WordItem> QuanpinDictionary::query_single_path(const std::string &ra
     std::vector<WordItem> result = query_database(segments, segmentation);
     result = append_ime_fallback(raw_input, segmentation, std::move(result));
     cache_.insert(cache_key, result);
+    return result;
+}
+
+std::vector<WordItem> QuanpinDictionary::query_prefix_path(const std::string &raw_input,
+                                                           const std::string &segmentation,
+                                                           const quanpin::Segments &segments)
+{
+    const std::string cache_key = segmentation.empty() ? raw_input : segmentation;
+    if (const auto *cached = cache_.find(cache_key))
+    {
+        return *cached;
+    }
+    if (prefix_miss_cache_.find(cache_key))
+    {
+        return {};
+    }
+
+    std::vector<WordItem> result = query_database(segments, segmentation);
+    if (result.empty())
+    {
+        prefix_miss_cache_.insert(cache_key, true);
+    }
+    else
+    {
+        // 兜底整句只在词库查不到时才补，所以这正是 query_single_path 会写入的值。
+        cache_.insert(cache_key, result);
+    }
     return result;
 }
 
@@ -1535,6 +1565,7 @@ void QuanpinDictionary::reset_cache()
     cache_.clear();
     series_cache_.clear();
     segmentation_cache_.clear();
+    prefix_miss_cache_.clear();
 }
 
 void QuanpinDictionary::reset_sentence_cache()

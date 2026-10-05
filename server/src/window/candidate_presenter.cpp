@@ -950,7 +950,9 @@ void CandidatePresenter::ApplySkin()
 std::uint64_t CandidatePresenter::FillItemsFromUi()
 {
     const Global::CandidatePageSnapshotPtr page = Global::LoadCandidatePageSnapshot();
+    const bool translationsEnabled = GetConfiguredCandidateTranslationsEnabled();
     std::vector<msimeui::CandidateList::Item> items;
+    items.reserve(page->page_views.size());
     for (size_t i = 0; i < page->page_views.size(); ++i)
     {
         const auto &view = page->page_views[i];
@@ -958,7 +960,7 @@ std::uint64_t CandidatePresenter::FillItemsFromUi()
         item.label = std::to_wstring(i + 1);
         item.text = string_to_wstring(view.text + view.badge);
         item.annotation = string_to_wstring(view.annotation);
-        if (GetConfiguredCandidateTranslationsEnabled())
+        if (translationsEnabled)
             item.translation = string_to_wstring(view.translation);
         items.push_back(std::move(item));
     }

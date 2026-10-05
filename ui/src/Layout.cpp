@@ -334,6 +334,39 @@ void DrawWin11WindowShadow(ID2D1RenderTarget *target, const RectF &bounds, float
         DrawLayeredMistShadow(target, bounds, radius, scale, opacity);
     }
 }
+
+// Width of the strip stretched across the straight middle of a nine-sliced shadow,
+// and how far its cuts keep inside the straight part so that samples taken just
+// across a cut still read the same values.
+constexpr float kShadowStretchSpan = 4.0f;
+constexpr float kShadowStretchGuard = 2.0f;
+
+// Where one axis of the cached shadow bitmap is cut and where each piece lands.
+// The end pieces are drawn 1:1 and the middle strip covers whatever is left.
+struct ShadowAxisSlices
+{
+    float source[4] = {};
+    float dest[4] = {};
+    size_t pieces = 1;
+};
+
+ShadowAxisSlices SliceShadowAxis(float bitmapExtent, float destExtent, float cut)
+{
+    ShadowAxisSlices slices;
+    if (bitmapExtent == destExtent)
+    {
+        slices.source[1] = slices.dest[1] = bitmapExtent;
+        return slices;
+    }
+    const float tail = bitmapExtent - cut - kShadowStretchSpan;
+    slices.source[1] = slices.dest[1] = cut;
+    slices.source[2] = cut + kShadowStretchSpan;
+    slices.source[3] = bitmapExtent;
+    slices.dest[2] = destExtent - tail;
+    slices.dest[3] = destExtent;
+    slices.pieces = 3;
+    return slices;
+}
 } // namespace
 
 void Visual::Attach(Window *window)
@@ -2026,30 +2059,37 @@ bool Card::RenderCachedShadow(ID2D1RenderTarget *target, const ShadowPass *passe
     float dpiX = 96.0f;
     float dpiY = 96.0f;
     target->GetDpi(&dpiX, &dpiY);
+
+    const float s = std::max(shadowScale_, 0.15f);
+    float pad = 0.0f;
+    for (size_t i = 0; i < count; ++i)
+    {
+        // Same margin DrawGaussianShadowPass gives each pass, plus that pass's offset.
+        const float passPad = passes[i].sigma * s * 3.0f + 4.0f +
+                              std::max(std::fabs(passes[i].offsetX), std::fabs(passes[i].offsetY)) * s;
+        pad = std::max(pad, passPad);
+    }
+    pad = std::ceil(pad);
+    // A blurred pixel only sees the shape within pad of itself, so once it is
+    // pad + radius inside both ends of an edge it sees a straight edge and has
+    // the same value all along it. A card at least this long on an axis shares
+    // one bitmap for that axis.
+    const float reach = pad + std::max(brush_.radiusX, 0.0f);
+    const float sliceable = std::ceil(reach * 2.0f + kShadowStretchGuard * 2.0f + kShadowStretchSpan);
+    const SizeF blurred = {std::min(bounds_.width, sliceable), std::min(bounds_.height, sliceable)};
+
     const bool hit = cachedShadowBitmap_ && cachedShadowTarget_.Get() == target &&
-                     IsSameSize(cachedShadowSize_, {bounds_.width, bounds_.height}) &&
-                     cachedShadowRadius_ == brush_.radiusX && cachedShadowScale_ == shadowScale_ &&
-                     cachedShadowOpacity_ == shadowOpacity_ && cachedShadowDpiX_ == dpiX && cachedShadowDpiY_ == dpiY &&
-                     cachedShadowPasses_.size() == count &&
+                     IsSameSize(cachedShadowSize_, blurred) && cachedShadowRadius_ == brush_.radiusX &&
+                     cachedShadowScale_ == shadowScale_ && cachedShadowOpacity_ == shadowOpacity_ &&
+                     cachedShadowDpiX_ == dpiX && cachedShadowDpiY_ == dpiY && cachedShadowPasses_.size() == count &&
                      std::equal(cachedShadowPasses_.begin(), cachedShadowPasses_.end(), passes);
     if (!hit)
     {
         cachedShadowBitmap_.Reset();
         cachedShadowTarget_.Reset();
 
-        const float s = std::max(shadowScale_, 0.15f);
-        float pad = 0.0f;
-        for (size_t i = 0; i < count; ++i)
-        {
-            // Same margin DrawGaussianShadowPass gives each pass, plus that pass's offset.
-            const float passPad = passes[i].sigma * s * 3.0f + 4.0f +
-                                  std::max(std::fabs(passes[i].offsetX), std::fabs(passes[i].offsetY)) * s;
-            pad = std::max(pad, passPad);
-        }
-        pad = std::ceil(pad);
-
         ComPtr<ID2D1BitmapRenderTarget> composed;
-        if (FAILED(target->CreateCompatibleRenderTarget({bounds_.width + pad * 2.0f, bounds_.height + pad * 2.0f},
+        if (FAILED(target->CreateCompatibleRenderTarget({blurred.width + pad * 2.0f, blurred.height + pad * 2.0f},
                                                         composed.GetAddressOf())))
         {
             return false;
@@ -2061,7 +2101,7 @@ bool Card::RenderCachedShadow(ID2D1RenderTarget *target, const ShadowPass *passe
         }
         composed->BeginDraw();
         composed->Clear(D2D1::ColorF(0, 0.0f));
-        const RectF local = {pad, pad, bounds_.width, bounds_.height};
+        const RectF local = {pad, pad, blurred.width, blurred.height};
         bool drew = false;
         for (size_t i = 0; i < count; ++i)
         {
@@ -2079,21 +2119,36 @@ bool Card::RenderCachedShadow(ID2D1RenderTarget *target, const ShadowPass *passe
 
         cachedShadowTarget_ = target;
         cachedShadowBitmap_ = bitmap;
-        cachedShadowSize_ = {bounds_.width, bounds_.height};
+        cachedShadowSize_ = blurred;
         cachedShadowRadius_ = brush_.radiusX;
         cachedShadowScale_ = shadowScale_;
         cachedShadowOpacity_ = shadowOpacity_;
         cachedShadowDpiX_ = dpiX;
         cachedShadowDpiY_ = dpiY;
-        cachedShadowPad_ = pad;
         cachedShadowPasses_.assign(passes, passes + count);
     }
 
-    const float pad = cachedShadowPad_;
-    target->DrawBitmap(cachedShadowBitmap_.Get(),
-                       D2D1::RectF(bounds_.x - pad, bounds_.y - pad, bounds_.x + bounds_.width + pad,
-                                   bounds_.y + bounds_.height + pad),
-                       1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR);
+    // The cuts sit inside the straight stretch, so whatever sits across them is
+    // the same value; drawing the pieces aliased tiles them without seams.
+    const float cut = pad + reach + kShadowStretchGuard;
+    const ShadowAxisSlices columns = SliceShadowAxis(blurred.width + pad * 2.0f, bounds_.width + pad * 2.0f, cut);
+    const ShadowAxisSlices rows = SliceShadowAxis(blurred.height + pad * 2.0f, bounds_.height + pad * 2.0f, cut);
+    const float originX = bounds_.x - pad;
+    const float originY = bounds_.y - pad;
+    const D2D1_ANTIALIAS_MODE antialias = target->GetAntialiasMode();
+    target->SetAntialiasMode(D2D1_ANTIALIAS_MODE_ALIASED);
+    for (size_t row = 0; row < rows.pieces; ++row)
+    {
+        for (size_t column = 0; column < columns.pieces; ++column)
+        {
+            const D2D1_RECT_F source =
+                D2D1::RectF(columns.source[column], rows.source[row], columns.source[column + 1], rows.source[row + 1]);
+            const D2D1_RECT_F dest = D2D1::RectF(originX + columns.dest[column], originY + rows.dest[row],
+                                                 originX + columns.dest[column + 1], originY + rows.dest[row + 1]);
+            target->DrawBitmap(cachedShadowBitmap_.Get(), dest, 1.0f, D2D1_BITMAP_INTERPOLATION_MODE_LINEAR, source);
+        }
+    }
+    target->SetAntialiasMode(antialias);
     return true;
 }
 

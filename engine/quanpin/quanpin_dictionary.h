@@ -123,6 +123,9 @@ class QuanpinDictionary
                                        const quanpin::Segments &segments);
     std::vector<WordItem> query_single_path(const std::string &raw_input, const std::string &segmentation,
                                             const quanpin::Segments &segments);
+    // query_series 的非完整前缀：只取词库里真有的词，不解 query_single_path 那条注定被丢掉的 Google 兜底整句。
+    std::vector<WordItem> query_prefix_path(const std::string &raw_input, const std::string &segmentation,
+                                            const quanpin::Segments &segments);
     quanpin::Segments resolve_segments(const std::string &raw_input, const std::string &segmentation);
     quanpin::Segments get_or_compute_segments(const std::string &raw_input);
     std::vector<WordItem> query_database(const quanpin::Segments &segments, const std::string &segmentation);
@@ -168,6 +171,9 @@ class QuanpinDictionary
     CircularBuffer<std::string, std::vector<WordItem>> cache_;
     CircularBuffer<std::string, std::vector<WordItem>> series_cache_;
     CircularBuffer<std::string, quanpin::Segments> segmentation_cache_;
+    // 词库里一个词都查不到的前缀（值无意义），随 cache_ 一起清。cache_ 存的是「词库行 + 兜底整句」，
+    // 空结果不能写进 cache_：这串之后作为完整输入再查时会因此丢了兜底整句。
+    CircularBuffer<std::string, bool> prefix_miss_cache_;
     // Memoizes the k-best correction search keyed on its full input tuple so a
     // repeated keystroke (backspace / re-type) never re-runs the k=9 beam. Not
     // cleared with the dictionary caches: its value depends only on the input

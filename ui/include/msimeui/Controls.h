@@ -610,19 +610,6 @@ class CandidateList : public Visual
     HCURSOR GetCursor() const override;
 
   private:
-    struct ItemLayoutCache
-    {
-        float labelWidth = -1.0f;
-        float textWidth = -1.0f;
-        float annotationWidth = -1.0f;
-        float translationWidth = -1.0f;
-        std::wstring fontFamily;
-        Microsoft::WRL::ComPtr<IDWriteTextLayout> labelLayout;
-        Microsoft::WRL::ComPtr<IDWriteTextLayout> textLayout;
-        Microsoft::WRL::ComPtr<IDWriteTextLayout> annotationLayout;
-        Microsoft::WRL::ComPtr<IDWriteTextLayout> translationLayout;
-    };
-
     // 均使用逻辑单位：bounds 相对列表，文字矩形相对候选项；测量、绘制与命中测试共用。
     struct ItemGeometry
     {
@@ -635,7 +622,12 @@ class CandidateList : public Visual
 
     float MeasureTextHeight(const std::wstring &text, float fontSize, float width) const;
     ItemGeometry MeasureItem(size_t index, float width) const;
-    void InvalidateLayoutCache();
+    // The layout Render draws `text` with in `box`. Layouts are kept across
+    // frames by text, size and box rather than by item: a selection move or a
+    // late addition redraws the same strings, and the next keystroke's page
+    // usually repeats many of them at other indices.
+    Microsoft::WRL::ComPtr<IDWriteTextLayout> TextLayoutFor(IDWriteFactory *factory, const std::wstring &fontFamily,
+                                                            const std::wstring &text, float fontSize, const RectF &box);
     size_t HitTestItem(const PointF &point) const;
     float EstimateTextWidth(const std::wstring &text, float fontSize) const;
     RectF ItemRect(size_t index) const;
@@ -649,10 +641,11 @@ class CandidateList : public Visual
     void StoreTextMetric(wchar_t kind, const std::wstring &text, float fontSize, float width, float value) const;
 
     std::vector<Item> items_;
-    std::vector<ItemLayoutCache> layoutCache_;
     std::vector<ItemGeometry> itemGeometry_;
     mutable std::unordered_map<std::wstring, float> textMetricCache_;
     mutable std::wstring textMetricFamily_;
+    std::unordered_map<std::wstring, Microsoft::WRL::ComPtr<IDWriteTextLayout>> textLayoutCache_;
+    std::wstring textLayoutFamily_;
     float layoutWidth_ = 0.0f;
     Appearance appearance_{};
     Orientation orientation_ = Orientation::Vertical;

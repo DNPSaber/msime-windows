@@ -951,6 +951,13 @@ std::optional<std::string> InputSession::update_local_candidates()
 void InputSession::update_mixed_candidates()
 {
     refresh_prefix_candidates();
+    // 只有混排列表才会被 candidates() 返回；Server 自己混排，不走这里，没必要每键再复制一份候选。
+    // 混排开关、方案与固定位置每次变动都会重新调用本函数，所以这里清空后不会读到旧列表。
+    if (!mixed_candidates_active())
+    {
+        mixed_candidates_.clear();
+        return;
+    }
     const auto &decoded = prefix_candidates_active_ ? prefix_candidates_ : engine_.get_candidates();
     // Association (English/emoji suggestions) follows the string being converted: the caret
     // prefix while it is active, the full raw input otherwise.
@@ -959,8 +966,7 @@ void InputSession::update_mixed_candidates()
     mixed_candidates_ = candidate_queries_.mixed(decoded, association_prefix, scheme(), english_input_options_,
                                                  mixed_expressive_options_, dedicated_english_mode_, local_input_mode_);
     apply_candidate_positions(mixed_candidates_);
-    // 只有混排列表才会被 candidates() 返回；Server 自己混排，不走这里。
-    const auto code = mixed_candidates_active() ? quick_phrase_code() : std::nullopt;
+    const auto code = quick_phrase_code();
     if (!code)
     {
         return;
