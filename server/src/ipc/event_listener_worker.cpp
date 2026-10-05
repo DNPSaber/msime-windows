@@ -158,6 +158,9 @@ struct Task
 
 std::queue<Task> taskQueue;
 std::mutex queueMutex;
+// 队列里已经有一个还没开始跑的 ApplyRescoredOrder（受 queueMutex 保护）。它跑起来时会读所有模型
+// 已算完的结果，所以排队期间再完成的批次不必再各排一个，免得每批都在按键前面重查一次词格。
+bool rescoreApplyQueued = false;
 
 // 顶字推送后的 HideCandidate 抑制标记：CommitCandidateAndContinue 会让 DLL 提交文本并
 // 结束旧组合，TSF 随之发来 HideCandidateWnd；若 HideCandidate 处理器照常 ClearState，
@@ -209,6 +212,9 @@ void WorkerThread()
                 break;
             task = std::move(taskQueue.front());
             taskQueue.pop();
+            // 出队即放行：之后完成的批次结果不一定被这次重查读到，得能再排一个。
+            if (task.type == TaskType::ApplyRescoredOrder)
+                rescoreApplyQueued = false;
         }
 
         if (task.type == TaskType::ClientDeactivated || task.type == TaskType::ClientSuspended)
@@ -853,6 +859,9 @@ void EnqueueRescoredCandidates()
 {
     {
         std::lock_guard lock(queueMutex);
+        if (rescoreApplyQueued)
+            return;
+        rescoreApplyQueued = true;
         Task task;
         task.type = TaskType::ApplyRescoredOrder;
         taskQueue.push(std::move(task));
