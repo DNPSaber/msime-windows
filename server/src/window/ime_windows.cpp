@@ -276,6 +276,9 @@ void ApplyConfiguredInputScheme()
     BroadcastToTsfWorkerThreadViaNamedpipe(
         Global::DataFromServerMsgTypeToTsfWorkerThread::MidSentenceHelpcodeUppercaseChanged,
         FormatMidSentenceHelpcodeUppercaseWorkerPayload());
+    // V 模式只在全拼/双拼下有效，全拼还认小写 v，换方案或切日语模式都要让 TSF 重新判断。
+    BroadcastToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::VModeChanged,
+                                           FormatVModeWorkerPayload());
     // 「双拼显示全拼」让原始按键样式在双拼下改由 Server 回包驱动，换方案时 TSF 要跟着换。
     BroadcastToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::PagingCommaPeriodChanged,
                                            FormatPagingCommaPeriodWorkerPayload());

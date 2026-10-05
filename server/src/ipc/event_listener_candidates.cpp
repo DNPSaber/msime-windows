@@ -28,6 +28,7 @@
 #include "engine/local_modes/emoji_query.h"
 #include "engine/local_modes/kaomoji_query.h"
 #include "engine/local_modes/jianpin_query.h"
+#include "engine/local_modes/v_mode_query.h"
 #include "engine/shuangpin/shuangpin_profile.h"
 #include "mixed/date_time_candidates.h"
 #include "log/candidate_diag_log.h"
@@ -693,6 +694,11 @@ void PrepareCandidateList(uint64_t client_id, uint64_t activation_epoch)
     {
         // Show the typed English immediately; dictionary completions arrive asynchronously.
         items.emplace_back("", current_input.substr(1), 0, CandidateSource::Generated);
+    }
+    else if (!g_english_input_mode && IsVModeCompositionActive(current_input))
+    {
+        // V 模式：数字转中文或算式结果。候选来源是 Generated，选中时直接上屏，不进词库、不调频。
+        items = metasequoia::local_modes::query_v_mode(current_input.substr(1));
     }
     else if (IsSpecialModeCompositionActive(current_input))
     {

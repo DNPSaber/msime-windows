@@ -440,6 +440,12 @@ bool GetConfiguredYModeEnabled();
 bool SetConfiguredYModeEnabled(bool enabled);
 bool GetConfiguredRModeEnabled();
 bool SetConfiguredRModeEnabled(bool enabled);
+// V 模式：数字转中文、算式计算。双拼按大写 V 触发，全拼大小写 V 都可以，规则见
+// engine/contracts/v_mode_input.h。
+bool GetConfiguredVModeEnabled();
+bool SetConfiguredVModeEnabled(bool enabled);
+// VModeChanged 的载荷："0" 关着或不是全拼/双拼，"1" 双拼（只认大写 V），"2" 全拼（V、v 都认）。
+std::wstring FormatVModeWorkerPayload();
 bool GetConfiguredClipboardHistoryEnabled();
 bool SetConfiguredClipboardHistoryEnabled(bool enabled);
 bool GetConfiguredPagingMinusEqualEnabled();

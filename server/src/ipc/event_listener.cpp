@@ -29,6 +29,7 @@
 #include "english/english_ime.h"
 #include "config/ime_config.h"
 #include "engine/contracts/date_time_input.h"
+#include "engine/contracts/v_mode_input.h"
 #include "conversion/chinese_converter.h"
 #include "log/candidate_diag_log.h"
 #include "ipc/event_listener_internal.h"
@@ -273,6 +274,18 @@ bool IsYModeInput(const std::string &raw)
     return IsYModeCompositionActive(raw) && raw.size() > 1;
 }
 
+FanyImeVModeInput::Trigger CurrentVModeTrigger()
+{
+    return FanyImeVModeInput::TriggerFromPayload(FormatVModeWorkerPayload().front());
+}
+
+// V 模式没有单独的触发标记：V（全拼还有 v）后面紧跟数字或左括号就是，和 TSF 用同一条规则
+// （engine/contracts/v_mode_input.h），所以小写 v 开头的 vip 仍是普通输入。
+bool IsVModeCompositionActive(const std::string &raw)
+{
+    return FanyImeVModeInput::IsComposition(raw.data(), raw.size(), CurrentVModeTrigger());
+}
+
 void ClearSpecialModeTriggers()
 {
     g_quick_phrase_triggered = false;
@@ -292,7 +305,7 @@ bool IsSpecialModeCompositionActive(const std::string &raw)
 {
     return IsQuickPhraseCompositionActive(raw) || IsUnicodeCompositionActive(raw) || IsDateTimeCompositionActive(raw) ||
            IsEmojiCompositionActive(raw) || IsKaomojiCompositionActive(raw) || IsJianpinCompositionActive(raw) ||
-           IsYModeCompositionActive(raw);
+           IsYModeCompositionActive(raw) || IsVModeCompositionActive(raw);
 }
 } // namespace event_listener_detail
 

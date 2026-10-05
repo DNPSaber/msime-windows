@@ -554,6 +554,7 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"jianpin_mode", GetConfiguredJianpinModeEnabled()},
             {"y_mode", GetConfiguredYModeEnabled()},
             {"r_mode", GetConfiguredRModeEnabled()},
+            {"v_mode", GetConfiguredVModeEnabled()},
             {"clipboard_history", GetConfiguredClipboardHistoryEnabled()}}},
           {"appearance",
            {{"ui_backend", GetConfiguredUiBackend()},
@@ -942,6 +943,8 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredYModeEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.r_mode")
         return SetConfiguredRModeEnabled(json::value_to<bool>(data.at("value")));
+    if (path == "utility.v_mode")
+        return SetConfiguredVModeEnabled(json::value_to<bool>(data.at("value")));
     if (path == "utility.clipboard_history")
         return SetConfiguredClipboardHistoryEnabled(json::value_to<bool>(data.at("value")));
     if (path == "general.paging_minus_equal")

@@ -550,6 +550,12 @@ bool CMetasequoiaIME::_ClassifyDeferredKeyDown(_In_ ITfContext *pContext, WPARAM
             isInputKey = CCompositionProcessorEngine::IsDateTimeInputKey(
                 *classifiedCode, *classifiedWch, shadow.rawInput.data(), shadow.rawInput.size(), shadow.caret);
         }
+        // V 模式的数字和运算符，同上。
+        if (!isInputKey)
+        {
+            isInputKey = CCompositionProcessorEngine::IsVModeInputKey(*classifiedWch, shadow.rawInput.data(),
+                                                                      shadow.rawInput.size(), shadow.caret);
+        }
         if (shadow.inputLength == 0 && (GetKeyState(VK_CAPITAL) & 0x0001) != 0 && *classifiedWch >= L'A' &&
             *classifiedWch <= L'Z' && *classifiedCode >= L'A' && *classifiedCode <= L'Z')
         {

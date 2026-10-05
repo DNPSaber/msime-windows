@@ -3,6 +3,7 @@
 #include <atomic>
 #include <string>
 #include "clipboard/clipboard_history.h"
+#include "engine/contracts/v_mode_input.h"
 #include "statistics/stats_store.h"
 
 using namespace ime_config_detail;
@@ -475,6 +476,33 @@ bool SetConfiguredRModeEnabled(bool enabled)
     }
     g_r_mode_enabled = enabled;
     return true;
+}
+
+bool GetConfiguredVModeEnabled()
+{
+    return g_v_mode_enabled;
+}
+
+bool SetConfiguredVModeEnabled(bool enabled)
+{
+    if (!WriteConfiguredValue("utility", "v_mode", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_v_mode_enabled = enabled;
+    return true;
+}
+
+std::wstring FormatVModeWorkerPayload()
+{
+    using FanyImeVModeInput::Trigger;
+    // 日语模式下当前方案是 JapaneseRomaji，自然落到 Off。
+    const SchemeType scheme = GetConfiguredActiveInputScheme();
+    const Trigger trigger = !g_v_mode_enabled                 ? Trigger::Off
+                            : scheme == SchemeType::Quanpin   ? Trigger::AnyCase
+                            : scheme == SchemeType::Shuangpin ? Trigger::UppercaseOnly
+                                                              : Trigger::Off;
+    return std::wstring(1, FanyImeVModeInput::PayloadFromTrigger(trigger));
 }
 
 bool GetConfiguredClipboardHistoryEnabled()

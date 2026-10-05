@@ -485,7 +485,10 @@ void CCompositionProcessorEngine::GetReadingStrings(_Inout_ CMetasequoiaImeArray
             *pNewString = _keystrokeBuffer;
         }
 
-        for (DWORD index = 0; index < _keystrokeBuffer.GetLength(); index++)
+        // V 模式的 * 是乘号不是通配符：标成通配符会让空格走通配符转换，算式就上不了屏。
+        const bool v_mode = FanyImeVModeInput::IsComposition(_keystrokeBuffer.Get(), _keystrokeBuffer.GetLength(),
+                                                             Global::VModeTrigger.load(std::memory_order_relaxed));
+        for (DWORD index = 0; index < _keystrokeBuffer.GetLength() && !v_mode; index++)
         {
             oneKeystroke.Set(_keystrokeBuffer.Get() + index, 1);
 

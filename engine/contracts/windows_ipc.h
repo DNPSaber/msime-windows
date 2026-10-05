@@ -424,7 +424,11 @@ constexpr std::uint32_t DirectHelpcodeChanged = 30;
 // trigger checked, shuangpin, direct helpcode off). Payload "0"/"1". TSF still eats letters as before; the flag only
 // changes how it counts the chunk before '`' / ';' (FanyImeMidSentenceHelpcode::ChunkStart with uppercase blocks).
 constexpr std::uint32_t MidSentenceHelpcodeUppercaseChanged = 31;
-constexpr std::uint32_t MaxKnown = MidSentenceHelpcodeUppercaseChanged;
+// Which prefix opens V mode (number to Chinese, arithmetic). Payload "0" off, "1" uppercase V only (shuangpin),
+// "2" V or v (quanpin); see FanyImeVModeInput::Trigger. TSF then eats digits and . + - * / ( ) after the prefix
+// (FanyImeVModeInput::AcceptsAt). Single-character payload, same rule as opcode 28.
+constexpr std::uint32_t VModeChanged = 32;
+constexpr std::uint32_t MaxKnown = VModeChanged;
 // Source compatibility for the Server's historical spellings.
 constexpr std::uint32_t SwitchToEn = SwitchToEnglish;
 constexpr std::uint32_t SwitchToCn = SwitchToChinese;

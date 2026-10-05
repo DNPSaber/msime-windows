@@ -2403,6 +2403,19 @@ int run_test()
     require(date_time_session.handle_command(metasequoia::Command::Cancel).handled,
             "Cancel did not leave the specific time.");
 
+    // V 模式由 Server 按原串识别，引擎照常收到整串：运算符和括号混在拼音原串里也不能出错。
+    for (const SchemeType scheme : {SchemeType::Quanpin, SchemeType::Shuangpin})
+    {
+        metasequoia::InputSession v_mode_raw(scheme);
+        for (const char *raw : {"V1+2*(3-4)/5.6", "v12.5", "V(", "V9)", "v1//2"})
+        {
+            v_mode_raw.set_pinyin_sequence(raw);
+            v_mode_raw.set_pinyin_sequence_with_cases(raw);
+            v_mode_raw.recompute_candidates();
+            (void)v_mode_raw.get_candidates();
+        }
+    }
+
     metasequoia::LocalModeOptions disabled_date_time_options;
     disabled_date_time_options.date_time = false;
     metasequoia::InputSession disabled_date_time(SchemeType::Quanpin);

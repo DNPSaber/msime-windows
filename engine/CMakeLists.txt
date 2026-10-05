@@ -54,6 +54,7 @@ set(METASEQUOIA_IME_ENGINE_SOURCES
     local_modes/local_database.cpp
     local_modes/quick_phrase_query.cpp
     local_modes/unicode_query.cpp
+    local_modes/v_mode_query.cpp
     neural/sentence_model.cpp
     neural/neural_decoder.cpp
     neural/rescore_worker.cpp

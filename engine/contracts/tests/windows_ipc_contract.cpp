@@ -2,6 +2,7 @@
 #include "../direct_helpcode.h"
 #include "../ipc_negotiation.h"
 #include "../mid_sentence_helpcode.h"
+#include "../v_mode_input.h"
 #include "../voice_composition_pipe.h"
 
 #include <algorithm>
@@ -140,7 +141,38 @@ int main()
     CHECK(FanyImeWorkerReplyType::MidSentenceHelpcodeSemicolonChanged == 29);
     CHECK(FanyImeWorkerReplyType::DirectHelpcodeChanged == 30);
     CHECK(FanyImeWorkerReplyType::MidSentenceHelpcodeUppercaseChanged == 31);
-    CHECK(FanyImeWorkerReplyType::MaxKnown == FanyImeWorkerReplyType::MidSentenceHelpcodeUppercaseChanged);
+    CHECK(FanyImeWorkerReplyType::VModeChanged == 32);
+    CHECK(FanyImeWorkerReplyType::MaxKnown == FanyImeWorkerReplyType::VModeChanged);
+    // V 模式的形状规则，TSF（WCHAR）与 Server（char）共用。
+    {
+        using FanyImeVModeInput::Trigger;
+        const auto v_at = [](const std::wstring &text, std::size_t caret, wchar_t ch, Trigger trigger) {
+            return FanyImeVModeInput::AcceptsAt(text.data(), text.size(), caret, ch, trigger);
+        };
+        const auto v_end = [&](const std::wstring &text, wchar_t ch, Trigger trigger) {
+            return v_at(text, text.size(), ch, trigger);
+        };
+        CHECK(v_end(L"V", L'1', Trigger::UppercaseOnly) && v_end(L"V", L'(', Trigger::UppercaseOnly));
+        CHECK(!v_end(L"V", L'+', Trigger::UppercaseOnly) && !v_end(L"V", L'.', Trigger::AnyCase));
+        CHECK(v_end(L"V1", L'+', Trigger::UppercaseOnly) && v_end(L"V1+2", L'*', Trigger::AnyCase));
+        CHECK(v_end(L"V12", L'.', Trigger::AnyCase) && v_end(L"V(1", L')', Trigger::AnyCase));
+        CHECK(!v_end(L"v", L'1', Trigger::UppercaseOnly) && v_end(L"v", L'1', Trigger::AnyCase));
+        CHECK(!v_end(L"V", L'1', Trigger::Off) && !v_end(L"vi", L'1', Trigger::AnyCase));
+        CHECK(!v_end(L"V1", L'a', Trigger::AnyCase) && !v_end(L"T1", L'1', Trigger::AnyCase));
+        // 光标在中间：不能把运算符插到 V 和第一个数字之间。
+        CHECK(!v_at(L"V12", 1, L'+', Trigger::AnyCase) && v_at(L"V12", 1, L'3', Trigger::AnyCase) &&
+              v_at(L"V12", 2, L'+', Trigger::AnyCase) && !v_at(L"V12", 0, L'3', Trigger::AnyCase));
+        CHECK(!FanyImeVModeInput::IsComposition(L"V", 1, Trigger::UppercaseOnly) &&
+              !FanyImeVModeInput::IsComposition(L"v", 1, Trigger::AnyCase) &&
+              FanyImeVModeInput::IsComposition(L"v1", 2, Trigger::AnyCase) &&
+              !FanyImeVModeInput::IsComposition(L"v1", 2, Trigger::UppercaseOnly) &&
+              FanyImeVModeInput::IsComposition("V1a", 3, Trigger::UppercaseOnly) &&
+              !FanyImeVModeInput::IsComposition("vip", 3, Trigger::AnyCase));
+        CHECK(FanyImeVModeInput::TriggerFromPayload(L'2') == Trigger::AnyCase &&
+              FanyImeVModeInput::TriggerFromPayload(L'1') == Trigger::UppercaseOnly &&
+              FanyImeVModeInput::TriggerFromPayload(L'x') == Trigger::Off &&
+              FanyImeVModeInput::PayloadFromTrigger(Trigger::UppercaseOnly) == L'1');
+    }
     // 直接辅助码的 / 与 ; 形状规则，TSF（WCHAR）与引擎（char）共用。
     const auto slash_at = [](const std::wstring &text, std::size_t caret) {
         return FanyImeDirectHelpcode::AcceptsSlashAt(text.data(), text.size(), caret);

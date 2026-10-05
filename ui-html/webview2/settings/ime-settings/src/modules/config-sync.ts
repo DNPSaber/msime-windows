@@ -266,6 +266,9 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (typeof data?.utility?.r_mode === 'boolean') {
     applyToggleState('rModeToggleBtn', data.utility.r_mode);
   }
+  if (typeof data?.utility?.v_mode === 'boolean') {
+    applyToggleState('vModeToggleBtn', data.utility.v_mode);
+  }
   if (typeof data?.utility?.clipboard_history === 'boolean') {
     applyToggleState('clipboardHistoryToggleBtn', data.utility.clipboard_history);
   }

@@ -175,6 +175,24 @@ bool IsDateTimeInputKey(UINT keycode, WCHAR wch, const std::string &raw_input)
     return FanyImeDateTimeInput::AcceptsAt(raw_input.data(), raw_input.size(), caret, static_cast<char>(wch));
 }
 
+// V 模式的数字和 . + - * / ( )：插入后仍是一段 V 模式输入时是编码键，不再选词、翻页或当标点。只看字符不看
+// 键位，主键盘和小键盘一样；Shift+1 这类出 ! 的仍是选词键。TSF 按同一条规则
+// （FanyImeVModeInput::AcceptsAt）和同一个 Trigger（VModeChanged）预判吃键。光标按 IsDirectHelpcodeSlashKey
+// 同样的方式算。
+bool IsVModeInputKey(WCHAR wch, const std::string &raw_input)
+{
+    if (wch > 0x7f || g_inputSession == nullptr)
+    {
+        return false;
+    }
+    const auto &composition = GlobalIme::composition;
+    const size_t caret = composition.raw_input_with_cases != raw_input && composition.caret_position == 0
+                             ? raw_input.size()
+                             : (std::min)(composition.caret_position, raw_input.size());
+    return FanyImeVModeInput::AcceptsAt(raw_input.data(), raw_input.size(), caret, static_cast<char>(wch),
+                                        CurrentVModeTrigger());
+}
+
 bool IsMicrosoftShuangpinIngKey(UINT keycode, WCHAR wch, const std::string &raw_input)
 {
     return IsMicrosoftShuangpinIngKeyAt(keycode, wch, raw_input,
@@ -219,8 +237,8 @@ bool IsSelectionKey(UINT keycode)
             const bool shift_only = (Global::ModifiersDown & 0b00000111u) == 0b00000001u;
             return shift_only && keycode >= '1' && keycode <= '9';
         }
-        // T 模式指定日期时间：接得上的数字是编码键。
-        return !IsDateTimeInputKey(keycode, Global::Wch, raw);
+        // T 模式指定日期时间：接得上的数字是编码键；V 模式里的数字也是。
+        return !IsDateTimeInputKey(keycode, Global::Wch, raw) && !IsVModeInputKey(Global::Wch, raw);
     }
     return false;
 }
@@ -437,7 +455,7 @@ bool ApplyCompositionEditKey(UINT keycode, WCHAR wch, UINT modifiers_down, bool 
         {
             input = '-';
         }
-        else if (IsDateTimeInputKey(keycode, wch, raw))
+        else if (IsDateTimeInputKey(keycode, wch, raw) || IsVModeInputKey(wch, raw))
         {
             input = static_cast<char>(wch);
         }
@@ -846,7 +864,9 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     if (Global::Keycode == VK_RETURN && !input_before_key.empty() && GetConfiguredEnterLearnsEnglishWord())
     {
         std::string english_word;
-        const bool shift_letter_special_mode = IsShiftLetterSpecialModeTriggered();
+        // V 模式没有触发标记，按输入串认：回车上屏的 V123 不是要学的英文词。
+        const bool shift_letter_special_mode =
+            IsShiftLetterSpecialModeTriggered() || IsVModeCompositionActive(input_before_key);
         if (FanyImeIpc::ShouldLearnEnteredEnglishWord(g_english_input_mode, shift_letter_special_mode, chinese_scheme,
                                                       g_inputSession->is_all_complete_pure_pinyin()))
             english_word = g_r_mode_triggered ? "R" + input_before_key : input_before_key;
@@ -909,16 +929,23 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
         IsMidSentenceHelpcodeMarkerKey(Global::Keycode, Global::Wch, input_before_key);
     const bool is_direct_helpcode_slash = IsDirectHelpcodeSlashKey(Global::Keycode, Global::Wch, input_before_key);
     const bool is_date_time_input_key = IsDateTimeInputKey(Global::Keycode, Global::Wch, input_before_key);
+    // V 模式的数字和 . + - * / ( )：只进输入串，不选词、不翻页、不当标点。
+    const bool is_v_mode_input_key = IsVModeInputKey(Global::Wch, input_before_key);
+    // V 模式里数字键用来输入，Shift+数字选词（同 U 模式）。Shift+1 出的是 !，不排除就会被当成「上屏高亮候选
+    // + 标点」；Shift+8/9/0 出 * ( ) 是编码键，上一行已经收下。
+    const bool is_v_mode_shift_digit_selection = !is_v_mode_input_key && shift_only && Global::Keycode >= '1' &&
+                                                 Global::Keycode <= '9' && IsVModeCompositionActive(input_before_key);
     // 日语模式下 '-' 是长音符输入键，既不翻页也不做词转字。
     const bool is_japanese_long_vowel = IsJapaneseLongVowelKey(Global::Keycode, Global::Wch);
-    const int word_character_direction =
-        FanyImeIpc::WordToCharacterDirection(Global::Keycode, Global::Wch, Global::ModifiersDown,
-                                             GetConfiguredWordToCharacterEnabled() && !is_japanese_long_vowel,
-                                             GetConfiguredWordToCharacterKeys() == "minus_equal");
+    const int word_character_direction = FanyImeIpc::WordToCharacterDirection(
+        Global::Keycode, Global::Wch, Global::ModifiersDown,
+        GetConfiguredWordToCharacterEnabled() && !is_japanese_long_vowel && !is_v_mode_input_key,
+        GetConfiguredWordToCharacterKeys() == "minus_equal");
     const bool is_commit_with_highlighted_candidate_punctuation =
         word_character_direction != 0 ||
         (!is_manual_pinyin_separator && !is_microsoft_shuangpin_ing_key && !is_mid_sentence_helpcode_marker &&
-         !is_direct_helpcode_slash && !is_date_time_input_key &&
+         !is_direct_helpcode_slash && !is_date_time_input_key && !is_v_mode_input_key &&
+         !is_v_mode_shift_digit_selection &&
          IsCommitWithHighlightedCandidatePunctuationInCandidateMode(Global::Keycode, Global::Wch));
     const bool is_selection_key = IsSelectionKey(Global::Keycode);
     const bool is_unicode_shift_digit_selection =
@@ -931,7 +958,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
         Global::Keycode == VK_DELETE || (Global::Keycode >= 'A' && Global::Keycode <= 'Z') ||
         is_manual_pinyin_separator || is_microsoft_shuangpin_ing_key || is_mid_sentence_helpcode_marker ||
         is_direct_helpcode_slash || is_unicode_hex_digit || is_unicode_plus || is_japanese_long_vowel ||
-        is_date_time_input_key;
+        is_date_time_input_key || is_v_mode_input_key;
     const bool should_forward_key_to_session = !is_commit_with_highlighted_candidate_punctuation && !is_selection_key &&
                                                !is_paging_key && !is_composition_edit_key;
 
@@ -1059,6 +1086,11 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     if (!g_english_input_mode && IsYModeCompositionActive(GlobalIme::composition.raw_input_with_cases))
     {
         // Keep preedit identical to the typed Y-prefixed English.
+        GlobalIme::composition.segmented_pinyin = GlobalIme::composition.raw_input_with_cases;
+    }
+    if (!g_english_input_mode && IsVModeCompositionActive(GlobalIme::composition.raw_input_with_cases))
+    {
+        // Keep preedit identical to the typed V-prefixed number or expression.
         GlobalIme::composition.segmented_pinyin = GlobalIme::composition.raw_input_with_cases;
     }
     SyncShuangpinPreeditForms();
@@ -1222,7 +1254,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     if (FanyImeIpc::ShouldSendCompositionReply(Global::Keycode >= 'A' && Global::Keycode <= 'Z',
                                                is_manual_pinyin_separator, is_microsoft_shuangpin_ing_key,
                                                is_unicode_hex_digit, is_unicode_plus, is_japanese_long_vowel,
-                                               is_date_time_input_key))
+                                               is_date_time_input_key || is_v_mode_input_key))
     {
         if (IsUiLessMode())
         {
@@ -1316,7 +1348,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     /* VK_SPACE, Digits (U-mode: Shift+1..9; T-mode digits that extend a date/time are input) */
     if (Global::Keycode == VK_SPACE || is_unicode_shift_digit_selection ||
         (!IsUnicodeCompositionActive(GlobalIme::composition.raw_input_with_cases) && !is_date_time_input_key &&
-         Global::Keycode > '0' && Global::Keycode <= '9'))
+         !is_v_mode_input_key && Global::Keycode > '0' && Global::Keycode <= '9'))
     {
         ProcessSelectionKey(Global::Keycode, client_id, activation_epoch);
         SendCurrentDataToClient(client_id, activation_epoch, request_id);
@@ -1357,7 +1389,7 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
             }
         }
     }
-    else if (IsCandidateNavigationKey(Global::Keycode) && !is_unicode_plus)
+    else if (IsCandidateNavigationKey(Global::Keycode) && !is_unicode_plus && !is_v_mode_input_key)
     {
         auto &ui = Global::candidate_ui;
         UINT result = Global::DataFromServerMsgType::NavigationIgnored;

@@ -147,6 +147,7 @@ bool g_kaomoji_mode_enabled = true;
 bool g_jianpin_mode_enabled = true;
 bool g_y_mode_enabled = true;
 bool g_r_mode_enabled = true;
+bool g_v_mode_enabled = true;
 bool g_clipboard_history_enabled = false;
 bool g_paging_minus_equal_enabled = true;
 bool g_paging_comma_period_enabled = false;
@@ -538,6 +539,7 @@ bool LoadImeConfig()
         g_jianpin_mode_enabled = tbl["utility"]["jianpin_mode"].value_or(true);
         g_y_mode_enabled = tbl["utility"]["y_mode"].value_or(true);
         g_r_mode_enabled = tbl["utility"]["r_mode"].value_or(true);
+        g_v_mode_enabled = tbl["utility"]["v_mode"].value_or(true);
         {
             const bool previous_clipboard_history = g_clipboard_history_enabled;
             static bool clipboard_history_loaded = false;

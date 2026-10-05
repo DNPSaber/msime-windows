@@ -17,6 +17,7 @@
 #include "ipc/candidate_selection_policy.h"
 #include "ipc/candidate_ui_owner.h"
 #include "ipc/event_listener.h"
+#include "engine/contracts/v_mode_input.h"
 #include "window/caret_state_indicator_policy.h"
 
 // IPC logging is compiled out. The macros still have to *mention* their arguments, otherwise every
@@ -75,6 +76,9 @@ bool IsKaomojiCompositionActive(const std::string &raw);
 bool IsJianpinCompositionActive(const std::string &raw);
 bool IsYModeCompositionActive(const std::string &raw);
 bool IsYModeInput(const std::string &raw);
+// 当前方案下哪个前缀开启 V 模式，和发给 TSF 的 VModeChanged 是同一个值。
+FanyImeVModeInput::Trigger CurrentVModeTrigger();
+bool IsVModeCompositionActive(const std::string &raw);
 void ClearSpecialModeTriggers();
 bool IsSpecialModeCompositionActive(const std::string &raw);
 

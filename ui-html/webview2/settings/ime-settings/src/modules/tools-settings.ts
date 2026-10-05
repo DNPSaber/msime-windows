@@ -194,6 +194,9 @@ export function setupToolsSettings(): void {
   setupToggleButton('rModeToggleBtn', (active) => {
     updateConfig('utility.r_mode', active);
   });
+  setupToggleButton('vModeToggleBtn', (active) => {
+    updateConfig('utility.v_mode', active);
+  });
   document.getElementById('quickPhraseSearchButton')?.addEventListener('click', () => query());
   document.getElementById('quickPhraseSearch')?.addEventListener('keydown', event => { if ((event as KeyboardEvent).key === 'Enter') query(); });
   document.getElementById('quickPhraseAddButton')?.addEventListener('click', () => openDialog());

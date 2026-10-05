@@ -2,6 +2,7 @@
 #include "../../local_modes/emoji_query.h"
 #include "../../local_modes/kaomoji_query.h"
 #include "../../local_modes/quick_phrase_query.h"
+#include "../../local_modes/v_mode_query.h"
 #include "../../core/data_path.h"
 
 #include <sqlite3.h>
@@ -212,6 +213,71 @@ int run_test()
                 metasequoia::local_modes::date_time_category("2024122514") == "time" &&
                 metasequoia::local_modes::date_time_category("9:05") == "time",
             "Specific date/time recognition or grouping was incorrect.");
+
+    // V 模式：数字转中文。
+    const std::array<const char *, 4> expected_v_integer = {"一百二十三", "壹佰贰拾叁", "壹佰贰拾叁元整", "一二三"};
+    require_words(metasequoia::local_modes::query_v_mode("123"), expected_v_integer,
+                  "V mode did not convert an integer to Chinese.");
+    const std::array<const char *, 3> expected_v_money = {"壹佰贰拾叁元肆角伍分", "一百二十三点四五",
+                                                          "壹佰贰拾叁点肆伍"};
+    require_words(metasequoia::local_modes::query_v_mode("123.45"), expected_v_money,
+                  "V mode did not put the money form first for a decimal.");
+    const std::array<const char *, 5> expected_v_thousands = {"一万二千三百四十五", "壹万贰仟叁佰肆拾伍",
+                                                              "壹万贰仟叁佰肆拾伍元整", "一二三四五", "12,345"};
+    require_words(metasequoia::local_modes::query_v_mode("12345"), expected_v_thousands,
+                  "V mode did not add the thousands-separated form.");
+    using metasequoia::local_modes::chinese_financial_number;
+    using metasequoia::local_modes::chinese_money;
+    using metasequoia::local_modes::chinese_number_reading;
+    const std::array<std::array<const char *, 2>, 12> readings = {{
+        {"0", "零"},
+        {"10", "十"},
+        {"15", "十五"},
+        {"110", "一百一十"},
+        {"1001", "一千零一"},
+        {"10010", "一万零一十"},
+        {"100000", "十万"},
+        {"20000", "二万"},
+        {"100000001", "一亿零一"},
+        {"1000010000", "十亿零一万"},
+        {"007", "七"},
+        {"1234567890123456", "一千二百三十四万亿五千六百七十八亿九千零一十二万三千四百五十六"},
+    }};
+    for (const auto &reading : readings)
+        require(chinese_number_reading(reading[0]) == reading[1], "A Chinese number reading was wrong.");
+    require(chinese_number_reading("12345678901234567").empty() && chinese_financial_number("10") == "壹拾" &&
+                chinese_financial_number("10010") == "壹万零壹拾",
+            "Chinese financial numbers or the reading limit were wrong.");
+    require(chinese_money("100", "05") == "壹佰元零伍分" && chinese_money("0", "45") == "肆角伍分" &&
+                chinese_money("0", "05") == "伍分" && chinese_money("123", "4") == "壹佰贰拾叁元肆角" &&
+                chinese_money("0", "") == "零元整" && chinese_money("1", "456").empty(),
+            "Chinese money amounts were wrong.");
+
+    // V 模式：算式计算。
+    const std::array<const char *, 2> expected_v_expression = {"7", "1+2*3=7"};
+    require_words(metasequoia::local_modes::query_v_mode("1+2*3"), expected_v_expression,
+                  "V mode did not evaluate an arithmetic expression.");
+    const std::array<std::array<const char *, 2>, 7> expressions = {{
+        {"(1+2)*3", "9"},
+        {"10/4", "2.5"},
+        {"0.1+0.2", "0.3"},
+        {"1/3", "0.3333333333"},
+        {"2*-3", "-6"},
+        {"-(2-5)", "3"},
+        {"7-7", "0"},
+    }};
+    for (const auto &expression : expressions)
+    {
+        std::string result;
+        require(metasequoia::local_modes::evaluate_v_mode_expression(expression[0], result) && result == expression[1],
+                "An arithmetic expression evaluated to the wrong result.");
+    }
+    for (const char *input :
+         std::array<const char *, 9>{"1/0", "1+", "(1+2", "1+2)", "1..2", "1.", "1.2.3", "12a", "2(3)"})
+    {
+        require(metasequoia::local_modes::query_v_mode(input).empty(),
+                "An incomplete or invalid V-mode input produced candidates.");
+    }
 
     const auto suffix = std::to_string(std::chrono::high_resolution_clock::now().time_since_epoch().count());
     const std::filesystem::path quick_phrase_directory =

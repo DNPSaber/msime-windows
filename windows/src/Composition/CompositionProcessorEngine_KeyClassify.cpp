@@ -293,13 +293,28 @@ BOOL CCompositionProcessorEngine::IsVirtualKeyNeed( //
 
     // T-mode: digits, '/' and ':' that still extend a date/time are input. The rest keep their usual
     // meaning below (digits select, '/' and ':' are punctuation); Shift+digit never matches here.
+    // V-mode: digits and . + - * / ( ) after the V prefix are input, so they neither select, page nor commit
+    // punctuation. Shift+8/9/0 give * ( ) and are input too; other Shift+digits still select.
     if (IsDateTimeInputKey(uCode, pwch ? *pwch : 0, _keystrokeBuffer.Get(), _keystrokeBuffer.GetLength(),
-                           _caretPosition))
+                           _caretPosition) ||
+        IsVModeInputKey(pwch ? *pwch : 0, _keystrokeBuffer.Get(), _keystrokeBuffer.GetLength(), _caretPosition))
     {
         if (pKeyState)
         {
             pKeyState->Category = CATEGORY_COMPOSING;
             pKeyState->Function = FUNCTION_INPUT;
+        }
+        return TRUE;
+    }
+    // V-mode: bare digits are input, so Shift+1..9 selects like in U-mode. It must be decided here,
+    // before the punctuation rule below would commit the highlighted candidate together with '!' '@' ...
+    // Shift+8/9 produce '*' '(' and were already taken as input above.
+    if (IsVModeShiftDigitSelectionKey(uCode, _keystrokeBuffer.Get(), _keystrokeBuffer.GetLength()))
+    {
+        if (pKeyState)
+        {
+            pKeyState->Category = CATEGORY_CANDIDATE;
+            pKeyState->Function = FUNCTION_SELECT_BY_NUMBER;
         }
         return TRUE;
     }
@@ -905,6 +920,24 @@ bool CCompositionProcessorEngine::IsDateTimeInputKey(UINT uCode, WCHAR wch, cons
     return (digit || slash || colon) && buffer != nullptr &&
            FanyImeDateTimeInput::AcceptsAt(buffer, static_cast<std::size_t>(length),
                                            static_cast<std::size_t>(min(caret, length)), wch);
+}
+
+// 只看字符不看键位：主键盘和小键盘的数字、运算符一样收，Server 也只看字符。前缀认哪个由 Server 的
+// VModeChanged 决定（双拼只认 V，全拼 V、v 都认）。
+bool CCompositionProcessorEngine::IsVModeShiftDigitSelectionKey(UINT uCode, const WCHAR *buffer, DWORD_PTR length)
+{
+    const bool shift_only = (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0 &&
+                            (GetAsyncKeyState(VK_CONTROL) & 0x8000) == 0 && (GetAsyncKeyState(VK_MENU) & 0x8000) == 0;
+    return shift_only && uCode >= L'1' && uCode <= L'9' &&
+           FanyImeVModeInput::IsComposition(buffer, static_cast<std::size_t>(length),
+                                            Global::VModeTrigger.load(std::memory_order_relaxed));
+}
+
+bool CCompositionProcessorEngine::IsVModeInputKey(WCHAR wch, const WCHAR *buffer, DWORD_PTR length, DWORD_PTR caret)
+{
+    return buffer != nullptr && FanyImeVModeInput::AcceptsAt(buffer, static_cast<std::size_t>(length),
+                                                             static_cast<std::size_t>(min(caret, length)), wch,
+                                                             Global::VModeTrigger.load(std::memory_order_relaxed));
 }
 
 // 分号触发的句中辅助码段在按键缓冲里记成反引号，与 Server 的 raw 一致。在加入缓冲之前、按与吃键

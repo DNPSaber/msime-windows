@@ -425,7 +425,8 @@ void CMetasequoiaIME::IpcWorkerThread(CMetasequoiaIME *pIME)
             }
             validFrame = hasTerminator && (buf.data[0] == L'0' || buf.data[0] == L'1') && buf.data[1] == L'\0';
         }
-        if (validFrame && buf.msg_type == Global::DataToTsfWorkerThreadMsgType::PunctuationLockChanged)
+        if (validFrame && (buf.msg_type == Global::DataToTsfWorkerThreadMsgType::PunctuationLockChanged ||
+                           buf.msg_type == Global::DataToTsfWorkerThreadMsgType::VModeChanged))
         {
             bool hasTerminator = false;
             for (const wchar_t ch : buf.data)
@@ -500,6 +501,7 @@ void CMetasequoiaIME::IpcWorkerThread(CMetasequoiaIME *pIME)
                 buf.msg_type == Global::DataToTsfWorkerThreadMsgType::TsfDiagnosticLogChanged ||
                 buf.msg_type == Global::DataToTsfWorkerThreadMsgType::StatisticsEnabledChanged ||
                 buf.msg_type == Global::DataToTsfWorkerThreadMsgType::PunctuationLockChanged ||
+                buf.msg_type == Global::DataToTsfWorkerThreadMsgType::VModeChanged ||
                 buf.msg_type == Global::DataToTsfWorkerThreadMsgType::PipeReady ||
                 buf.msg_type == Global::DataToTsfWorkerThreadMsgType::FocusSessionReady ||
                 buf.msg_type == Global::DataToTsfWorkerThreadMsgType::UpdateVoiceComposition ||
@@ -628,6 +630,10 @@ void CMetasequoiaIME::IpcWorkerThread(CMetasequoiaIME *pIME)
         else if (buf.msg_type == Global::DataToTsfWorkerThreadMsgType::MidSentenceHelpcodeUppercaseChanged)
         {
             Global::MidSentenceHelpcodeUppercaseEnabled.store(buf.data[0] == L'1', std::memory_order_relaxed);
+        }
+        else if (buf.msg_type == Global::DataToTsfWorkerThreadMsgType::VModeChanged)
+        {
+            Global::VModeTrigger.store(FanyImeVModeInput::TriggerFromPayload(buf.data[0]), std::memory_order_relaxed);
         }
         else if (buf.msg_type == Global::DataToTsfWorkerThreadMsgType::InputModeChanged)
         {

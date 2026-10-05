@@ -1007,6 +1007,16 @@ static void ApplyUtilitySubkey(const std::string &path, const json::object &data
             PostSettingsConfig();
         }
     }
+    if (path == "utility.v_mode")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredVModeEnabled(value))
+        {
+            BroadcastToTsfWorkerThreadViaNamedpipe(Global::DataFromServerMsgTypeToTsfWorkerThread::VModeChanged,
+                                                   FormatVModeWorkerPayload());
+            PostSettingsConfig();
+        }
+    }
     if (path == "utility.clipboard_history")
     {
         const bool value = json::value_to<bool>(data.at("value"));
@@ -1691,7 +1701,8 @@ void PostSettingsConfig()
             {"kaomoji_mode", GetConfiguredKaomojiModeEnabled()},
             {"jianpin_mode", GetConfiguredJianpinModeEnabled()},
             {"y_mode", GetConfiguredYModeEnabled()},
-            {"r_mode", GetConfiguredRModeEnabled()}}},
+            {"r_mode", GetConfiguredRModeEnabled()},
+            {"v_mode", GetConfiguredVModeEnabled()}}},
           {"appearance",
            {{"ui_backend", GetConfiguredUiBackend()},
             {"settings_window_linger", GetConfiguredSettingsWindowLinger()},
