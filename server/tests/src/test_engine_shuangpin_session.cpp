@@ -1524,6 +1524,15 @@ TEST_CASE(EngineShuangpinDirectHelpcodeDecodesWithoutGuideKey)
     apply("uiab");
     REQUIRE(session.accepts_direct_helpcode_slash(4));
     REQUIRE(!session.accepts_direct_helpcode_slash(3));
+    // 四码标记至少留一个；只留大写时 / 不再收，TSF 收到 "2"。
+    REQUIRE(!SetConfiguredShuangpinDirectHelpcodeSlash(false));
+    REQUIRE(SetConfiguredShuangpinDirectHelpcodeUppercase(true));
+    REQUIRE(SetConfiguredShuangpinDirectHelpcodeSlash(false));
+    REQUIRE(!session.accepts_direct_helpcode_slash(4));
+    REQUIRE_EQ(FormatDirectHelpcodeWorkerPayload(), std::wstring(shuangpin_active ? L"2" : L"0"));
+    REQUIRE(!SetConfiguredShuangpinDirectHelpcodeUppercase(false));
+    REQUIRE(SetConfiguredShuangpinDirectHelpcodeSlash(true));
+    REQUIRE(session.accepts_direct_helpcode_slash(4));
     REQUIRE(SetConfiguredShuangpinDirectHelpcodeEnabled(false));
     REQUIRE(!session.accepts_direct_helpcode_slash(4));
     REQUIRE_EQ(FormatDirectHelpcodeWorkerPayload(), std::wstring(L"0"));

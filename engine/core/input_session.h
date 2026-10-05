@@ -72,6 +72,8 @@ class InputSession
     {
         return direct_helpcode_enabled_;
     }
+    // 句中四码用什么结束：补 /（默认）、第二位辅码大写，可以都开。/ 关着时不再是编码键。
+    void set_direct_helpcode_markers(bool slash, bool uppercase);
     // 宿主在决定是否把 / 当作编码键（四码后的终止键）之前问这一句，规则见
     // FanyImeDirectHelpcode::AcceptsSlashAt。不满足时 / 仍按标点处理。
     bool accepts_direct_helpcode_slash_at(std::size_t caret) const;
@@ -355,6 +357,8 @@ class InputSession
     bool shuangpin_helpcode_enabled_ = true;
     bool mid_sentence_helpcode_enabled_ = false;
     bool direct_helpcode_enabled_ = false;
+    bool direct_helpcode_slash_marker_ = true;
+    bool direct_helpcode_uppercase_marker_ = false;
     bool mid_sentence_uppercase_trigger_enabled_ = false;
     bool chinese_punctuation_enabled_ = true;
     bool candidate_learning_enabled_ = true;

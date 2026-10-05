@@ -15,8 +15,9 @@
 //
 //   ui      双拼两键                          Plain
 //   uia     双拼 + 第一位辅码                  Aux1
-//   uiab/   双拼 + 两位辅码 + /                Aux2Slash
-//   uiab    双拼 + 两位辅码（不带 /）           Aux2Abbrev  缩写，见下
+//   uiab/   双拼 + 两位辅码 + /                Aux2Slash   SpellingOptions::slash_marker
+//   uiaB    双拼 + 两位辅码，第二位大写         Aux2Upper   SpellingOptions::uppercase_marker
+//   uiab    双拼 + 两位辅码（不带标记）         Aux2Abbrev  缩写，见下
 //   u       单个声母键                        Initial     缩写，见下
 //
 // 辅码那一段只有在「这个音节下真有字的辅码以它开头」时才成立（AuxPredicate），这对应万象词库里
@@ -25,7 +26,10 @@
 // 缩写（Aux2Abbrev、Initial）对应 librime 的 kAbbreviation：只要存在一条全由非缩写拼写组成、
 // 走到输入末尾的路径，所有缩写边就被剪掉（syllabifier.cc 的 stale edge 清理）。所以 uiab 单独
 // 敲时能当一个带两位辅码的字，放进句子里就会让位给 ui'ab 这类正常切分，要在句中用四码必须
-// 补 /。这正是万象的行为，不是这里的简化。
+// 补 /（或开着大写标记时把第二位辅码敲成大写）。这正是万象的行为，不是这里的简化。
+//
+// 开着大写标记时大写字母只能当四码的第二位辅码：别处出现大写字母的切法先不考虑，四码因此和补 /
+// 一样确定。一条都走不通时（比如习惯把第一位辅码也敲成大写）再退回不分大小写的旧规则。
 namespace direct_helpcode
 {
 
@@ -34,6 +38,7 @@ enum class SpellingKind
     Plain,
     Aux1,
     Aux2Slash,
+    Aux2Upper,
     Aux2Abbrev,
     Initial,
 };
@@ -80,9 +85,27 @@ struct SpellingGraph
     }
 };
 
+// 句中四码用什么结束，可以两个都开。
+struct SpellingOptions
+{
+    // uiab/：两位辅码后补 /。
+    bool slash_marker = true;
+    // uiaB：第二位辅码敲成大写。
+    bool uppercase_marker = false;
+
+    bool operator==(const SpellingOptions &other) const
+    {
+        return slash_marker == other.slash_marker && uppercase_marker == other.uppercase_marker;
+    }
+    bool operator!=(const SpellingOptions &other) const
+    {
+        return !(*this == other);
+    }
+};
+
 // 走不通时返回空图。
 SpellingGraph build_spelling_graph(const std::string &typed, const ShuangpinProfile &profile,
-                                   const AuxPredicate &has_aux);
+                                   const AuxPredicate &has_aux, const SpellingOptions &options = {});
 
 // 下一个出字的位置：跳过 pos 起连续的分隔符。
 std::size_t next_spelling_position(const SpellingGraph &graph, std::size_t pos);

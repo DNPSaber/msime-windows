@@ -349,6 +349,14 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
     const checkbox = findElement('midSentenceHelpcodeUppercaseCheckbox') as HTMLInputElement | null;
     if (checkbox) checkbox.checked = data.helpcode.shuangpin_mid_sentence_helpcode_uppercase;
   }
+  if (typeof data?.helpcode?.shuangpin_direct_helpcode_slash === 'boolean') {
+    const checkbox = findElement('directHelpcodeSlashCheckbox') as HTMLInputElement | null;
+    if (checkbox) checkbox.checked = data.helpcode.shuangpin_direct_helpcode_slash;
+  }
+  if (typeof data?.helpcode?.shuangpin_direct_helpcode_uppercase === 'boolean') {
+    const checkbox = findElement('directHelpcodeUppercaseCheckbox') as HTMLInputElement | null;
+    if (checkbox) checkbox.checked = data.helpcode.shuangpin_direct_helpcode_uppercase;
+  }
   applyDropdownValue(
     'shuangpinHelpcodeSchemeBtn',
     'shuangpinHelpcodeSchemeMenu',

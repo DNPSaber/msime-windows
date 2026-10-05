@@ -295,7 +295,14 @@ std::wstring FormatMidSentenceHelpcodeSemicolonWorkerPayload();
 // 触发键一律不生效（IsConfiguredMidSentenceHelpcodeTrigger 返回 false），末尾单码/双码辅助也让位给它。
 bool GetConfiguredShuangpinDirectHelpcodeEnabled();
 bool SetConfiguredShuangpinDirectHelpcodeEnabled(bool enabled);
-// DirectHelpcodeChanged 的载荷："1" 表示开关开着且当前方案是双拼。
+// 直接辅助码在句中用什么结束四码，可多选、至少留一个：补 /（helpcode.shuangpin_direct_helpcode_slash，默认开）
+// 和第二位辅码大写（helpcode.shuangpin_direct_helpcode_uppercase，默认关）。
+bool GetConfiguredShuangpinDirectHelpcodeSlash();
+bool SetConfiguredShuangpinDirectHelpcodeSlash(bool enabled);
+bool GetConfiguredShuangpinDirectHelpcodeUppercase();
+bool SetConfiguredShuangpinDirectHelpcodeUppercase(bool enabled);
+// DirectHelpcodeChanged 的载荷（FanyImeDirectHelpcode::PayloadFor）："0" 表示开关关着或当前方案不是双拼，
+// "1" 开着且勾了 /，"2" 开着但没勾 /。
 std::wstring FormatDirectHelpcodeWorkerPayload();
 const std::string &GetConfiguredShuangpinHelpcodeSchema();
 bool SetConfiguredShuangpinHelpcodeSchema(const std::string &schema);

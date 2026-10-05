@@ -416,9 +416,11 @@ constexpr std::uint32_t MidSentenceHelpcodeChanged = 28;
 // Same as MidSentenceHelpcodeChanged for the optional ';' trigger. Payload "0"/"1". A separate
 // opcode keeps 28 meaning "'`' is a trigger" for older DLLs, which ignore this one.
 constexpr std::uint32_t MidSentenceHelpcodeSemicolonChanged = 29;
-// Whether shuangpin direct helpcode (Wanxiang style, no guide key) is on. Payload "0"/"1". TSF then eats '/' after
-// a four-key code (FanyImeDirectHelpcode::AcceptsSlashAt) and stops requiring an odd chunk before the ';' final
-// (FanyImeDirectHelpcode::AcceptsSemicolonFinalAt). Same single "0"/"1" payload rule as opcode 28.
+// Whether shuangpin direct helpcode (Wanxiang style, no guide key) is on. Payload "0" off, "1" on with '/' ending a
+// four-key code, "2" on with '/' left as punctuation (FanyImeDirectHelpcode::PayloadFor). When on, TSF stops requiring
+// an odd chunk before the ';' final (FanyImeDirectHelpcode::AcceptsSemicolonFinalAt); with "1" it also eats '/' after a
+// four-key code (FanyImeDirectHelpcode::AcceptsSlashAt). Single-character payload, same rule as opcode 28; a DLL that
+// only knows "0"/"1" drops "2" and keeps its previous state.
 constexpr std::uint32_t DirectHelpcodeChanged = 30;
 // Whether the uppercase trigger of shuangpin mid-sentence helpcode is in effect (mid-sentence helpcode on, uppercase
 // trigger checked, shuangpin, direct helpcode off). Payload "0"/"1". TSF still eats letters as before; the flag only

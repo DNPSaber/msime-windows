@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "../../../engine/contracts/windows_ipc.h"
+#include "../../../engine/contracts/direct_helpcode.h"
 #include "../../../engine/contracts/v_mode_input.h"
 
 int InitIpc();
@@ -221,6 +222,8 @@ inline std::atomic_bool MidSentenceHelpcodeUppercaseEnabled{false};
 // 双拼直接辅助码（万象式）开着且当前是双拼：四码后的 / 当编码键吃掉，; 韵母不再看奇偶，规则见
 // engine/contracts/direct_helpcode.h。
 inline std::atomic_bool DirectHelpcodeEnabled{false};
+// 直接辅助码开着时 / 是不是四码的终止键（设置里可以只留「第二位辅码大写」）。没勾时 / 仍按标点处理。
+inline std::atomic_bool DirectHelpcodeSlashEnabled{true};
 // V 模式（数字转中文、算式计算）由哪个前缀开启：双拼只认大写 V，全拼 V、v 都认，关着或不是全拼/双拼时
 // 不开。V 后面的数字和 . + - * / ( ) 按 engine/contracts/v_mode_input.h 的规则当编码键吃掉。
 inline std::atomic<FanyImeVModeInput::Trigger> VModeTrigger{FanyImeVModeInput::Trigger::Off};

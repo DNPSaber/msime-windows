@@ -1115,6 +1115,20 @@ static void ApplyHelpcodeSubkey(const std::string &path, const json::object &dat
             PostSettingsConfig();
         }
     }
+    if (path == "helpcode.shuangpin_direct_helpcode_slash" || path == "helpcode.shuangpin_direct_helpcode_uppercase")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        // / 勾没勾随 DirectHelpcodeChanged 的载荷发给 TSF；大写字母本来就是编码键，TSF 不用知道。
+        const bool saved = path == "helpcode.shuangpin_direct_helpcode_slash"
+                               ? SetConfiguredShuangpinDirectHelpcodeSlash(value)
+                               : SetConfiguredShuangpinDirectHelpcodeUppercase(value);
+        if (saved)
+        {
+            BroadcastMidSentenceHelpcodeTriggers();
+        }
+        // 没存上（取消最后一个）也回推快照，让设置页的勾回到实际状态。
+        PostSettingsConfig();
+    }
     if (path == "helpcode.shuangpin_helpcode_schema")
     {
         const std::string value = json::value_to<std::string>(data.at("value"));
@@ -1745,6 +1759,8 @@ void PostSettingsConfig()
             {"shuangpin_mid_sentence_helpcode_semicolon", GetConfiguredShuangpinMidSentenceHelpcodeSemicolon()},
             {"shuangpin_mid_sentence_helpcode_uppercase", GetConfiguredShuangpinMidSentenceHelpcodeUppercase()},
             {"shuangpin_direct_helpcode", GetConfiguredShuangpinDirectHelpcodeEnabled()},
+            {"shuangpin_direct_helpcode_slash", GetConfiguredShuangpinDirectHelpcodeSlash()},
+            {"shuangpin_direct_helpcode_uppercase", GetConfiguredShuangpinDirectHelpcodeUppercase()},
             {"shuangpin_helpcode_schema", GetConfiguredShuangpinHelpcodeSchema()},
             {"quanpin_helpcode", GetConfiguredQuanpinHelpcodeEnabled()},
             {"quanpin_helpcode_schema", GetConfiguredQuanpinHelpcodeSchema()},

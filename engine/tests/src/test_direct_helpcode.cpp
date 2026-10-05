@@ -181,6 +181,42 @@ void run_spelling_graph_tests()
     }
 
     {
+        // 第二位辅码大写也结束四码：和补 / 一样是正常拼写，uiaB 之后接着打。
+        direct_helpcode::SpellingOptions options;
+        options.uppercase_marker = true;
+        const auto graph = direct_helpcode::build_spelling_graph("uiaBui", profile, has_aux, options);
+        const auto *edge = find_edge(graph, 0, SpellingKind::Aux2Upper);
+        require(edge && edge->end == 4 && edge->first == 'a' && edge->second == 'b',
+                "An uppercase second code did not end the four-key code.");
+        require(!find_edge(graph, 0, SpellingKind::Plain) && !find_edge(graph, 0, SpellingKind::Aux1),
+                "A segmentation consuming the uppercase letter elsewhere survived.");
+        // 大写标记关着时同一串里的大写字母不算标记。
+        const auto off = direct_helpcode::build_spelling_graph("uiaB", profile, has_aux);
+        require(!find_edge(off, 0, SpellingKind::Aux2Upper) && find_edge(off, 0, SpellingKind::Aux2Abbrev),
+                "An uppercase second code was a marker with the uppercase marker off.");
+    }
+
+    {
+        // 大写标记开着但大写字母放不进第二位辅码（第一位辅码敲成大写）：退回不分大小写的旧规则。
+        direct_helpcode::SpellingOptions options;
+        options.uppercase_marker = true;
+        const auto graph = direct_helpcode::build_spelling_graph("uiAuiQ", profile, has_aux, options);
+        require(find_edge(graph, 0, SpellingKind::Aux1) && find_edge(graph, 3, SpellingKind::Aux1),
+                "Uppercase first codes stopped working with the uppercase marker on.");
+    }
+
+    {
+        // / 标记关着：uiui/ 不再是四码，/ 退回成分隔符。
+        direct_helpcode::SpellingOptions options;
+        options.slash_marker = false;
+        options.uppercase_marker = true;
+        const auto graph = direct_helpcode::build_spelling_graph("uiui/", profile, has_aux, options);
+        require(!find_edge(graph, 0, SpellingKind::Aux2Slash) && graph.skip[4] &&
+                    find_edge(graph, 0, SpellingKind::Plain),
+                "The slash still ended a four-key code with the slash marker off.");
+    }
+
+    {
         // 凑不成四码的 / 退回成分隔符，整串不作废。
         const auto graph = direct_helpcode::build_spelling_graph("ui/", profile, has_aux);
         require(!graph.empty() && graph.skip[2] && find_edge(graph, 0, SpellingKind::Plain),
@@ -319,6 +355,22 @@ void run_session_tests()
                 "The four-key code and its slash were not shown after their syllable.");
         require(session->segment_raw_boundaries() == std::vector<std::size_t>({0, 2, 5, 7}),
                 "The four-key code and its slash were not one unit.");
+    }
+
+    {
+        // 只留大写标记：/ 不再收，第二位辅码大写结束四码，后面的音节照常解码。
+        auto session = direct_session();
+        session->set_direct_helpcode_markers(false, true);
+        type(*session, "uiab");
+        require(!session->handle_character('/').handled, "A slash was accepted with the slash marker off.");
+        require(session->handle_command(metasequoia::Command::Backspace).handled && session->preedit() == "uia",
+                "Backspace did not remove the second code.");
+        type(*session, "Bui");
+        require(first_word(*session) == "石狮", "uiaBui did not keep 石 on the first syllable.");
+        require(session->get_pinyin_segmentation_with_cases() == "uiaB'ui",
+                "The uppercase four-key code was not shown after its syllable.");
+        require(session->segment_raw_boundaries() == std::vector<std::size_t>({0, 2, 4, 6}),
+                "The uppercase four-key code was not one unit.");
     }
 
     {

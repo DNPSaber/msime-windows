@@ -407,7 +407,6 @@ void CMetasequoiaIME::IpcWorkerThread(CMetasequoiaIME *pIME)
              buf.msg_type == Global::DataToTsfWorkerThreadMsgType::MicrosoftShuangpinChanged ||
              buf.msg_type == Global::DataToTsfWorkerThreadMsgType::MidSentenceHelpcodeChanged ||
              buf.msg_type == Global::DataToTsfWorkerThreadMsgType::MidSentenceHelpcodeSemicolonChanged ||
-             buf.msg_type == Global::DataToTsfWorkerThreadMsgType::DirectHelpcodeChanged ||
              buf.msg_type == Global::DataToTsfWorkerThreadMsgType::MidSentenceHelpcodeUppercaseChanged ||
              buf.msg_type == Global::DataToTsfWorkerThreadMsgType::InputModeChanged ||
              buf.msg_type == Global::DataToTsfWorkerThreadMsgType::CapsLockChanged ||
@@ -439,6 +438,10 @@ void CMetasequoiaIME::IpcWorkerThread(CMetasequoiaIME *pIME)
             }
             validFrame = hasTerminator && (buf.data[0] == L'0' || buf.data[0] == L'1' || buf.data[0] == L'2') &&
                          buf.data[1] == L'\0';
+        }
+        if (validFrame && buf.msg_type == Global::DataToTsfWorkerThreadMsgType::DirectHelpcodeChanged)
+        {
+            validFrame = FanyImeDirectHelpcode::IsValidPayload(buf.data[0]) && buf.data[1] == L'\0';
         }
         if (validFrame && (buf.msg_type == Global::DataToTsfWorkerThreadMsgType::UpdateVoiceComposition ||
                            buf.msg_type == Global::DataToTsfWorkerThreadMsgType::CommitVoiceComposition))
@@ -625,7 +628,10 @@ void CMetasequoiaIME::IpcWorkerThread(CMetasequoiaIME *pIME)
         }
         else if (buf.msg_type == Global::DataToTsfWorkerThreadMsgType::DirectHelpcodeChanged)
         {
-            Global::DirectHelpcodeEnabled.store(buf.data[0] == L'1', std::memory_order_relaxed);
+            Global::DirectHelpcodeSlashEnabled.store(FanyImeDirectHelpcode::SlashFromPayload(buf.data[0]),
+                                                     std::memory_order_relaxed);
+            Global::DirectHelpcodeEnabled.store(FanyImeDirectHelpcode::EnabledFromPayload(buf.data[0]),
+                                                std::memory_order_relaxed);
         }
         else if (buf.msg_type == Global::DataToTsfWorkerThreadMsgType::MidSentenceHelpcodeUppercaseChanged)
         {

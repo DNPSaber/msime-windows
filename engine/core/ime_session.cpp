@@ -67,6 +67,12 @@ void ImeSession::set_direct_helpcode_enabled(bool enabled)
     bind_shuangpin_scheme();
 }
 
+void ImeSession::set_direct_helpcode_markers(bool slash, bool uppercase)
+{
+    direct_helpcode_slash_marker_ = slash;
+    direct_helpcode_uppercase_marker_ = uppercase;
+}
+
 void ImeSession::set_mid_sentence_helpcode_enabled(bool enabled)
 {
     enable_mid_sentence_helpcode_ = enabled;
@@ -353,6 +359,8 @@ void ImeSession::apply_request_options(QueryRequest &request) const
         request.enable_shuangpin_helpcode = false;
         request.enable_mid_sentence_helpcode = false;
         request.enable_direct_helpcode = true;
+        request.direct_helpcode_slash_marker = direct_helpcode_slash_marker_;
+        request.direct_helpcode_uppercase_marker = direct_helpcode_uppercase_marker_;
     }
     request.enable_quanpin_helpcode = enable_quanpin_helpcode_;
     request.enable_quanpin_autocorrect_transposition =

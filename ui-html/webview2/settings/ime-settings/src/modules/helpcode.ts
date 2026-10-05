@@ -43,6 +43,22 @@ function refreshCustomHelpcodes(): void {
   webview.postMessage(serializeHostMessage({ type: 'configRequest' }));
 }
 
+// 一组可多选的配置勾选框：最后一个勾着的取消不掉。
+function setupAtLeastOneCheckboxes(checkboxes: [string, string][]): void {
+  for (const [id, path] of checkboxes) {
+    const checkbox = document.getElementById(id) as HTMLInputElement | null;
+    checkbox?.addEventListener('change', () => {
+      const anyChecked = checkboxes.some(
+        ([otherId]) => (document.getElementById(otherId) as HTMLInputElement | null)?.checked);
+      if (!anyChecked) {
+        checkbox.checked = true;
+        return;
+      }
+      updateConfig(path, checkbox.checked);
+    });
+  }
+}
+
 export function setupHelpcode(): void {
   // 双拼辅助码方案
   setupDropdownMenu('shuangpinHelpcodeSchemeBtn', 'shuangpinHelpcodeSchemeMenu', 'changeShuangpinScheme', true,
@@ -70,23 +86,17 @@ export function setupHelpcode(): void {
   });
 
   // 句中辅助码触发键，可多选；至少留一个，最后一个取消不掉
-  const triggerCheckboxes: [string, string][] = [
+  setupAtLeastOneCheckboxes([
     ['midSentenceHelpcodeBacktickCheckbox', 'helpcode.shuangpin_mid_sentence_helpcode_backtick'],
     ['midSentenceHelpcodeSemicolonCheckbox', 'helpcode.shuangpin_mid_sentence_helpcode_semicolon'],
     ['midSentenceHelpcodeUppercaseCheckbox', 'helpcode.shuangpin_mid_sentence_helpcode_uppercase'],
-  ];
-  for (const [id, path] of triggerCheckboxes) {
-    const checkbox = document.getElementById(id) as HTMLInputElement | null;
-    checkbox?.addEventListener('change', () => {
-      const anyChecked = triggerCheckboxes.some(
-        ([otherId]) => (document.getElementById(otherId) as HTMLInputElement | null)?.checked);
-      if (!anyChecked) {
-        checkbox.checked = true;
-        return;
-      }
-      updateConfig(path, checkbox.checked);
-    });
-  }
+  ]);
+
+  // 直接辅助码句中四码的结束方式，同样可多选、至少留一个
+  setupAtLeastOneCheckboxes([
+    ['directHelpcodeSlashCheckbox', 'helpcode.shuangpin_direct_helpcode_slash'],
+    ['directHelpcodeUppercaseCheckbox', 'helpcode.shuangpin_direct_helpcode_uppercase'],
+  ]);
 
   // 全拼辅助码开关
   setupToggleButton('quanpinHelpcodeToggleBtn', (active) => {

@@ -52,7 +52,7 @@ bool IsMicrosoftShuangpinIngKeyAt(UINT uCode, WCHAR wch, const WCHAR *buffer, DW
 bool IsDirectHelpcodeSlashKey(UINT uCode, WCHAR wch, const WCHAR *buffer, DWORD_PTR length, DWORD_PTR caret)
 {
     return uCode == VK_OEM_2 && wch == L'/' && Global::DirectHelpcodeEnabled.load(std::memory_order_relaxed) &&
-           buffer != nullptr && length > 0 &&
+           Global::DirectHelpcodeSlashEnabled.load(std::memory_order_relaxed) && buffer != nullptr && length > 0 &&
            FanyImeDirectHelpcode::AcceptsSlashAt(buffer, static_cast<std::size_t>(length),
                                                  static_cast<std::size_t>(min(caret, length)));
 }

@@ -56,13 +56,22 @@
 
     <!-- 直接辅助码（万象式）：不要引导键，三码自动识别，四码在句中补 / -->
     <div class="section-header section-header-shuangpin-helpcode">
-      <div class="section-title" title="音节后直接接辅码，不用按引导键：三码（如 uia）自动识别并整句断句；四码（如 uiab）单独敲时直接定字，句中要在后面补一个 /（如 uiab/）">直接辅助码（万象式）</div>
+      <div class="section-title" title="音节后直接接辅码，不用按引导键：三码（如 uia）自动识别并整句断句；四码（如 uiab）单独敲时直接定字，句中要用下面勾选的方式结束（如 uiab/ 或 uiaB）">直接辅助码（万象式）</div>
       <div class="ftb-toggle-btn" id="directHelpcodeToggleBtn">
         <div class="ftb-toggle-knob"></div>
       </div>
     </div>
     <div class="content-page-option">
       <div class="input-setting-description">与上面的句中辅助码互斥：开启其中一个会自动关闭另一个。开启后末尾辅助码也不再生效，由它统一识别</div>
+    </div>
+    <div class="section-header section-header-shuangpin-helpcode">
+      <div class="section-title">直接辅助码句中四码标记</div>
+    </div>
+    <div class="content-page-option">
+      <label class="check-option"><input type="checkbox" name="direct-helpcode-marker" id="directHelpcodeSlashCheckbox" value="slash" checked><span>/ 斜杠（uiab/）</span></label>
+      <div class="input-option-divider"></div>
+      <label class="check-option"><input type="checkbox" name="direct-helpcode-marker" id="directHelpcodeUppercaseCheckbox" value="uppercase"><span>第二位辅码大写（uiaB）</span></label>
+      <div class="input-setting-description">至少保留一个。四码在句中要标记出来，否则会让位给普通切分。斜杠：两位辅码后补一个 /；不勾时 / 照常当标点。第二位辅码大写：第二位辅码用大写敲；开启后大写字母只当四码的第二位辅码</div>
     </div>
   </div>
 

@@ -7,6 +7,7 @@
 #include "global/globals.h"
 #include "defines/defines.h"
 #include "engine/common/helpcode_utils.h"
+#include "engine/contracts/direct_helpcode.h"
 #include "engine/core/data_path.h"
 #include "engine/shuangpin/shuangpin_profile.h"
 
@@ -461,10 +462,50 @@ bool SetConfiguredShuangpinDirectHelpcodeEnabled(bool enabled)
     return true;
 }
 
+bool GetConfiguredShuangpinDirectHelpcodeSlash()
+{
+    return g_shuangpin_direct_helpcode_slash;
+}
+
+bool SetConfiguredShuangpinDirectHelpcodeSlash(bool enabled)
+{
+    // 至少留一个：设置页取消不掉最后一个，这里同样不收。
+    if (!enabled && !g_shuangpin_direct_helpcode_uppercase)
+    {
+        return false;
+    }
+    if (!WriteConfiguredValue("helpcode", "shuangpin_direct_helpcode_slash", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_shuangpin_direct_helpcode_slash = enabled;
+    return true;
+}
+
+bool GetConfiguredShuangpinDirectHelpcodeUppercase()
+{
+    return g_shuangpin_direct_helpcode_uppercase;
+}
+
+bool SetConfiguredShuangpinDirectHelpcodeUppercase(bool enabled)
+{
+    if (!enabled && !g_shuangpin_direct_helpcode_slash)
+    {
+        return false;
+    }
+    if (!WriteConfiguredValue("helpcode", "shuangpin_direct_helpcode_uppercase", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_shuangpin_direct_helpcode_uppercase = enabled;
+    return true;
+}
+
 std::wstring FormatDirectHelpcodeWorkerPayload()
 {
-    return g_shuangpin_direct_helpcode_enabled && GetConfiguredActiveInputScheme() == SchemeType::Shuangpin ? L"1"
-                                                                                                            : L"0";
+    const bool enabled =
+        g_shuangpin_direct_helpcode_enabled && GetConfiguredActiveInputScheme() == SchemeType::Shuangpin;
+    return std::wstring(1, FanyImeDirectHelpcode::PayloadFor(enabled, g_shuangpin_direct_helpcode_slash));
 }
 
 bool IsConfiguredMidSentenceHelpcodeTrigger(wchar_t ch)

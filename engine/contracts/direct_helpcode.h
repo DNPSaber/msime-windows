@@ -13,9 +13,33 @@
 // TSF 在同步吃键阶段先判断，Server 随后按同一条规则决定收不收、引擎按它解析。三处必须一致，否则
 // 两边的输入串会分叉。TSF 不链接引擎、没有音节表，所以这里只看形状，/ 到底凑不凑得成四码由引擎
 // 判断，凑不成时引擎把它当分隔符处理，不会让整串作废。
+//
+// 四码也可以用第二位辅码大写来结束（uiaB，设置里和 / 各一个勾）。大写字母本来就是编码键，TSF 不用
+// 另外判断；但 / 没勾时 TSF 不能再吃它，所以 DirectHelpcodeChanged 的载荷要带上 / 勾没勾。
 namespace FanyImeDirectHelpcode
 {
 inline constexpr char kSlash = '/';
+
+// DirectHelpcodeChanged 的载荷（一个字符）："0" 关，"1" 开且 / 是四码的终止键，"2" 开但 / 不是编码键。
+inline constexpr wchar_t PayloadFor(bool enabled, bool slash)
+{
+    return !enabled ? L'0' : slash ? L'1' : L'2';
+}
+
+inline constexpr bool IsValidPayload(wchar_t payload)
+{
+    return payload == L'0' || payload == L'1' || payload == L'2';
+}
+
+inline constexpr bool EnabledFromPayload(wchar_t payload)
+{
+    return payload == L'1' || payload == L'2';
+}
+
+inline constexpr bool SlashFromPayload(wchar_t payload)
+{
+    return payload == L'1';
+}
 
 template <typename Char> constexpr bool IsAsciiLetter(Char ch)
 {

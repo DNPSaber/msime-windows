@@ -409,9 +409,22 @@ void InputSession::set_direct_helpcode_enabled(bool enabled)
     online_requests_.invalidate();
 }
 
+void InputSession::set_direct_helpcode_markers(bool slash, bool uppercase)
+{
+    if (direct_helpcode_slash_marker_ == slash && direct_helpcode_uppercase_marker_ == uppercase)
+    {
+        return;
+    }
+    direct_helpcode_slash_marker_ = slash;
+    direct_helpcode_uppercase_marker_ = uppercase;
+    engine_.set_direct_helpcode_markers(slash, uppercase);
+    update_mixed_candidates();
+    online_requests_.invalidate();
+}
+
 bool InputSession::accepts_direct_helpcode_slash_at(std::size_t caret) const
 {
-    if (!direct_helpcode_enabled_ || !is_shuangpin() || dedicated_english_mode_ ||
+    if (!direct_helpcode_enabled_ || !direct_helpcode_slash_marker_ || !is_shuangpin() || dedicated_english_mode_ ||
         local_input_mode_ != LocalInputMode::None)
     {
         return false;

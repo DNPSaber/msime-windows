@@ -203,14 +203,25 @@ bool Resolver::resolve(QueryRequest &request, const ResolveContext &context)
         aux_index_built_ = false;
         indexed_keymap_ = context.keymap;
     }
+    SpellingOptions spelling_options;
+    spelling_options.slash_marker = request.direct_helpcode_slash_marker;
+    spelling_options.uppercase_marker = request.direct_helpcode_uppercase_marker;
+    if (spelling_options != spelling_options_)
+    {
+        // 同一个原串换了四码标记就是另一张拼写图，按原串记的切分作废。
+        resolution_cache_.clear();
+        spelling_options_ = spelling_options;
+    }
 
     auto cached = resolution_cache_.find(typed);
     if (cached == resolution_cache_.end())
     {
-        const auto graph =
-            build_spelling_graph(typed, profile_, [&](const std::string &quanpin, char first, char second) {
+        const auto graph = build_spelling_graph(
+            typed, profile_,
+            [&](const std::string &quanpin, char first, char second) {
                 return has_aux(quanpin, first, second, context);
-            });
+            },
+            spelling_options_);
         Resolution resolution;
         // 只有一条完整切分时没有可比的切法，跳过整句解码；整句留给词典层自己的词格去解。
         if (!graph.empty() && !single_path(graph, resolution.spellings))

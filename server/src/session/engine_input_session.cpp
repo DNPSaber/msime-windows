@@ -58,6 +58,8 @@ void EngineInputSession::ApplyConfiguration()
     session_.set_shuangpin_helpcode_enabled(GetConfiguredShuangpinHelpcodeEnabled());
     session_.set_mid_sentence_helpcode_enabled(GetConfiguredShuangpinMidSentenceHelpcodeEnabled());
     session_.set_direct_helpcode_enabled(GetConfiguredShuangpinDirectHelpcodeEnabled());
+    session_.set_direct_helpcode_markers(GetConfiguredShuangpinDirectHelpcodeSlash(),
+                                         GetConfiguredShuangpinDirectHelpcodeUppercase());
     session_.set_mid_sentence_uppercase_trigger_enabled(GetConfiguredShuangpinMidSentenceHelpcodeUppercase());
     session_.set_quanpin_helpcode_enabled(GetConfiguredQuanpinHelpcodeEnabled());
     const unsigned autocorrect_types =
@@ -223,7 +225,8 @@ bool EngineInputSession::accepts_mid_sentence_helpcode_marker(std::size_t caret)
 bool EngineInputSession::accepts_direct_helpcode_slash(std::size_t caret) const
 {
     // 同上，按当前配置判断。
-    return GetConfiguredShuangpinDirectHelpcodeEnabled() && session_.accepts_direct_helpcode_slash_at(caret);
+    return GetConfiguredShuangpinDirectHelpcodeEnabled() && GetConfiguredShuangpinDirectHelpcodeSlash() &&
+           session_.accepts_direct_helpcode_slash_at(caret);
 }
 
 bool EngineInputSession::has_mid_sentence_helpcode() const

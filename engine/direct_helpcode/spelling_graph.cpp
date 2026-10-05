@@ -13,6 +13,11 @@ bool is_letter(char ch)
     return (ch >= 'a' && ch <= 'z') || (ch >= 'A' && ch <= 'Z');
 }
 
+bool is_upper(char ch)
+{
+    return ch >= 'A' && ch <= 'Z';
+}
+
 char to_lower(char ch)
 {
     return ch >= 'A' && ch <= 'Z' ? static_cast<char>(ch + ('a' - 'A')) : ch;
@@ -60,29 +65,32 @@ std::vector<bool> forward_reach(const SpellingGraph &graph, bool normal_only)
 }
 
 SpellingGraph build_attempt(const std::string &typed, const ShuangpinProfile &profile, const AuxPredicate &has_aux,
-                            bool symbols_as_delimiters)
+                            const SpellingOptions &options, bool lenient)
 {
     SpellingGraph graph;
     const std::size_t n = typed.size();
     graph.size = n;
     graph.edges.resize(n);
     graph.skip.resize(n, false);
+    // 大写标记开着、又不是兜底那一遍时，大写字母只能当四码的第二位辅码。
+    const bool strict_case = options.uppercase_marker && !lenient;
+    const auto usable = [&](std::size_t index) { return !strict_case || !is_upper(typed[index]); };
     for (std::size_t pos = 0; pos < n; ++pos)
     {
         const char ch = typed[pos];
-        graph.skip[pos] = ch == '\'' || (symbols_as_delimiters && (ch == '/' || ch == ';'));
-        if (!is_letter(ch))
+        graph.skip[pos] = ch == '\'' || (lenient && (ch == '/' || ch == ';'));
+        if (!is_letter(ch) || !usable(pos))
             continue;
 
         auto &out = graph.edges[pos];
-        if (pos + 1 < n && (is_letter(typed[pos + 1]) || typed[pos + 1] == ';'))
+        if (pos + 1 < n && ((is_letter(typed[pos + 1]) && usable(pos + 1)) || typed[pos + 1] == ';'))
         {
             std::string code{to_lower(ch), to_lower(typed[pos + 1])};
             std::string quanpin = syllable_quanpin(code, profile);
             if (!quanpin.empty())
             {
                 out.push_back(make_spelling(pos, pos + 2, code, quanpin, SpellingKind::Plain));
-                if (pos + 2 < n && is_letter(typed[pos + 2]))
+                if (pos + 2 < n && is_letter(typed[pos + 2]) && usable(pos + 2))
                 {
                     const char first = to_lower(typed[pos + 2]);
                     if (has_aux && has_aux(quanpin, first, 0))
@@ -92,11 +100,15 @@ SpellingGraph build_attempt(const std::string &typed, const ShuangpinProfile &pr
                         const char second = to_lower(typed[pos + 3]);
                         if (has_aux && has_aux(quanpin, first, second))
                         {
-                            if (pos + 4 < n && typed[pos + 4] == '/')
+                            if (options.slash_marker && pos + 4 < n && typed[pos + 4] == '/')
                                 out.push_back(
                                     make_spelling(pos, pos + 5, code, quanpin, SpellingKind::Aux2Slash, first, second));
-                            out.push_back(
-                                make_spelling(pos, pos + 4, code, quanpin, SpellingKind::Aux2Abbrev, first, second));
+                            if (options.uppercase_marker && is_upper(typed[pos + 3]))
+                                out.push_back(
+                                    make_spelling(pos, pos + 4, code, quanpin, SpellingKind::Aux2Upper, first, second));
+                            else
+                                out.push_back(make_spelling(pos, pos + 4, code, quanpin, SpellingKind::Aux2Abbrev,
+                                                            first, second));
                         }
                     }
                 }
@@ -149,15 +161,15 @@ SpellingGraph build_attempt(const std::string &typed, const ShuangpinProfile &pr
 } // namespace
 
 SpellingGraph build_spelling_graph(const std::string &typed, const ShuangpinProfile &profile,
-                                   const AuxPredicate &has_aux)
+                                   const AuxPredicate &has_aux, const SpellingOptions &options)
 {
     if (typed.empty())
         return {};
-    SpellingGraph graph = build_attempt(typed, profile, has_aux, false);
+    SpellingGraph graph = build_attempt(typed, profile, has_aux, options, false);
     if (graph.empty())
     {
-        // 用不上的 / 和 ; 退回成分隔符，候选照常出，不至于整串作废。
-        graph = build_attempt(typed, profile, has_aux, true);
+        // 用不上的 / 和 ; 退回成分隔符、大写字母不再只当第二位辅码，候选照常出，不至于整串作废。
+        graph = build_attempt(typed, profile, has_aux, options, true);
     }
     return graph;
 }

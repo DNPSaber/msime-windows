@@ -44,6 +44,9 @@ struct QueryRequest
     std::vector<std::pair<std::size_t, std::string>> syllable_helpcode_decorations;
     // 会话开着直接辅助码（不论这次请求有没有被改写）。词典层据此让词格与解析器共用一份跨度查询缓存。
     bool enable_direct_helpcode = false;
+    // 直接辅助码在句中用什么结束四码：补 /（uiab/），或第二位辅码大写（uiaB），见 direct_helpcode/spelling_graph.h。
+    bool direct_helpcode_slash_marker = true;
+    bool direct_helpcode_uppercase_marker = false;
     // Autocorrection is type-gated (bit0 transposition, bit1 neighbor in the session-level
     // mask); both default off, so a fresh install never rewrites the user's spelling.
     bool enable_quanpin_autocorrect_transposition = false;

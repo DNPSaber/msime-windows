@@ -35,6 +35,8 @@ class ImeSession
     {
         return enable_direct_helpcode_;
     }
+    // 直接辅助码在句中用什么结束四码：补 /、第二位辅码大写，可以都开。
+    void set_direct_helpcode_markers(bool slash, bool uppercase);
     void set_quanpin_helpcode_enabled(bool enabled);
     void set_quanpin_autocorrect_types(unsigned autocorrect_types);
     void set_fuzzy_pinyin_options(metasequoia::FuzzyPinyinOptions options)
@@ -124,6 +126,8 @@ class ImeSession
     bool enable_shuangpin_helpcode_ = false;
     bool enable_mid_sentence_helpcode_ = false;
     bool enable_direct_helpcode_ = false;
+    bool direct_helpcode_slash_marker_ = true;
+    bool direct_helpcode_uppercase_marker_ = false;
     bool enable_mid_sentence_uppercase_trigger_ = false;
     bool enable_quanpin_helpcode_ = false;
     unsigned quanpin_autocorrect_types_ = 0;

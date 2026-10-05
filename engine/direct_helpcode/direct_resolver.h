@@ -77,6 +77,8 @@ class Resolver
     // 搭配分（尾窗 + 词 + 是否句尾 → 分数），整句打分选项变了随 reset_cache 一起清。
     std::unordered_map<std::string, double> collocation_memo_;
     std::string collocation_key_;
+    // resolution_cache_ 里的切分是按这组四码标记解出来的。
+    SpellingOptions spelling_options_;
     std::unordered_map<std::string, Resolution> resolution_cache_;
     const DecodedPath *last_sentence_ = nullptr;
 };

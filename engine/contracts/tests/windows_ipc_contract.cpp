@@ -182,6 +182,13 @@ int main()
     CHECK(FanyImeDirectHelpcode::AcceptsSemicolonFinalAt("uiax", 4, 4) &&
           !FanyImeDirectHelpcode::AcceptsSemicolonFinalAt("uix;", 4, 4) &&
           !FanyImeDirectHelpcode::AcceptsSemicolonFinalAt("", 0, 0));
+    // DirectHelpcodeChanged 的载荷：开关和 / 勾没勾。旧 DLL 认的 "0"/"1" 意思不变。
+    CHECK(FanyImeDirectHelpcode::PayloadFor(false, true) == L'0' &&
+          FanyImeDirectHelpcode::PayloadFor(true, true) == L'1' &&
+          FanyImeDirectHelpcode::PayloadFor(true, false) == L'2');
+    CHECK(FanyImeDirectHelpcode::EnabledFromPayload(L'2') && !FanyImeDirectHelpcode::SlashFromPayload(L'2') &&
+          FanyImeDirectHelpcode::SlashFromPayload(L'1') && !FanyImeDirectHelpcode::EnabledFromPayload(L'0') &&
+          !FanyImeDirectHelpcode::IsValidPayload(L'3'));
     // TSF（WCHAR）与引擎（char）共用同一条句中辅助码形状规则。
     const auto accepts = [](const std::wstring &text) {
         return FanyImeMidSentenceHelpcode::AcceptsMarker(text.data(), text.size());

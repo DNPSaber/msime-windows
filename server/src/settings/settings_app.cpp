@@ -666,6 +666,8 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"shuangpin_mid_sentence_helpcode_semicolon", GetConfiguredShuangpinMidSentenceHelpcodeSemicolon()},
             {"shuangpin_mid_sentence_helpcode_uppercase", GetConfiguredShuangpinMidSentenceHelpcodeUppercase()},
             {"shuangpin_direct_helpcode", GetConfiguredShuangpinDirectHelpcodeEnabled()},
+            {"shuangpin_direct_helpcode_slash", GetConfiguredShuangpinDirectHelpcodeSlash()},
+            {"shuangpin_direct_helpcode_uppercase", GetConfiguredShuangpinDirectHelpcodeUppercase()},
             {"shuangpin_helpcode_schema", GetConfiguredShuangpinHelpcodeSchema()},
             {"quanpin_helpcode", GetConfiguredQuanpinHelpcodeEnabled()},
             {"quanpin_helpcode_schema", GetConfiguredQuanpinHelpcodeSchema()},
@@ -1046,6 +1048,10 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredShuangpinMidSentenceHelpcodeUppercase(json::value_to<bool>(data.at("value")));
     if (path == "helpcode.shuangpin_direct_helpcode")
         return SetConfiguredShuangpinDirectHelpcodeEnabled(json::value_to<bool>(data.at("value")));
+    if (path == "helpcode.shuangpin_direct_helpcode_slash")
+        return SetConfiguredShuangpinDirectHelpcodeSlash(json::value_to<bool>(data.at("value")));
+    if (path == "helpcode.shuangpin_direct_helpcode_uppercase")
+        return SetConfiguredShuangpinDirectHelpcodeUppercase(json::value_to<bool>(data.at("value")));
     if (path == "helpcode.shuangpin_helpcode_schema")
         return SetConfiguredShuangpinHelpcodeSchema(json::value_to<std::string>(data.at("value")));
     if (path == "helpcode.quanpin_helpcode")
