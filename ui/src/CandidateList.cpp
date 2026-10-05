@@ -12,6 +12,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <initializer_list>
 #include <limits>
 #include <utility>
 
@@ -86,22 +87,15 @@ CandidateList::CandidateList(float itemHeight)
     appearance_.itemHeight = itemHeight;
 }
 
-void CandidateList::InvalidateLayoutCache()
-{
-    layoutCache_.clear();
-}
-
 void CandidateList::AddItem(Item item)
 {
     items_.push_back(std::move(item));
-    layoutCache_.push_back({});
     InvalidateMeasure();
 }
 
 void CandidateList::SetItems(std::vector<Item> items)
 {
     items_ = std::move(items);
-    InvalidateLayoutCache();
     if (selectedIndex_ >= items_.size())
     {
         selectedIndex_ = items_.empty() ? 0 : items_.size() - 1;
@@ -114,7 +108,6 @@ void CandidateList::SetItems(std::vector<Item> items)
 void CandidateList::ClearItems()
 {
     items_.clear();
-    InvalidateLayoutCache();
     selectedIndex_ = 0;
     pressedIndex_ = static_cast<size_t>(-1);
     InvalidateMeasure();
@@ -170,7 +163,8 @@ const CandidateList::Item *CandidateList::GetItem(size_t index) const
 void CandidateList::SetAppearance(Appearance appearance)
 {
     appearance_ = appearance;
-    InvalidateLayoutCache();
+    // The fallback font list is part of every layout and metric but not of their keys.
+    textLayoutCache_.clear();
     textMetricCache_.clear();
     InvalidateMeasure();
 }
@@ -183,20 +177,21 @@ const std::wstring &CandidateList::ResolvedFontFamily() const
 
 namespace
 {
-std::wstring TextMetricKey(wchar_t kind, const std::wstring &text, float fontSize, float width)
+// The exact bits of every number go into the key, so only an identical
+// measurement shares an entry.
+std::wstring TextCacheKey(wchar_t kind, const std::wstring &text, std::initializer_list<float> numbers)
 {
-    uint32_t sizeBits = 0;
-    uint32_t widthBits = 0;
     static_assert(sizeof(float) == sizeof(uint32_t));
-    std::memcpy(&sizeBits, &fontSize, sizeof(sizeBits));
-    std::memcpy(&widthBits, &width, sizeof(widthBits));
     std::wstring key;
-    key.reserve(text.size() + 5);
+    key.reserve(text.size() + 1 + numbers.size() * 2);
     key.push_back(kind);
-    key.push_back(static_cast<wchar_t>(sizeBits & 0xFFFF));
-    key.push_back(static_cast<wchar_t>(sizeBits >> 16));
-    key.push_back(static_cast<wchar_t>(widthBits & 0xFFFF));
-    key.push_back(static_cast<wchar_t>(widthBits >> 16));
+    for (const float number : numbers)
+    {
+        uint32_t bits = 0;
+        std::memcpy(&bits, &number, sizeof(bits));
+        key.push_back(static_cast<wchar_t>(bits & 0xFFFF));
+        key.push_back(static_cast<wchar_t>(bits >> 16));
+    }
     key.append(text);
     return key;
 }
@@ -204,6 +199,8 @@ std::wstring TextMetricKey(wchar_t kind, const std::wstring &text, float fontSiz
 // Enough for several pages of candidates with labels, annotations and
 // translations; past it the cache simply starts over.
 constexpr size_t kMaxTextMetricEntries = 2048;
+// Layouts hold shaped glyph runs, so far fewer are kept: a few pages' worth.
+constexpr size_t kMaxTextLayoutEntries = 256;
 } // namespace
 
 bool CandidateList::LookupTextMetric(wchar_t kind, const std::wstring &text, float fontSize, float width,
@@ -216,7 +213,7 @@ bool CandidateList::LookupTextMetric(wchar_t kind, const std::wstring &text, flo
         textMetricFamily_ = family;
         return false;
     }
-    const auto found = textMetricCache_.find(TextMetricKey(kind, text, fontSize, width));
+    const auto found = textMetricCache_.find(TextCacheKey(kind, text, {fontSize, width}));
     if (found == textMetricCache_.end())
     {
         return false;
@@ -232,13 +229,46 @@ void CandidateList::StoreTextMetric(wchar_t kind, const std::wstring &text, floa
     {
         textMetricCache_.clear();
     }
-    textMetricCache_[TextMetricKey(kind, text, fontSize, width)] = value;
+    textMetricCache_[TextCacheKey(kind, text, {fontSize, width})] = value;
+}
+
+ComPtr<IDWriteTextLayout> CandidateList::TextLayoutFor(IDWriteFactory *factory, const std::wstring &fontFamily,
+                                                       const std::wstring &text, float fontSize, const RectF &box)
+{
+    if (text.empty())
+    {
+        return {};
+    }
+    if (textLayoutFamily_ != fontFamily)
+    {
+        textLayoutCache_.clear();
+        textLayoutFamily_ = fontFamily;
+    }
+    const float width = std::max(box.width, 1.0f);
+    const float height = std::max(box.height, 1.0f);
+    std::wstring key = TextCacheKey(L'l', text, {fontSize, width, height});
+    if (const auto found = textLayoutCache_.find(key); found != textLayoutCache_.end())
+    {
+        return found->second;
+    }
+    ComPtr<IDWriteTextLayout> layout = CreateCachedTextLayout(
+        factory, fontFamily, text, fontSize, DWRITE_FONT_WEIGHT_NORMAL, width, height, DWRITE_TEXT_ALIGNMENT_LEADING,
+        DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_WRAP, appearance_.fallbackFontFamilies);
+    if (!layout)
+    {
+        return {};
+    }
+    if (textLayoutCache_.size() >= kMaxTextLayoutEntries)
+    {
+        textLayoutCache_.clear();
+    }
+    textLayoutCache_.emplace(std::move(key), layout);
+    return layout;
 }
 
 void CandidateList::SetOrientation(Orientation orientation)
 {
     orientation_ = orientation;
-    InvalidateLayoutCache();
     InvalidateMeasure();
 }
 
@@ -415,8 +445,6 @@ RectF CandidateList::GetItemBounds(size_t index) const
 
 SizeF CandidateList::Measure(const SizeF &availableSize)
 {
-    // 宽度变化也会改变每段文字的高度，不能继续使用上一轮的文字布局缓存。
-    InvalidateLayoutCache();
     itemGeometry_.clear();
     const float availableWidth = std::max(availableSize.width, 1.0f);
     const float gap = appearance_.itemGap;
@@ -488,14 +516,7 @@ void CandidateList::Render(DeviceResources &deviceResources)
         return;
     }
 
-    if (layoutCache_.size() != items_.size())
-    {
-        layoutCache_.resize(items_.size());
-    }
-
-    const Theme &theme = ThemeManager::GetCurrent();
-    const std::wstring &fontFamily =
-        appearance_.fontFamily.empty() ? theme.textInputFontFamily : appearance_.fontFamily;
+    const std::wstring &fontFamily = ResolvedFontFamily();
 
     // The list's corners in list coordinates: its arranged width (the list is
     // stretched to its container) and the bottom of the last row of items.
@@ -567,47 +588,15 @@ void CandidateList::Render(DeviceResources &deviceResources)
         const RectF annotationRect = absolute(geometry.annotation);
         const RectF translationRect = absolute(geometry.translation);
 
-        auto &cache = layoutCache_[index];
-        if (cache.fontFamily != fontFamily || cache.labelWidth != labelRect.width)
-        {
-            cache.labelLayout = CreateCachedTextLayout(
-                factory, fontFamily, items_[index].label, appearance_.labelFontSize, DWRITE_FONT_WEIGHT_NORMAL,
-                std::max(labelRect.width, 1.0f), std::max(labelRect.height, 1.0f), DWRITE_TEXT_ALIGNMENT_LEADING,
-                DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_WRAP, appearance_.fallbackFontFamilies);
-            cache.labelWidth = labelRect.width;
-            cache.fontFamily = fontFamily;
-        }
-        if (cache.fontFamily != fontFamily || cache.textWidth != textRect.width)
-        {
-            cache.textLayout = CreateCachedTextLayout(
-                factory, fontFamily, items_[index].text, appearance_.fontSize, DWRITE_FONT_WEIGHT_NORMAL,
-                std::max(textRect.width, 1.0f), std::max(textRect.height, 1.0f), DWRITE_TEXT_ALIGNMENT_LEADING,
-                DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_WRAP, appearance_.fallbackFontFamilies);
-            cache.textWidth = textRect.width;
-            cache.fontFamily = fontFamily;
-        }
-        if (!items_[index].annotation.empty() &&
-            (cache.fontFamily != fontFamily || cache.annotationWidth != annotationRect.width))
-        {
-            cache.annotationLayout = CreateCachedTextLayout(
-                factory, fontFamily, items_[index].annotation, appearance_.annotationFontSize,
-                DWRITE_FONT_WEIGHT_NORMAL, std::max(annotationRect.width, 1.0f), std::max(annotationRect.height, 1.0f),
-                DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_WRAP,
-                appearance_.fallbackFontFamilies);
-            cache.annotationWidth = annotationRect.width;
-            cache.fontFamily = fontFamily;
-        }
-        if (!items_[index].translation.empty() &&
-            (cache.fontFamily != fontFamily || cache.translationWidth != translationRect.width))
-        {
-            cache.translationLayout = CreateCachedTextLayout(
-                factory, fontFamily, items_[index].translation, translationFontSize, DWRITE_FONT_WEIGHT_NORMAL,
-                std::max(translationRect.width, 1.0f), std::max(translationRect.height, 1.0f),
-                DWRITE_TEXT_ALIGNMENT_LEADING, DWRITE_PARAGRAPH_ALIGNMENT_CENTER, DWRITE_WORD_WRAPPING_WRAP,
-                appearance_.fallbackFontFamilies);
-            cache.translationWidth = translationRect.width;
-            cache.fontFamily = fontFamily;
-        }
+        const Item &item = items_[index];
+        const ComPtr<IDWriteTextLayout> labelLayout =
+            TextLayoutFor(factory, fontFamily, item.label, appearance_.labelFontSize, labelRect);
+        const ComPtr<IDWriteTextLayout> textLayout =
+            TextLayoutFor(factory, fontFamily, item.text, appearance_.fontSize, textRect);
+        const ComPtr<IDWriteTextLayout> annotationLayout =
+            TextLayoutFor(factory, fontFamily, item.annotation, appearance_.annotationFontSize, annotationRect);
+        const ComPtr<IDWriteTextLayout> translationLayout =
+            TextLayoutFor(factory, fontFamily, item.translation, translationFontSize, translationRect);
 
         const bool highlighted = selected || pressed;
         const D2D1_COLOR_F &labelColor = highlighted && appearance_.rowLabelSelected.a > 0.001f
@@ -633,24 +622,24 @@ void CandidateList::Render(DeviceResources &deviceResources)
             translationColor.a *= 0.62f;
         }
         ID2D1SolidColorBrush *translationBrush = deviceResources.GetSolidColorBrush(translationColor);
-        if (cache.labelLayout && labelBrush)
+        if (labelLayout && labelBrush)
         {
-            target->DrawTextLayout(D2D1::Point2F(labelRect.x, labelRect.y), cache.labelLayout.Get(), labelBrush,
+            target->DrawTextLayout(D2D1::Point2F(labelRect.x, labelRect.y), labelLayout.Get(), labelBrush,
                                    kColorClipTextOptions);
         }
-        if (cache.textLayout && textBrush)
+        if (textLayout && textBrush)
         {
-            target->DrawTextLayout(D2D1::Point2F(textRect.x, textRect.y), cache.textLayout.Get(), textBrush,
+            target->DrawTextLayout(D2D1::Point2F(textRect.x, textRect.y), textLayout.Get(), textBrush,
                                    kColorClipTextOptions);
         }
-        if (!items_[index].annotation.empty() && cache.annotationLayout && annotationBrush)
+        if (annotationLayout && annotationBrush)
         {
-            target->DrawTextLayout(D2D1::Point2F(annotationRect.x, annotationRect.y), cache.annotationLayout.Get(),
+            target->DrawTextLayout(D2D1::Point2F(annotationRect.x, annotationRect.y), annotationLayout.Get(),
                                    annotationBrush, kColorClipTextOptions);
         }
-        if (!items_[index].translation.empty() && cache.translationLayout && translationBrush)
+        if (translationLayout && translationBrush)
         {
-            target->DrawTextLayout(D2D1::Point2F(translationRect.x, translationRect.y), cache.translationLayout.Get(),
+            target->DrawTextLayout(D2D1::Point2F(translationRect.x, translationRect.y), translationLayout.Get(),
                                    translationBrush, kColorClipTextOptions);
         }
     }
