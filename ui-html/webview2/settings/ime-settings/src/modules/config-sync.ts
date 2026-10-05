@@ -151,6 +151,9 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
   if (typeof data?.quanpin?.autocorrect_neighbor === 'boolean') {
     applyToggleState('autocorrectNeighborToggleBtn', data.quanpin.autocorrect_neighbor);
   }
+  if (typeof data?.quanpin?.autocorrect_marker === 'boolean') {
+    applyToggleState('autocorrectMarkerToggleBtn', data.quanpin.autocorrect_marker);
+  }
   // 先回填总开关再回填规则：总开关关闭时规则复选禁用并提示，但勾选状态仍按已存值展示。
   if (typeof data?.input?.fuzzy_pinyin === 'boolean') {
     applyToggleState('fuzzyPinyinToggleBtn', data.input.fuzzy_pinyin);

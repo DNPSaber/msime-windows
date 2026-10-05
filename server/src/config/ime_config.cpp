@@ -98,6 +98,8 @@ bool g_show_quanpin_helpcode_in_candidate_window = true;
 // both correction types default to off and users opt in from the settings page.
 bool g_quanpin_autocorrect_transposition = false;
 bool g_quanpin_autocorrect_neighbor = false;
+// Whether correction-sourced candidates show the trailing "*" marker. On by default.
+bool g_quanpin_autocorrect_marker = true;
 // Bitmask of FuzzyPinyinRule bits. All off by default so upgrades never change behavior.
 std::uint32_t g_fuzzy_pinyin_rules = 0;
 // Master switch, off by default. It gates GetConfiguredFuzzyPinyinOptions only; the rule
@@ -458,6 +460,7 @@ bool LoadImeConfig()
             tbl["helpcode"]["show_qp_helpcode_in_candidate_window"].value_or(true);
         g_quanpin_autocorrect_transposition = tbl["quanpin"]["autocorrect_transposition"].value_or(false);
         g_quanpin_autocorrect_neighbor = tbl["quanpin"]["autocorrect_neighbor"].value_or(false);
+        g_quanpin_autocorrect_marker = tbl["quanpin"]["autocorrect_marker"].value_or(true);
         g_fuzzy_pinyin_enabled = tbl["input"]["fuzzy_pinyin"].value_or(false);
         g_fuzzy_seeded = tbl["input"]["fuzzy_seeded"].value_or(false);
         g_fuzzy_pinyin_rules = 0;

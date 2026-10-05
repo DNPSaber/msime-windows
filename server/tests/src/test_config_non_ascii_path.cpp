@@ -373,13 +373,17 @@ TEST_CASE(quanpin_autocorrect_keys_persist_and_legacy_key_stays_ignored)
 
         InitImeConfig();
         REQUIRE(fs::exists(data_dir / L"config.toml"));
+        // 纠错标记默认显示。
+        REQUIRE(GetConfiguredQuanpinAutocorrectMarker());
 
-        // 缺失段上的首次写入不能失败；重读磁盘后两个开关独立保持。
+        // 缺失段上的首次写入不能失败；重读磁盘后各开关独立保持。
         REQUIRE(SetConfiguredQuanpinAutocorrectTransposition(true));
         REQUIRE(SetConfiguredQuanpinAutocorrectNeighbor(false));
+        REQUIRE(SetConfiguredQuanpinAutocorrectMarker(false));
         InitImeConfig();
         REQUIRE(GetConfiguredQuanpinAutocorrectTransposition());
         REQUIRE(!GetConfiguredQuanpinAutocorrectNeighbor());
+        REQUIRE(!GetConfiguredQuanpinAutocorrectMarker());
 
         // 旧键（哪怕显式 true）不得再影响纠错状态：清掉新键、只留旧键后重读，两者都必须默认关。
         auto config_text = std::string("[quanpin]\nautocorrect = true\n");
@@ -391,6 +395,8 @@ TEST_CASE(quanpin_autocorrect_keys_persist_and_legacy_key_stays_ignored)
         InitImeConfig();
         REQUIRE(!GetConfiguredQuanpinAutocorrectTransposition());
         REQUIRE(!GetConfiguredQuanpinAutocorrectNeighbor());
+        // 缺少 autocorrect_marker 键时回到默认显示。
+        REQUIRE(GetConfiguredQuanpinAutocorrectMarker());
     }
 
     fs::remove_all(unique_root, ec);

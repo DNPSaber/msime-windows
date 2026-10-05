@@ -1161,6 +1161,14 @@ static void ApplyHelpcodeSubkey(const std::string &path, const json::object &dat
             PostSettingsConfig();
         }
     }
+    if (path == "quanpin.autocorrect_marker")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredQuanpinAutocorrectMarker(value))
+        {
+            PostSettingsConfig();
+        }
+    }
 }
 
 HRESULT OnControllerCreatedSettingsWnd(            //
@@ -1766,6 +1774,7 @@ void PostSettingsConfig()
             {"quanpin_helpcode_schema", GetConfiguredQuanpinHelpcodeSchema()},
             {"show_sp_helpcode_in_candidate_window", GetConfiguredShowShuangpinHelpcodeInCandidateWindow()},
             {"show_qp_helpcode_in_candidate_window", GetConfiguredShowQuanpinHelpcodeInCandidateWindow()}}},
+          {"quanpin", {{"autocorrect_marker", GetConfiguredQuanpinAutocorrectMarker()}}},
           {"statistics",
            {{"enabled", GetConfiguredStatisticsEnabled()}, {"retention", GetConfiguredStatisticsRetention()}}}}}};
     payload["data"]["helpcode"]["custom_schemas"] = CustomHelpcodeSchemasJson();

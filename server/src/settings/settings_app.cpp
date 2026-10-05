@@ -675,7 +675,8 @@ std::wstring BuildConfigMessage(bool refresh_skin_catalog)
             {"show_qp_helpcode_in_candidate_window", GetConfiguredShowQuanpinHelpcodeInCandidateWindow()}}},
           {"quanpin",
            {{"autocorrect_transposition", GetConfiguredQuanpinAutocorrectTransposition()},
-            {"autocorrect_neighbor", GetConfiguredQuanpinAutocorrectNeighbor()}}},
+            {"autocorrect_neighbor", GetConfiguredQuanpinAutocorrectNeighbor()},
+            {"autocorrect_marker", GetConfiguredQuanpinAutocorrectMarker()}}},
           {"statistics",
            {{"enabled", GetConfiguredStatisticsEnabled()}, {"retention", GetConfiguredStatisticsRetention()}}}}}};
     payload["data"]["voice_input"]["polish_presets"] = std::move(polish_presets);
@@ -1064,6 +1065,8 @@ bool ApplyConfigUpdate(const json::object &data)
         return SetConfiguredQuanpinAutocorrectTransposition(json::value_to<bool>(data.at("value")));
     if (path == "quanpin.autocorrect_neighbor")
         return SetConfiguredQuanpinAutocorrectNeighbor(json::value_to<bool>(data.at("value")));
+    if (path == "quanpin.autocorrect_marker")
+        return SetConfiguredQuanpinAutocorrectMarker(json::value_to<bool>(data.at("value")));
     return false;
 }
 

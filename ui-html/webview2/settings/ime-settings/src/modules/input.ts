@@ -356,6 +356,9 @@ export function setupInput(): void {
   setupToggleButton('autocorrectNeighborToggleBtn', (active) => {
     updateConfig('quanpin.autocorrect_neighbor', active);
   });
+  setupToggleButton('autocorrectMarkerToggleBtn', (active) => {
+    updateConfig('quanpin.autocorrect_marker', active);
+  });
   setupFuzzySection();
   setupSmartPunctuationSection();
   setupToggleButton('pairedPunctuationToggleBtn', (active) => {

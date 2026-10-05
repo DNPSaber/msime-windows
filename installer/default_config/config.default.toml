@@ -342,6 +342,8 @@ show_qp_helpcode_in_candidate_window = false
 autocorrect_transposition = false
 # 误触相邻按键时纠正（如 shabg → shang）。
 autocorrect_neighbor = false
+# 纠错得到的候选在末尾显示 * 标记，便于和正常候选区分；只影响显示，不影响上屏文字。
+autocorrect_marker = true
 
 #
 # Keybindings

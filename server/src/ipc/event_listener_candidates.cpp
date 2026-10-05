@@ -251,6 +251,7 @@ std::string BuildCurrentCandidatePage()
     const bool show_fixed_badge = GetConfiguredCandidateFixedBadge();
     const std::string fixed_badge_style = GetConfiguredCandidateFixedBadgeStyle();
     const bool show_sentence_source_badge = GetConfiguredAssocSentenceSourceBadge();
+    const bool show_autocorrect_marker = GetConfiguredQuanpinAutocorrectMarker();
     // 徽标开启时才解析模型包的来源标签，每次组页解析一次，不逐候选查。标签由目录条目
     // 自己声明（万象/八股/墨奇），各家互不冒名；激活值留空时不产生整句候选，徽章分支
     // 不会被走到。
@@ -271,9 +272,10 @@ std::string BuildCurrentCandidatePage()
 
         CandidateViewItem view;
         view.text = word;
-        if (!item.corrected_from.empty())
+        if (show_autocorrect_marker && !item.corrected_from.empty())
         {
-            // Correction-sourced candidates carry a light visible marker (PRD R5/AC7).
+            // Correction-sourced candidates carry a light visible marker (PRD R5/AC7),
+            // unless the user turned it off via quanpin.autocorrect_marker.
             // Only the display text is touched: commits, word frequency updates and
             // pinned-position lookups read item.word / page_words and must never see
             // the marker suffix.

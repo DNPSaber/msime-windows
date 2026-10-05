@@ -312,6 +312,8 @@ bool GetConfiguredQuanpinAutocorrectTransposition();
 bool SetConfiguredQuanpinAutocorrectTransposition(bool enabled);
 bool GetConfiguredQuanpinAutocorrectNeighbor();
 bool SetConfiguredQuanpinAutocorrectNeighbor(bool enabled);
+bool GetConfiguredQuanpinAutocorrectMarker();
+bool SetConfiguredQuanpinAutocorrectMarker(bool enabled);
 // Fuzzy pinyin rules are flat [input] booleans ("fuzzy_z_zh", ...) so the settings page can
 // bind them per key and the upgrade merge keeps user choices per key. Callers get the
 // synthesized engine options and never touch the bitmask themselves.

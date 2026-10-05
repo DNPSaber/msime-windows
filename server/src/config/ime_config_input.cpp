@@ -594,6 +594,21 @@ bool SetConfiguredQuanpinAutocorrectNeighbor(bool enabled)
     return true;
 }
 
+bool GetConfiguredQuanpinAutocorrectMarker()
+{
+    return g_quanpin_autocorrect_marker;
+}
+
+bool SetConfiguredQuanpinAutocorrectMarker(bool enabled)
+{
+    if (!WriteConfiguredValue("quanpin", "autocorrect_marker", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_quanpin_autocorrect_marker = enabled;
+    return true;
+}
+
 bool GetConfiguredFuzzyPinyinEnabled()
 {
     return g_fuzzy_pinyin_enabled;
