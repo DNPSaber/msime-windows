@@ -861,7 +861,13 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     const bool shift_only = (Global::ModifiersDown & 0b00000111u) == 0b00000001u;
     const bool chinese_scheme = g_inputSession && (g_inputSession->current_scheme_type() == SchemeType::Quanpin ||
                                                    g_inputSession->current_scheme_type() == SchemeType::Shuangpin);
-    if (Global::Keycode == VK_RETURN && !input_before_key.empty() && GetConfiguredEnterLearnsEnglishWord())
+    const bool pinyin_commit =
+        FanyImeIpc::IsPinyinCommitKey(Global::Keycode, Global::ModifiersDown) && !input_before_key.empty();
+    const bool convert_shuangpin = pinyin_commit && g_inputSession->current_scheme_type() == SchemeType::Shuangpin &&
+                                   !g_english_input_mode && !g_r_mode_triggered &&
+                                   !IsSpecialModeCompositionActive(input_before_key);
+    if (Global::Keycode == VK_RETURN && !input_before_key.empty() && !convert_shuangpin &&
+        GetConfiguredEnterLearnsEnglishWord())
     {
         std::string english_word;
         // V 模式没有触发标记，按输入串认：回车上屏的 V123 不是要学的英文词。
@@ -871,6 +877,16 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
                                                       g_inputSession->is_all_complete_pure_pinyin()))
             english_word = g_r_mode_triggered ? "R" + input_before_key : input_before_key;
         EnqueueLearnEnteredEnglishWordTask(english_word);
+    }
+    if (pinyin_commit)
+    {
+        const std::string raw = g_r_mode_triggered ? "R" + input_before_key : input_before_key;
+        const std::string text = FanyImeIpc::EnteredPinyinText(
+            raw, convert_shuangpin ? g_inputSession->get_quanpin() : std::string{}, convert_shuangpin);
+        Global::candidate_ui.selected_text = string_to_wstring(GlobalIme::composition.creating_word.word + text);
+        Global::MsgTypeToTsf = Global::DataFromServerMsgType::CommitExactText;
+        SendCurrentDataToClient(client_id, activation_epoch, request_id);
+        return;
     }
     if (chinese_scheme && !g_english_input_mode && GetConfiguredQuickPhraseEnabled() && input_before_key.empty() &&
         Global::Keycode == 'K' && Global::Wch == L'K' && shift_only)

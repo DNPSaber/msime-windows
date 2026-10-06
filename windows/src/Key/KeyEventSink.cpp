@@ -141,6 +141,12 @@ bool IsTranslationCommitShortcut(UINT code, UINT modifiers)
            (GetAsyncKeyState(VK_RWIN) & 0x8000) == 0;
 }
 
+bool IsPinyinCommitShortcut(UINT code, UINT modifiers)
+{
+    return code == VK_RETURN && (modifiers & 0b00000111u) == 0b00000001u && (GetAsyncKeyState(VK_LWIN) & 0x8000) == 0 &&
+           (GetAsyncKeyState(VK_RWIN) & 0x8000) == 0;
+}
+
 bool IsCharacterSetInputModeToggle(UINT code, UINT modifiers)
 {
     return FanyImeProtocol::IsCharacterSetShortcut(code, modifiers) && (GetAsyncKeyState(VK_LWIN) & 0x8000) == 0 &&
@@ -333,9 +339,12 @@ BOOL CMetasequoiaIME::_IsKeyEaten(         //
             return TRUE;
         }
 
-        // 候选框开着的时候 Ctrl+Enter 上屏高亮候选的译文；没有候选框时它仍然属于应用。
-        if (!freshCompositionState && _candidateMode != CANDIDATE_NONE &&
-            IsTranslationCommitShortcut(*pCodeOut, shortcutModifiers))
+        // Ctrl+Enter commits a candidate translation. Shift+Enter commits the
+        // Server's converted spelling, including compositions without candidates.
+        if (!freshCompositionState &&
+            ((_candidateMode != CANDIDATE_NONE && IsTranslationCommitShortcut(*pCodeOut, shortcutModifiers)) ||
+             (!_serverUnavailableFallbackActive && pCompositionProcessorEngine->GetVirtualKeyLength() > 0 &&
+              IsPinyinCommitShortcut(*pCodeOut, shortcutModifiers))))
         {
             if (pKeyState)
             {
