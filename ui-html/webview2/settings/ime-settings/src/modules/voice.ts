@@ -9,6 +9,7 @@ const fields: Record<string, string> = {
   voiceAsrAppKey: 'voice_input.asr_app_key',
   voiceAsrToken: 'voice_input.asr_token',
   voiceAsrEndpoint: 'voice_input.asr_endpoint',
+  voiceAsrResourceId: 'voice_input.asr_resource_id',
   voiceAsrModel: 'voice_input.asr_model',
   voiceDoubaoBoostingTableId: 'voice_input.doubao_boosting_table_id',
   voicePolishToken: 'voice_input.polish_token',
@@ -114,7 +115,6 @@ let asrTokens: Record<string, string> = {};
 let polishTokens: Record<string, string> = {};
 let currentAsrProvider = 'doubao';
 let currentDoubaoAuthMode = 'api_key';
-let currentAsrResourceId = 'volc.seedasr.sauc.duration';
 let currentPolishProvider = 'siliconflow';
 let polishPresets: PolishPreset[] = FALLBACK_PRESETS.slice();
 let selectedPromptId = 'cleanup';
@@ -159,7 +159,7 @@ function asrTestConfig(): Record<string, string> {
     token: fieldValue('voiceAsrToken'),
     endpoint: fieldValue('voiceAsrEndpoint') || defaults?.endpoint || '',
     model: fieldValue('voiceAsrModel') || defaults?.model || '',
-    resourceId: currentAsrResourceId
+    resourceId: fieldValue('voiceAsrResourceId')
   };
 }
 
@@ -219,6 +219,7 @@ function syncAsrProviderUi(provider: string): void {
   setHidden('voiceDoubaoAuthModeField', !doubao);
   // The new console issues a single API Key, so App ID only applies to the legacy console.
   setHidden('voiceAsrAppKeyField', !doubao || currentDoubaoAuthMode !== 'legacy');
+  setHidden('voiceAsrResourceIdField', !doubao);
   setHidden('voiceAsrModelField', doubao);
   setHidden('voiceDoubaoOptions', !doubao);
   const model = document.getElementById('voiceAsrModel') as HTMLInputElement | null;
@@ -498,9 +499,6 @@ export function applyVoiceConfig(config: Record<string, unknown>): void {
   });
   applyDropdownValue('voiceAsrProviderBtn', 'voiceAsrProviderMenu', asrProvider);
   currentDoubaoAuthMode = config.doubao_auth_mode === 'legacy' ? 'legacy' : 'api_key';
-  currentAsrResourceId = typeof config.asr_resource_id === 'string'
-    ? config.asr_resource_id
-    : 'volc.seedasr.sauc.duration';
   applyDropdownValue('voiceDoubaoAuthModeBtn', 'voiceDoubaoAuthModeMenu', currentDoubaoAuthMode);
   syncDoubaoEndpointUi();
   syncAsrProviderUi(asrProvider);
