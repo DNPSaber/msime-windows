@@ -78,6 +78,95 @@ FLOAT ScaleFromMonitor(HMONITOR hMonitor)
 }
 } // namespace
 
+namespace
+{
+BOOL CALLBACK AddMonitorWorkAreaToRegion(HMONITOR monitor, HDC, LPRECT, LPARAM data)
+{
+    auto visibleRegion = reinterpret_cast<HRGN>(data);
+    if (!visibleRegion)
+    {
+        return FALSE;
+    }
+
+    MONITORINFO info{sizeof(info)};
+    if (!GetMonitorInfo(monitor, &info))
+    {
+        return TRUE;
+    }
+
+    HRGN workAreaRegion = CreateRectRgnIndirect(&info.rcWork);
+    if (workAreaRegion)
+    {
+        CombineRgn(visibleRegion, visibleRegion, workAreaRegion, RGN_OR);
+        DeleteObject(workAreaRegion);
+    }
+    return TRUE;
+}
+
+// Nearest monitor of the rect's center instead of MonitorFromRect: a host
+// straddling a seam must keep the side the user dropped it on, and a host
+// beyond every screen must come back towards where it was pushed.
+HMONITOR MonitorNearestToRectCenter(const RECT &rect)
+{
+    const POINT center{rect.left + (rect.right - rect.left) / 2, rect.top + (rect.bottom - rect.top) / 2};
+    return MonitorFromPoint(center, MONITOR_DEFAULTTONEAREST);
+}
+} // namespace
+
+bool IsRectInsideVisibleMonitorWorkAreas(const RECT &rect)
+{
+    HRGN visibleRegion = CreateRectRgn(0, 0, 0, 0);
+    HRGN windowRegion = CreateRectRgnIndirect(&rect);
+    HRGN outsideRegion = CreateRectRgn(0, 0, 0, 0);
+    if (!visibleRegion || !windowRegion || !outsideRegion)
+    {
+        if (visibleRegion)
+            DeleteObject(visibleRegion);
+        if (windowRegion)
+            DeleteObject(windowRegion);
+        if (outsideRegion)
+            DeleteObject(outsideRegion);
+        return true;
+    }
+
+    EnumDisplayMonitors(nullptr, nullptr, AddMonitorWorkAreaToRegion, reinterpret_cast<LPARAM>(visibleRegion));
+    const int outsideType = CombineRgn(outsideRegion, windowRegion, visibleRegion, RGN_DIFF);
+    DeleteObject(outsideRegion);
+    DeleteObject(windowRegion);
+    DeleteObject(visibleRegion);
+    return outsideType == NULLREGION;
+}
+
+bool ClampRectIntoNearestMonitorWorkArea(RECT &rect, HMONITOR *monitor)
+{
+    const HMONITOR target = MonitorNearestToRectCenter(rect);
+    if (monitor)
+    {
+        *monitor = target;
+    }
+    MONITORINFO info{sizeof(info)};
+    if (!target || !GetMonitorInfo(target, &info))
+    {
+        return false;
+    }
+
+    const int width = rect.right - rect.left;
+    const int height = rect.bottom - rect.top;
+    const int maxX = (std::max)(static_cast<int>(info.rcWork.left), static_cast<int>(info.rcWork.right) - width);
+    const int maxY = (std::max)(static_cast<int>(info.rcWork.top), static_cast<int>(info.rcWork.bottom) - height);
+    const int x = (std::max)(static_cast<int>(info.rcWork.left), (std::min)(static_cast<int>(rect.left), maxX));
+    const int y = (std::max)(static_cast<int>(info.rcWork.top), (std::min)(static_cast<int>(rect.top), maxY));
+    if (x == rect.left && y == rect.top)
+    {
+        return false;
+    }
+    rect.left = x;
+    rect.top = y;
+    rect.right = x + width;
+    rect.bottom = y + height;
+    return true;
+}
+
 FLOAT GetWindowScale(HWND hwnd)
 {
     // GetDpiForWindow returns 0 for an invalid HWND. A 0 scale silently collapses

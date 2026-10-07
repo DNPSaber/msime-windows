@@ -593,7 +593,7 @@ void FloatingToolbarPresenter::ApplyAppearance()
     RelayoutHost();
 }
 
-void FloatingToolbarPresenter::RelayoutHost(FLOAT scaleOverride)
+void FloatingToolbarPresenter::RelayoutHost(FLOAT scaleOverride, bool keepPosition, const RECT *suggestedRect)
 {
     if (!bound_ || !hwnd_ || !impl_ || !impl_->root)
     {
@@ -623,14 +623,30 @@ void FloatingToolbarPresenter::RelayoutHost(FLOAT scaleOverride)
     const int heightPx = (std::max)(1, static_cast<int>(std::ceil(heightDip * scale)));
     int posX = current.left;
     int posY = current.top;
-    HMONITOR monitor = MonitorFromWindow(hwnd_, MONITOR_DEFAULTTONEAREST);
-    MONITORINFO monitorInfo{sizeof(monitorInfo)};
-    if (monitor && GetMonitorInfo(monitor, &monitorInfo))
+    if (keepPosition)
     {
-        const int maxX = static_cast<int>(monitorInfo.rcMonitor.right) - widthPx;
-        const int maxY = static_cast<int>(monitorInfo.rcMonitor.bottom) - heightPx;
-        posX = (std::max)(static_cast<int>(monitorInfo.rcMonitor.left), (std::min)(posX, maxX));
-        posY = (std::max)(static_cast<int>(monitorInfo.rcMonitor.top), (std::min)(posY, maxY));
+        // A caption drag is running its modal move loop while WM_DPICHANGED
+        // arrives for the new monitor's scale. Moving the HWND here (or
+        // clamping it against MonitorFromWindow's monitor) fights the loop and
+        // snaps the toolbar back to the screen it came from: resize only.
+    }
+    else
+    {
+        if (suggestedRect)
+        {
+            posX = suggestedRect->left;
+            posY = suggestedRect->top;
+        }
+
+        // Keep the resized host reachable without pinning it to the monitor it
+        // currently sits on: only pull it back when it would leave every
+        // monitor's work area.
+        RECT target{posX, posY, posX + widthPx, posY + heightPx};
+        if (!IsRectInsideVisibleMonitorWorkAreas(target) && ClampRectIntoNearestMonitorWorkArea(target))
+        {
+            posX = target.left;
+            posY = target.top;
+        }
     }
     SetWindowPos(hwnd_, nullptr, posX, posY, widthPx, heightPx, SWP_NOZORDER | SWP_NOACTIVATE);
     impl_->resources.EnsureForComposition(hwnd_);

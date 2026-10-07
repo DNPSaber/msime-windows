@@ -59,6 +59,19 @@ HalfScreenDipLimits QueryHalfScreenDipLimitsForPoint(POINT pt);
 double ClampWidthDipToHalfScreen(double widthDip, const HalfScreenDipLimits &limits);
 double ClampHeightDipToHalfScreen(double heightDip, const HalfScreenDipLimits &limits);
 
+// Host placement on mixed-DPI multi-monitor setups (floating toolbar, menus).
+// MonitorFromWindow follows the monitor the window currently sits on, so
+// clamping against it pins the host to the screen it came from and makes a
+// caption drag across a seam bounce back. These helpers treat the union of
+// every monitor's work area as the visible region: the host may straddle a
+// seam, and is only pulled back when it would leave that region entirely.
+bool IsRectInsideVisibleMonitorWorkAreas(const RECT &rect);
+// Fits `rect` (size preserved) into the work area of the monitor nearest to the
+// rect's center, so a host that fell past every screen comes back on the side
+// the user was heading for. Returns true when the rect was moved; `monitor`
+// optionally receives the monitor that was used.
+bool ClampRectIntoNearestMonitorWorkArea(RECT &rect, HMONITOR *monitor = nullptr);
+
 int AdjustCandidateWindowPosition(        //
     const POINT *point,                   //
     const std::pair<double, double> &,    //
