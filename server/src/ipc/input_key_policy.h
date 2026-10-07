@@ -30,6 +30,19 @@ constexpr bool IsEnglishModeToggleKey(uint32_t keycode, uint32_t modifiers_down)
     return keycode == static_cast<uint32_t>('E') && (modifiers_down & kKeyModifierMask) == kEnglishModeToggleModifiers;
 }
 
+constexpr bool IsPinyinCommitKey(uint32_t keycode, uint32_t modifiers_down)
+{
+    return keycode == 0x0D && (modifiers_down & kKeyModifierMask) == kModifierShift;
+}
+
+inline std::string EnteredPinyinText(const std::string &raw, std::string quanpin, bool convert_shuangpin)
+{
+    if (!convert_shuangpin || quanpin.empty())
+        return raw;
+    quanpin.erase(std::remove(quanpin.begin(), quanpin.end(), '\''), quanpin.end());
+    return quanpin;
+}
+
 // Return -1 / +1 for the first / last Han character, or zero for an ordinary key.
 constexpr int WordToCharacterDirection(uint32_t keycode, uint32_t character, uint32_t modifiers, bool enabled,
                                        bool minus_equal)

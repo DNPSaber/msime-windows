@@ -1,6 +1,27 @@
 #include "ipc/input_key_policy.h"
 #include "tests/includes/test_framework.h"
 
+TEST_CASE(pinyin_commit_requires_shift_enter)
+{
+    REQUIRE(FanyImeIpc::IsPinyinCommitKey(0x0D, 1));
+    REQUIRE(FanyImeIpc::IsPinyinCommitKey(0x0D, 1 | FanyImeIpc::kModifierUiLess));
+    for (unsigned modifiers = 0; modifiers < 8; ++modifiers)
+        REQUIRE(FanyImeIpc::IsPinyinCommitKey(0x0D, modifiers) == (modifiers == 1));
+    REQUIRE(!FanyImeIpc::IsPinyinCommitKey('A', 1));
+}
+
+TEST_CASE(pinyin_commit_converts_shuangpin_and_preserves_raw_fallback)
+{
+    using FanyImeIpc::EnteredPinyinText;
+    REQUIRE_EQ(EnteredPinyinText("nihc", "ni'hao", true), std::string("nihao"));
+    REQUIRE_EQ(EnteredPinyinText("ni'hc", "ni'hao'", true), std::string("nihao"));
+    REQUIRE_EQ(EnteredPinyinText("vgh", "zheng'h", true), std::string("zhengh"));
+    REQUIRE_EQ(EnteredPinyinText("nihc", "ni'hao", false), std::string("nihc"));
+    REQUIRE_EQ(EnteredPinyinText("hello", "", true), std::string("hello"));
+    REQUIRE_EQ(EnteredPinyinText("U4E00", "", false), std::string("U4E00"));
+    REQUIRE_EQ(EnteredPinyinText("", "", true), std::string(""));
+}
+
 TEST_CASE(word_to_character_uses_only_the_selected_unmodified_key_pair)
 {
     using FanyImeIpc::WordToCharacterDirection;
