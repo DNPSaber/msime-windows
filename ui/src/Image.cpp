@@ -6,6 +6,7 @@
 #include "ControlsInternal.h"
 
 #include <algorithm>
+#include <cmath>
 #include <utility>
 #include <wincodec.h>
 
@@ -145,6 +146,20 @@ void Image::Render(DeviceResources &deviceResources)
         destination.height = sourceSize.height * scale;
         destination.x = bounds_.x + (bounds_.width - destination.width) * 0.5f;
         destination.y = bounds_.y + (bounds_.height - destination.height) * 0.5f;
+    }
+
+    float dpiX = 0.0f;
+    float dpiY = 0.0f;
+    target->GetDpi(&dpiX, &dpiY);
+    const float pixelsPerDipX = dpiX / 96.0f;
+    const float pixelsPerDipY = dpiY / 96.0f;
+    const D2D1_SIZE_U sourcePixels = bitmap->GetPixelSize();
+    // At 1:1, fractional origins blend neighbouring pixels; tolerate only DIP conversion rounding
+    if (std::fabs(destination.width * pixelsPerDipX - sourcePixels.width) < 0.01f &&
+        std::fabs(destination.height * pixelsPerDipY - sourcePixels.height) < 0.01f)
+    {
+        destination.x = std::round(destination.x * pixelsPerDipX) / pixelsPerDipX;
+        destination.y = std::round(destination.y * pixelsPerDipY) / pixelsPerDipY;
     }
 
     const auto destinationRect = D2D1::RectF(destination.x, destination.y, destination.x + destination.width,
