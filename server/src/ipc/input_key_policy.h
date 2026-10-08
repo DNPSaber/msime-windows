@@ -94,12 +94,17 @@ constexpr bool ShouldAutoCommitCompleteWubiCode(bool auto_commit_enabled, bool u
 // of a four-letter table-answered code). The first candidate is committed and the key that was just
 // typed starts the next composition instead of being dropped. Committing the first candidate matches
 // the user, who is already typing the next word and is not looking at the candidate window. Its own
-// switch defaults on and is independent of the auto-commit switch above: turning this one off leaves
-// the fifth letter to the engine's four-letter limit rather than adding a third way to keep it.
-constexpr bool ShouldCommitCompleteWubiCodeOnNextKey(bool top_commit_enabled, bool four_code_is_complete,
-                                                     bool key_is_letter, bool caret_at_end, bool creating_word_active)
+// switch defaults on and is independent of the auto-commit switch above. Turning it off only has
+// somewhere to put the letter when mixed input is on: the composition then grows into a mixed
+// spelling. With mixed input off the engine clips the code back to four letters, which drops the
+// key on the Server while a raw-preedit client already shows it, so the switch yields to the top
+// commit there: an extra key never loses input, whatever the setting says.
+constexpr bool ShouldCommitCompleteWubiCodeOnNextKey(bool top_commit_enabled, bool mixed_pinyin_enabled,
+                                                     bool four_code_is_complete, bool key_is_letter, bool caret_at_end,
+                                                     bool creating_word_active)
 {
-    return top_commit_enabled && four_code_is_complete && key_is_letter && caret_at_end && !creating_word_active;
+    return (top_commit_enabled || !mixed_pinyin_enabled) && four_code_is_complete && key_is_letter && caret_at_end &&
+           !creating_word_active;
 }
 
 // Enter commits the raw composition instead of choosing a special-mode

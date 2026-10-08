@@ -262,8 +262,8 @@ bool SetConfiguredWubiZMode(const std::string &mode);
 // 四码唯一时第四键落下即上屏。关闭后候选窗停留，与顶字开关互不依赖。
 bool GetConfiguredWubiFourCodeAutoCommit();
 bool SetConfiguredWubiFourCodeAutoCommit(bool enabled);
-// 完整四码后再敲字母时上屏首选并把字母留作下一组合开头。关闭后第五个字母的归属
-// 交给引擎既有的四码上限（混输关时被裁掉，混输开时并入混输串），不承诺完全不上屏。
+// 完整四码后再敲字母时上屏首选并把字母留作下一组合开头。关闭只在混输开启时生效
+// （字母并入混输串）；混输关闭时字母无处容纳，仍按顶字上屏，保证多敲的键不丢。
 bool GetConfiguredWubiFifthCodeTopCommit();
 bool SetConfiguredWubiFifthCodeTopCommit(bool enabled);
 const std::string &GetConfiguredShuangpinPreeditMode();
