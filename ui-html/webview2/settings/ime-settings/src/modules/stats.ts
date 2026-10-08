@@ -35,10 +35,10 @@ const OVERVIEW_MIN_INTERVAL_MS = 1000;
 /** 在途概览查询超过这个时间没回来，就当它丢了，允许再发。 */
 const OVERVIEW_STALE_MS = 15000;
 
-let statisticsEnabled = false;
-/** 两个相邻月份标签之间的最小周列间隔，避免文字在窄列或相邻月初时相互重叠。 */
+/** 首列补标的起始月份与下一个月份标签之间至少隔这么多列，否则两段文字会挤在一起。 */
 export const CALENDAR_MIN_MONTH_LABEL_GAP_WEEKS = 3;
 
+let statisticsEnabled = false;
 let lastOverview: StatsOverview | null = null;
 let lastOverviewSignature = '';
 let calendarWeeks = CALENDAR_MIN_WEEKS;
@@ -179,39 +179,30 @@ export function calendarStart(today: Date, weeks: number): Date {
 
 /**
  * 计算日历热力图各周列对应的月份标签文本。
- * 首周标注起始月份，后续列在跨月（出现 1 日）时标注；与上一已标注列间隔小于 minGapWeeks 时略过，避免重叠。
+ * 列内出现某月 1 日时标注该月，保证标签与该月的列对齐；相邻两个 1 日至少隔 4 列，不会重叠。
+ * 首列不含 1 日时补标起始月份，但离第一个月份边界不足 minGapWeeks 列就留空，
+ * 不能为了只占一两列的残月挤掉真正的月份标签。
  */
 export function computeCalendarMonthLabels(
   weekStarts: Date[],
   minGapWeeks: number = CALENDAR_MIN_MONTH_LABEL_GAP_WEEKS
 ): string[] {
-  const labels: string[] = [];
-  let lastLabeledIndex = -minGapWeeks;
-
-  for (let colIndex = 0; colIndex < weekStarts.length; colIndex++) {
-    const weekStart = weekStarts[colIndex];
-    let monthToLabel: number | null = null;
-
-    if (colIndex === 0) {
-      monthToLabel = weekStart.getMonth() + 1;
-    } else {
-      for (let i = 0; i < 7; i++) {
-        const date = addDays(weekStart, i);
-        if (date.getDate() === 1) {
-          monthToLabel = date.getMonth() + 1;
-          break;
-        }
+  const labels = weekStarts.map((weekStart) => {
+    for (let i = 0; i < 7; i++) {
+      const date = addDays(weekStart, i);
+      if (date.getDate() === 1) {
+        return `${date.getMonth() + 1}月`;
       }
     }
-
-    if (monthToLabel !== null && colIndex - lastLabeledIndex >= minGapWeeks) {
-      labels.push(`${monthToLabel}月`);
-      lastLabeledIndex = colIndex;
-    } else {
-      labels.push('');
+    return '';
+  });
+  if (labels.length > 0 && !labels[0]) {
+    const firstBoundary = labels.findIndex((label) => label !== '');
+    const room = firstBoundary === -1 ? labels.length : firstBoundary;
+    if (room >= minGapWeeks) {
+      labels[0] = `${weekStarts[0].getMonth() + 1}月`;
     }
   }
-
   return labels;
 }
 
@@ -283,11 +274,9 @@ function renderOverview(overview: StatsOverview): void {
   if (!hasData) {
     return;
   }
-  // 重建热力图会把滚动位置打回 0；未主动滚动的用户默认对齐到最右侧（今天）。
+  // 重建热力图会把滚动位置打回 0：用户在往回看历史时原样放回，否则贴齐最右侧（今天）。
   const calendarBox = byId('statsCalendar');
-  const previousScroll = calendarBox?.scrollLeft ?? 0;
-  const previousMaxScroll = calendarBox ? Math.max(0, calendarBox.scrollWidth - calendarBox.clientWidth) : 0;
-  const wasAtEnd = previousMaxScroll > 0 && Math.abs(previousScroll - previousMaxScroll) <= 4;
+  const calendarScroll = calendarBox?.scrollLeft ?? 0;
   renderCards(overview);
   renderSpeed(overview);
   renderCalendar(overview);
@@ -295,13 +284,17 @@ function renderOverview(overview: StatsOverview): void {
   renderCategories(overview);
   renderDetails(overview);
   if (calendarBox) {
-    const maxScroll = Math.max(0, calendarBox.scrollWidth - calendarBox.clientWidth);
-    if (!calendarUserScrolled || wasAtEnd) {
-      calendarBox.scrollLeft = maxScroll;
+    if (calendarUserScrolled) {
+      calendarBox.scrollLeft = calendarScroll;
     } else {
-      calendarBox.scrollLeft = Math.min(previousScroll, maxScroll);
+      pinCalendarToToday(calendarBox);
     }
   }
+}
+
+/** scrollLeft 超出上限时浏览器自动钳到最右侧，没有横向滚动时等于 0。 */
+function pinCalendarToToday(box: HTMLElement): void {
+  box.scrollLeft = box.scrollWidth - box.clientWidth;
 }
 
 function statCard(title: string, value: string, unit: string, note: string): HTMLElement {
@@ -592,6 +585,11 @@ function setupCalendarResize(): void {
     // 按 weeks + 1 计算格子尺寸才能保证热图不出现横向滚动条。
     const nextCell = computeCalendarCellSize(width, nextWeeks + 1);
     if (nextWeeks === calendarWeeks && nextCell === calendarCellPx) {
+      // 列数和格子都到了下限，再变窄只是可视宽度变了，不会重绘；这里也得贴右，
+      // 否则浏览器保持 scrollLeft 不动，今天会被挤出右侧。
+      if (!calendarUserScrolled) {
+        pinCalendarToToday(box);
+      }
       return;
     }
     const previousWeeks = calendarWeeks;
@@ -601,25 +599,20 @@ function setupCalendarResize(): void {
     if (!lastOverview) {
       return;
     }
-    // 宽度调整后重新渲染。若用户未主动向左回溯（或本来就在最右侧），保持贴齐最右侧（今天）。
     const previousScroll = box.scrollLeft;
-    const previousMaxScroll = Math.max(0, box.scrollWidth - box.clientWidth);
-    const wasAtEnd = previousMaxScroll > 0 && Math.abs(previousScroll - previousMaxScroll) <= 4;
     renderCalendar(lastOverview);
-    const maxScroll = Math.max(0, box.scrollWidth - box.clientWidth);
-    if (!calendarUserScrolled || wasAtEnd) {
-      box.scrollLeft = maxScroll;
+    if (calendarUserScrolled) {
+      // 新列在左侧追加，按宽度差平移滚动位置，保持用户正在看的日期不跳。
+      box.scrollLeft = Math.max(0, previousScroll + (nextWeeks - previousWeeks) * CALENDAR_COLUMN_PX);
     } else {
-      box.scrollLeft = Math.max(0, Math.min(previousScroll + (nextWeeks - previousWeeks) * CALENDAR_COLUMN_PX, maxScroll));
+      pinCalendarToToday(box);
     }
   };
+  // 离开最右侧就算在往回看历史；滚回最右侧或窗口放宽到不再需要滚动时恢复贴右。
   box.addEventListener(
     'scroll',
     () => {
-      const maxScroll = Math.max(0, box.scrollWidth - box.clientWidth);
-      if (maxScroll > 0 && maxScroll - box.scrollLeft > 10) {
-        calendarUserScrolled = true;
-      }
+      calendarUserScrolled = box.scrollWidth - box.clientWidth - box.scrollLeft > 4;
     },
     { passive: true }
   );
