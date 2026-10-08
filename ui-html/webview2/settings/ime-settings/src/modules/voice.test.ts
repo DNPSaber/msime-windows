@@ -48,7 +48,25 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 it('exposes the existing hourly Resource ID default in the settings form', () => {
-  expect(partial).toMatch(/<input\b[^>]*id="voiceAsrResourceId"[^>]*value="volc\.seedasr\.sauc\.duration"/);
+  expect(partial).toMatch(/<input\b[^>]*id="voiceAsrResourceId"/);
+  expect(elements.get('voiceAsrResourceId')!.value).toBe('volc.seedasr.sauc.duration');
+});
+
+it('restores the default instead of saving or testing an empty Resource ID', () => {
+  const resource = elements.get('voiceAsrResourceId')!;
+  resource.value = '   ';
+  const asrTest = vi.mocked(setupCredentialTest).mock.calls.find(([id]) => id === 'voiceAsrTestButton')!;
+  expect(asrTest[3]()).toMatchObject({ resourceId: 'volc.seedasr.sauc.duration' });
+  resource.listeners.get('change')?.({});
+  expect(updateConfig).toHaveBeenCalledWith('voice_input.asr_resource_id', 'volc.seedasr.sauc.duration');
+  expect(updateConfig).not.toHaveBeenCalledWith('voice_input.asr_resource_id', '');
+  expect(resource.value).toBe('volc.seedasr.sauc.duration');
+});
+
+it('resets a stale Resource ID when the reloaded configuration lacks one', () => {
+  applyVoiceConfig({ asr_provider: 'doubao', asr_resource_id: 'volc.bigasr.sauc.concurrent' });
+  applyVoiceConfig({ asr_provider: 'doubao' });
+  expect(elements.get('voiceAsrResourceId')!.value).toBe('volc.seedasr.sauc.duration');
 });
 
 it('loads and saves the Resource ID through the existing voice configuration key', () => {

@@ -91,8 +91,8 @@
       <label class="voice-wide"><span>接口地址</span><input id="voiceAsrEndpoint" type="url" autocomplete="off"></label>
       <div class="voice-field voice-wide" id="voiceAsrResourceIdField">
         <label for="voiceAsrResourceId">Resource ID（资源 ID）</label>
-        <input id="voiceAsrResourceId" type="text" autocomplete="off" spellcheck="false" value="volc.seedasr.sauc.duration" aria-describedby="voiceAsrResourceIdHint">
-        <div class="voice-description" id="voiceAsrResourceIdHint">填写豆包控制台已开通服务的资源 ID。默认是 2.0 小时版；2.0 并发版为 volc.seedasr.sauc.concurrent。</div>
+        <input id="voiceAsrResourceId" type="text" autocomplete="off" spellcheck="false" aria-describedby="voiceAsrResourceIdHint">
+        <div class="voice-description" id="voiceAsrResourceIdHint">填写豆包控制台已开通服务的资源 ID，留空则恢复默认的 2.0 小时版。2.0 并发版为 volc.seedasr.sauc.concurrent；只开通了 1.0 服务的填 volc.bigasr.sauc.duration（小时版）或 volc.bigasr.sauc.concurrent（并发版）。</div>
       </div>
     </div>
     <div class="credential-test-row">

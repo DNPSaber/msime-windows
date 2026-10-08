@@ -17,6 +17,9 @@ const fields: Record<string, string> = {
   voicePolishModel: 'voice_input.polish_model'
 };
 
+// The Server rejects an empty Resource ID, so a cleared field falls back to the hourly 2.0 resource.
+const DOUBAO_DEFAULT_RESOURCE_ID = 'volc.seedasr.sauc.duration';
+
 const ASR_DEFAULTS: Record<string, ProviderDefaults> = {
   doubao: {
     endpoint: 'wss://openspeech.bytedance.com/api/v3/sauc/bigmodel_async',
@@ -159,7 +162,7 @@ function asrTestConfig(): Record<string, string> {
     token: fieldValue('voiceAsrToken'),
     endpoint: fieldValue('voiceAsrEndpoint') || defaults?.endpoint || '',
     model: fieldValue('voiceAsrModel') || defaults?.model || '',
-    resourceId: fieldValue('voiceAsrResourceId')
+    resourceId: fieldValue('voiceAsrResourceId') || DOUBAO_DEFAULT_RESOURCE_ID
   };
 }
 
@@ -435,9 +438,19 @@ export function setupVoiceInput(): void {
         updateConfig(`voice_input.polish_token_${currentPolishProvider}`, value);
         return;
       }
+      if (id === 'voiceAsrResourceId' && !value) {
+        element.value = DOUBAO_DEFAULT_RESOURCE_ID;
+        updateConfig(path, DOUBAO_DEFAULT_RESOURCE_ID);
+        return;
+      }
       updateConfig(path, value);
     });
   });
+  const resourceId = tokenInput('voiceAsrResourceId');
+  if (resourceId) {
+    resourceId.placeholder = DOUBAO_DEFAULT_RESOURCE_ID;
+    resourceId.value = DOUBAO_DEFAULT_RESOURCE_ID;
+  }
   syncAsrProviderUi('doubao');
 }
 
@@ -475,6 +488,13 @@ export function applyVoiceConfig(config: Record<string, unknown>): void {
     const element = document.getElementById(id) as HTMLInputElement | null;
     if (element && typeof config[key] === 'string') element.value = config[key] as string;
   });
+  // Unlike the other fields, a missing Resource ID must not leave a stale value from an earlier load.
+  const resourceId = tokenInput('voiceAsrResourceId');
+  if (resourceId) {
+    resourceId.value = typeof config.asr_resource_id === 'string' && config.asr_resource_id.trim()
+      ? config.asr_resource_id
+      : DOUBAO_DEFAULT_RESOURCE_ID;
+  }
   if (Array.isArray(config.polish_presets)) {
     const nextPresets = (config.polish_presets as unknown[]).flatMap((item) => {
       if (!item || typeof item !== 'object') return [];
