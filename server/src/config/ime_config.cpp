@@ -76,6 +76,11 @@ bool g_escape_keeps_selected_word = false;
 bool g_enter_learns_english_word = true;
 // 五笔 z 键角色两态：off | wildcard。非法值回落 off（升级用户零变化）。
 std::string g_wubi_z_mode = "off";
+// 四码唯一自动上屏与顶字是两个独立开关，与混输、z 键角色都无关：前者决定第四键落下即上屏，
+// 后者决定完整四码后再敲字母时是否上屏首选并把字母留作下一组合开头。两者默认都开，
+// 保持开关落地前的无条件行为，升级用户零感知。
+bool g_wubi_four_code_auto_commit = true;
+bool g_wubi_fifth_code_top_commit = true;
 std::string g_shuangpin_preedit_mode = "quanpin";
 std::string g_tsf_preedit_style = "raw";
 // 双拼方案下行内 / 候选窗预编辑显示转换后的全拼（原始按键去掉分词符号），默认关闭。
@@ -422,6 +427,8 @@ bool LoadImeConfig()
         g_enter_learns_english_word = tbl["input"]["enter_learns_english_word"].value_or(true);
         const std::string z_mode = tbl["input"]["wubi_z_mode"].value_or(std::string("off"));
         g_wubi_z_mode = z_mode == "wildcard" ? "wildcard" : "off";
+        g_wubi_four_code_auto_commit = tbl["input"]["wubi_four_code_auto_commit"].value_or(true);
+        g_wubi_fifth_code_top_commit = tbl["input"]["wubi_fifth_code_top_commit"].value_or(true);
         g_shuangpin_preedit_mode = tbl["input"]["shuangpin_preedit_mode"].value_or(std::string("quanpin"));
         g_shuangpin_helpcode_enabled = tbl["helpcode"]["shuangpin_helpcode"].value_or(true);
         g_shuangpin_mid_sentence_helpcode_enabled = tbl["helpcode"]["shuangpin_mid_sentence_helpcode"].value_or(false);

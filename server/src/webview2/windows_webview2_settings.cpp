@@ -213,6 +213,22 @@ static void ApplyInputSubkey(const std::string &path, const json::object &data)
             PostSettingsConfig();
         }
     }
+    if (path == "input.wubi_four_code_auto_commit")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredWubiFourCodeAutoCommit(value))
+        {
+            PostSettingsConfig();
+        }
+    }
+    if (path == "input.wubi_fifth_code_top_commit")
+    {
+        const bool value = json::value_to<bool>(data.at("value"));
+        if (SetConfiguredWubiFifthCodeTopCommit(value))
+        {
+            PostSettingsConfig();
+        }
+    }
     if (path == "input.word_to_character")
     {
         const bool value = json::value_to<bool>(data.at("value"));
@@ -1622,6 +1638,8 @@ void PostSettingsConfig()
             {"escape_keeps_selected_word", GetConfiguredEscapeKeepsSelectedWord()},
             {"enter_learns_english_word", GetConfiguredEnterLearnsEnglishWord()},
             {"wubi_z_mode", GetConfiguredWubiZMode()},
+            {"wubi_four_code_auto_commit", GetConfiguredWubiFourCodeAutoCommit()},
+            {"wubi_fifth_code_top_commit", GetConfiguredWubiFifthCodeTopCommit()},
             {"word_to_character", GetConfiguredWordToCharacterEnabled()},
             {"word_to_character_keys", GetConfiguredWordToCharacterKeys()},
             {"smart_punctuation", GetConfiguredSmartPunctuationEnabled()},

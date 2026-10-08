@@ -266,6 +266,11 @@ wubi_mixed_pinyin = false
 #   off      -> z 不进码（默认）
 #   wildcard -> z 匹配码表中该位置的任意一个字母（含首位）
 wubi_z_mode = "off"
+# 五笔四码唯一时自动上屏：敲满四码且码表只给一个候选，第四键落下即上屏，不必再按空格
+wubi_four_code_auto_commit = true
+# 五笔顶字：完整四码后再敲一个字母时上屏首选，并把这个字母留作下一组合开头
+# 关闭只在混输开启时生效：第五个字母并入混输串；混输关闭时该字母无处容纳，仍按顶字上屏首选，不会丢字
+wubi_fifth_code_top_commit = true
 # 日语方案，当前支持："romaji"
 japanese_schema = "romaji"
 # 造词时按 Esc：true 只清掉还没选的拼音、保留已选的词，再按一次才整体取消（小狼毫风格）；false 直接整体取消

@@ -254,6 +254,36 @@ bool SetConfiguredWubiMixedPinyin(bool enabled)
     return true;
 }
 
+bool GetConfiguredWubiFourCodeAutoCommit()
+{
+    return g_wubi_four_code_auto_commit;
+}
+
+bool SetConfiguredWubiFourCodeAutoCommit(bool enabled)
+{
+    if (!WriteConfiguredValue("input", "wubi_four_code_auto_commit", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_wubi_four_code_auto_commit = enabled;
+    return true;
+}
+
+bool GetConfiguredWubiFifthCodeTopCommit()
+{
+    return g_wubi_fifth_code_top_commit;
+}
+
+bool SetConfiguredWubiFifthCodeTopCommit(bool enabled)
+{
+    if (!WriteConfiguredValue("input", "wubi_fifth_code_top_commit", enabled ? "true" : "false"))
+    {
+        return false;
+    }
+    g_wubi_fifth_code_top_commit = enabled;
+    return true;
+}
+
 bool GetConfiguredEscapeKeepsSelectedWord()
 {
     return g_escape_keeps_selected_word;

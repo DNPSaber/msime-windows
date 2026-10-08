@@ -259,6 +259,13 @@ bool SetConfiguredEnterLearnsEnglishWord(bool enabled);
 // 五笔 z 键角色："off" | "wildcard"。混输已拆成独立开关，这里只剩通配两态。
 const std::string &GetConfiguredWubiZMode();
 bool SetConfiguredWubiZMode(const std::string &mode);
+// 四码唯一时第四键落下即上屏。关闭后候选窗停留，与顶字开关互不依赖。
+bool GetConfiguredWubiFourCodeAutoCommit();
+bool SetConfiguredWubiFourCodeAutoCommit(bool enabled);
+// 完整四码后再敲字母时上屏首选并把字母留作下一组合开头。关闭只在混输开启时生效
+// （字母并入混输串）；混输关闭时字母无处容纳，仍按顶字上屏，保证多敲的键不丢。
+bool GetConfiguredWubiFifthCodeTopCommit();
+bool SetConfiguredWubiFifthCodeTopCommit(bool enabled);
 const std::string &GetConfiguredShuangpinPreeditMode();
 const std::string &GetConfiguredTsfPreeditStyle();
 bool SetConfiguredTsfPreeditStyle(const std::string &style);
