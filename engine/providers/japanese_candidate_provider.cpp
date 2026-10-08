@@ -120,17 +120,19 @@ std::vector<WordItem> JapaneseCandidateProvider::query(const QueryRequest &reque
                 }
             }
         }
-        else if (conversion.pending.empty() && conversion.hiragana.size() >= 6)
-        {
-            for (const auto &lemma : sentence_decoder_->PrefixLemmas(conversion.hiragana, 16))
-                AppendUnique(candidates, seen, request.raw_input_with_cases, lemma.surface, 980000 - lemma.word_cost,
-                             CandidateSource::Database);
-        }
         japanese::JapaneseMatrixSearch search(*sentence_decoder_);
         for (const auto &sentence : search.SearchConverted(conversion, 12))
         {
             AppendUnique(candidates, seen, request.raw_input_with_cases, sentence.text, 900000 - sentence.cost,
                          CandidateSource::Database);
+        }
+        // Once the reading is complete, convert what was typed before predicting
+        // longer words. Keep the prediction-first path above for pending romaji.
+        if (conversion.pending.empty() && conversion.hiragana.size() >= 6)
+        {
+            for (const auto &lemma : sentence_decoder_->PrefixLemmas(conversion.hiragana, 16))
+                AppendUnique(candidates, seen, request.raw_input_with_cases, lemma.surface, 980000 - lemma.word_cost,
+                             CandidateSource::Database);
         }
     }
 
