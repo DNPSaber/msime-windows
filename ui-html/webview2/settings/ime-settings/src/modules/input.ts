@@ -106,6 +106,8 @@ export function applyInputConfig(
   wubiSchema: string | undefined,
   wubiMixedPinyin?: boolean | undefined,
   wubiZMode?: string | undefined,
+  wubiFourCodeAutoCommit?: boolean | undefined,
+  wubiFifthCodeTopCommit?: boolean | undefined,
   defaultImeMode?: string | undefined,
   imeModeScope?: string | undefined,
   japaneseSchema?: string | undefined
@@ -133,6 +135,12 @@ export function applyInputConfig(
   }
   if (typeof wubiZMode === 'string') {
     applyToggleState('wubiZModeToggleBtn', wubiZMode === 'wildcard');
+  }
+  if (typeof wubiFourCodeAutoCommit === 'boolean') {
+    applyToggleState('wubiFourCodeAutoCommitToggleBtn', wubiFourCodeAutoCommit);
+  }
+  if (typeof wubiFifthCodeTopCommit === 'boolean') {
+    applyToggleState('wubiFifthCodeTopCommitToggleBtn', wubiFifthCodeTopCommit);
   }
   applyDropdownValue('defaultImeModeBtn', 'defaultImeModeMenu', defaultImeMode);
   applyDropdownValue('imeModeScopeBtn', 'imeModeScopeMenu', imeModeScope);
@@ -329,6 +337,13 @@ export function setupInput(): void {
   // z 键只剩通配两态，配置值仍是字符串 off | wildcard，开关只负责在这两者间选一个写回。
   setupToggleButton('wubiZModeToggleBtn', (active) => {
     updateConfig('input.wubi_z_mode', active ? 'wildcard' : 'off');
+  });
+  // 两个上屏开关彼此独立，各自只写自己的键：默认都开，关掉一个不影响另一个。
+  setupToggleButton('wubiFourCodeAutoCommitToggleBtn', (active) => {
+    updateConfig('input.wubi_four_code_auto_commit', active);
+  });
+  setupToggleButton('wubiFifthCodeTopCommitToggleBtn', (active) => {
+    updateConfig('input.wubi_fifth_code_top_commit', active);
   });
 
   setupPageOptions();

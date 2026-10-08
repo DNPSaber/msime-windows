@@ -78,26 +78,28 @@ constexpr bool ShouldResetCompositionForImeMode(bool chinese_mode)
 }
 
 // A complete four-letter wubi code the table answered with exactly one candidate is committed as
-// soon as the fourth letter lands, so the user never has to press space. This is unconditional:
-// there is no user setting for it (industry wubi IMEs default this on). The wubi engine's own
-// report that the code is complete, table-answered and unique is the only gate. A word being
-// created keeps the composition open: the raw belongs to the prefix the user is still assembling,
-// and committing it would end that word early.
-constexpr bool ShouldAutoCommitCompleteWubiCode(bool unique_four_code, bool creating_word_active)
+// soon as the fourth letter lands, so the user never has to press space. The switch defaults on
+// (industry wubi IMEs default this on), so leaving it alone keeps that behavior; turning it off is
+// the only exit a user who keeps hitting the wrong commit has. On top of the switch, the wubi
+// engine's own report that the code is complete, table-answered and unique is the only other gate.
+// A word being created keeps the composition open: the raw belongs to the prefix the user is still
+// assembling, and committing it would end that word early.
+constexpr bool ShouldAutoCommitCompleteWubiCode(bool auto_commit_enabled, bool unique_four_code,
+                                                bool creating_word_active)
 {
-    return unique_four_code && !creating_word_active;
+    return auto_commit_enabled && unique_four_code && !creating_word_active;
 }
 
 // The user is typing past a complete four-letter wubi code (a letter key with the caret at the end
 // of a four-letter table-answered code). The first candidate is committed and the key that was just
-// typed starts the next composition instead of being dropped. This one is deliberately not gated by
-// the setting: the setting decides whether a unique code commits without an extra key, never whether
-// an extra key loses input. Committing the first candidate matches the user, who is already typing
-// the next word and is not looking at the candidate window.
-constexpr bool ShouldCommitCompleteWubiCodeOnNextKey(bool four_code_is_complete, bool key_is_letter, bool caret_at_end,
-                                                     bool creating_word_active)
+// typed starts the next composition instead of being dropped. Committing the first candidate matches
+// the user, who is already typing the next word and is not looking at the candidate window. Its own
+// switch defaults on and is independent of the auto-commit switch above: turning this one off leaves
+// the fifth letter to the engine's four-letter limit rather than adding a third way to keep it.
+constexpr bool ShouldCommitCompleteWubiCodeOnNextKey(bool top_commit_enabled, bool four_code_is_complete,
+                                                     bool key_is_letter, bool caret_at_end, bool creating_word_active)
 {
-    return four_code_is_complete && key_is_letter && caret_at_end && !creating_word_active;
+    return top_commit_enabled && four_code_is_complete && key_is_letter && caret_at_end && !creating_word_active;
 }
 
 // Enter commits the raw composition instead of choosing a special-mode

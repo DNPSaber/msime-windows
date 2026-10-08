@@ -415,6 +415,8 @@ function applyConfigData(data: Record<string, any>, target?: string): void {
         data?.input?.wubi_schema,
         data?.input?.wubi_mixed_pinyin,
         data?.input?.wubi_z_mode,
+        data?.input?.wubi_four_code_auto_commit,
+        data?.input?.wubi_fifth_code_top_commit,
         data?.input?.default_ime_mode,
         data?.input?.ime_mode_scope,
         data?.input?.japanese_schema

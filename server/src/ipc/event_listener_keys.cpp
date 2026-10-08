@@ -1162,10 +1162,12 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     // 五笔四码唯一自动上屏：敲满四码且码表只给一个候选时，直接走与空格完全相同的提交路径，
     // 用户不必再按一次空格。判定只发生在字母键插入之后（上面的 ApplyCompositionEditKey）：
     // 退格、方向键、composition_restored 等路径都不会到这里，所以「打满第四键就上屏」只有
-    // 这一个入口。这是无条件行为，不读配置。
+    // 这一个入口。开关默认开；关掉后这里不成立，组合停在四码上等用户选（唯一码因此也不会
+    // 落到下面的顶字分支，除非顶字开关单独开着）。
     const bool letter_key = Global::Keycode >= 'A' && Global::Keycode <= 'Z';
     if (!g_english_input_mode && letter_key &&
-        FanyImeIpc::ShouldAutoCommitCompleteWubiCode(g_inputSession->wubi_unique_four_code(),
+        FanyImeIpc::ShouldAutoCommitCompleteWubiCode(GetConfiguredWubiFourCodeAutoCommit(),
+                                                     g_inputSession->wubi_unique_four_code(),
                                                      GlobalIme::composition.creating_word.active))
     {
         // 候选页是异步发布的：此刻 ui.items / ui.page_words 可能还停在第 3 码那一拍，而提交
@@ -1208,14 +1210,15 @@ void HandleImeKey(uint64_t client_id, uint64_t activation_epoch, uint64_t reques
     }
 
     // 真顶字：完整四码（不论是否唯一）之后再敲一个字母时，先上屏该码的首选候选，再把这个字母
-    // 留作下一次组合的开头——用户已经在打下一个字，字母绝不能丢。它不看自动上屏开关：开关
-    // 只决定「唯一码要不要多敲一键才上屏」，不决定丢不丢输入。判定复用同一份引擎事实，
+    // 留作下一次组合的开头——用户已经在打下一个字，走这条路字母不丢。这条路径有自己的开关，
+    // 与上面的自动上屏开关互相独立。开关关闭时字母并不因此安全：它改由引擎既有的四码上限
+    // 接手（混输关闭时被裁掉，混输开启时并入混输串）。判定复用同一份引擎事实，
     // 但不要求唯一；上屏取候选 0（首选），不进入 30ms 渲染等待。
     if (!g_english_input_mode && letter_key && raw_length_before_key == kWubiCompleteCodeLength &&
         caret_before_key == raw_length_before_key &&
-        FanyImeIpc::ShouldCommitCompleteWubiCodeOnNextKey(g_inputSession->wubi_four_code_is_complete(),
-                                                          /*key_is_letter=*/true, /*caret_at_end=*/true,
-                                                          GlobalIme::composition.creating_word.active))
+        FanyImeIpc::ShouldCommitCompleteWubiCodeOnNextKey(
+            GetConfiguredWubiFifthCodeTopCommit(), g_inputSession->wubi_four_code_is_complete(),
+            /*key_is_letter=*/true, /*caret_at_end=*/true, GlobalIme::composition.creating_word.active))
     {
         ScopedKeyStage prepare_top_commit{client_id, activation_epoch, request_id, L"handle-candidates"};
         PrepareCandidateList(client_id, activation_epoch);
