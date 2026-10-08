@@ -274,6 +274,7 @@
 }
 
 #voiceAsrAppKeyField.is-hidden,
+#voiceAsrResourceIdField.is-hidden,
 #voiceAsrModelField.is-hidden,
 #voiceDoubaoOptions.is-hidden {
   display: none;

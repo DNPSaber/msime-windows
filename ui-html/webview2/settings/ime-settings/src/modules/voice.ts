@@ -9,12 +9,16 @@ const fields: Record<string, string> = {
   voiceAsrAppKey: 'voice_input.asr_app_key',
   voiceAsrToken: 'voice_input.asr_token',
   voiceAsrEndpoint: 'voice_input.asr_endpoint',
+  voiceAsrResourceId: 'voice_input.asr_resource_id',
   voiceAsrModel: 'voice_input.asr_model',
   voiceDoubaoBoostingTableId: 'voice_input.doubao_boosting_table_id',
   voicePolishToken: 'voice_input.polish_token',
   voicePolishEndpoint: 'voice_input.polish_endpoint',
   voicePolishModel: 'voice_input.polish_model'
 };
+
+// The Server rejects an empty Resource ID, so a cleared field falls back to the hourly 2.0 resource.
+const DOUBAO_DEFAULT_RESOURCE_ID = 'volc.seedasr.sauc.duration';
 
 const ASR_DEFAULTS: Record<string, ProviderDefaults> = {
   doubao: {
@@ -114,7 +118,6 @@ let asrTokens: Record<string, string> = {};
 let polishTokens: Record<string, string> = {};
 let currentAsrProvider = 'doubao';
 let currentDoubaoAuthMode = 'api_key';
-let currentAsrResourceId = 'volc.seedasr.sauc.duration';
 let currentPolishProvider = 'siliconflow';
 let polishPresets: PolishPreset[] = FALLBACK_PRESETS.slice();
 let selectedPromptId = 'cleanup';
@@ -159,7 +162,7 @@ function asrTestConfig(): Record<string, string> {
     token: fieldValue('voiceAsrToken'),
     endpoint: fieldValue('voiceAsrEndpoint') || defaults?.endpoint || '',
     model: fieldValue('voiceAsrModel') || defaults?.model || '',
-    resourceId: currentAsrResourceId
+    resourceId: fieldValue('voiceAsrResourceId') || DOUBAO_DEFAULT_RESOURCE_ID
   };
 }
 
@@ -219,6 +222,7 @@ function syncAsrProviderUi(provider: string): void {
   setHidden('voiceDoubaoAuthModeField', !doubao);
   // The new console issues a single API Key, so App ID only applies to the legacy console.
   setHidden('voiceAsrAppKeyField', !doubao || currentDoubaoAuthMode !== 'legacy');
+  setHidden('voiceAsrResourceIdField', !doubao);
   setHidden('voiceAsrModelField', doubao);
   setHidden('voiceDoubaoOptions', !doubao);
   const model = document.getElementById('voiceAsrModel') as HTMLInputElement | null;
@@ -434,9 +438,19 @@ export function setupVoiceInput(): void {
         updateConfig(`voice_input.polish_token_${currentPolishProvider}`, value);
         return;
       }
+      if (id === 'voiceAsrResourceId' && !value) {
+        element.value = DOUBAO_DEFAULT_RESOURCE_ID;
+        updateConfig(path, DOUBAO_DEFAULT_RESOURCE_ID);
+        return;
+      }
       updateConfig(path, value);
     });
   });
+  const resourceId = tokenInput('voiceAsrResourceId');
+  if (resourceId) {
+    resourceId.placeholder = DOUBAO_DEFAULT_RESOURCE_ID;
+    resourceId.value = DOUBAO_DEFAULT_RESOURCE_ID;
+  }
   syncAsrProviderUi('doubao');
 }
 
@@ -474,6 +488,13 @@ export function applyVoiceConfig(config: Record<string, unknown>): void {
     const element = document.getElementById(id) as HTMLInputElement | null;
     if (element && typeof config[key] === 'string') element.value = config[key] as string;
   });
+  // Unlike the other fields, a missing Resource ID must not leave a stale value from an earlier load.
+  const resourceId = tokenInput('voiceAsrResourceId');
+  if (resourceId) {
+    resourceId.value = typeof config.asr_resource_id === 'string' && config.asr_resource_id.trim()
+      ? config.asr_resource_id
+      : DOUBAO_DEFAULT_RESOURCE_ID;
+  }
   if (Array.isArray(config.polish_presets)) {
     const nextPresets = (config.polish_presets as unknown[]).flatMap((item) => {
       if (!item || typeof item !== 'object') return [];
@@ -498,9 +519,6 @@ export function applyVoiceConfig(config: Record<string, unknown>): void {
   });
   applyDropdownValue('voiceAsrProviderBtn', 'voiceAsrProviderMenu', asrProvider);
   currentDoubaoAuthMode = config.doubao_auth_mode === 'legacy' ? 'legacy' : 'api_key';
-  currentAsrResourceId = typeof config.asr_resource_id === 'string'
-    ? config.asr_resource_id
-    : 'volc.seedasr.sauc.duration';
   applyDropdownValue('voiceDoubaoAuthModeBtn', 'voiceDoubaoAuthModeMenu', currentDoubaoAuthMode);
   syncDoubaoEndpointUi();
   syncAsrProviderUi(asrProvider);
