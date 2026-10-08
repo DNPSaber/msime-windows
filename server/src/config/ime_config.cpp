@@ -274,6 +274,12 @@ bool IsValidSettingsWindowLinger(const std::string &linger)
     return linger == "off" || linger == "1m" || linger == "5m" || linger == "10m" || linger == "30m" ||
            linger == "60m" || linger == "forever";
 }
+
+bool IsValidTranslationTargetLanguage(const std::string &language)
+{
+    static constexpr std::string_view kLanguages[] = {"en", "fr", "ja", "es", "ru", "de", "ko", "th", "vi", "it"};
+    return std::find(std::begin(kLanguages), std::end(kLanguages), language) != std::end(kLanguages);
+}
 } // namespace ime_config_detail
 
 namespace
@@ -847,10 +853,7 @@ bool LoadImeConfig()
         if (g_tencent_tmt.region.empty())
             g_tencent_tmt.region = "ap-guangzhou";
         g_tencent_tmt.target_language = tbl["tencent_tmt"]["target_language"].value_or(std::string("en"));
-        if (g_tencent_tmt.target_language != "en" && g_tencent_tmt.target_language != "fr" &&
-            g_tencent_tmt.target_language != "ja" && g_tencent_tmt.target_language != "es" &&
-            g_tencent_tmt.target_language != "ru" && g_tencent_tmt.target_language != "de" &&
-            g_tencent_tmt.target_language != "ko")
+        if (!IsValidTranslationTargetLanguage(g_tencent_tmt.target_language))
             g_tencent_tmt.target_language = "en";
         g_custom_translation.enabled = tbl["custom_translation"]["enabled"].value_or(false);
         g_custom_translation.endpoint = tbl["custom_translation"]["endpoint"].value_or(std::string());

@@ -112,7 +112,7 @@ struct TencentTmtConfig
     std::string secret_key;
     std::string region = "ap-guangzhou";
     // Language shown beside Chinese candidates. Tencent TMT language codes:
-    // en / fr / ja / es / ru / de / ko.
+    // en / fr / ja / es / ru / de / ko / th / vi / it.
     std::string target_language = "en";
 };
 

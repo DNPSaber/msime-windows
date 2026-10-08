@@ -107,7 +107,7 @@ enabled = true
 secret_id = "<YOUR_TENCENT_SECRET_ID>"
 secret_key = "<YOUR_TENCENT_SECRET_KEY>"
 region = "ap-guangzhou"
-# 候选词翻译/背单词目标语种：en / fr / ja / es / ru / de / ko
+# 候选词翻译/背单词目标语种：en / fr / ja / es / ru / de / ko / th / vi / it
 target_language = "en"
 
 #
