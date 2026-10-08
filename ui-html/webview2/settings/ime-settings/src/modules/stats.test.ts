@@ -4,6 +4,7 @@ import {
   calendarLevel,
   calendarStart,
   computeCalendarCellSize,
+  computeCalendarMonthLabels,
   computeCalendarWeeks,
   dateToDayKey,
   dayKeyToDate,
@@ -175,6 +176,29 @@ describe('热力图窗口', () => {
       const columns = Math.floor(Math.round((today.getTime() - start.getTime()) / 86_400_000) / 7) + 1;
       expect(columns).toBeGreaterThanOrEqual(53);
       expect(columns).toBeLessThanOrEqual(54);
+    }
+  });
+
+  it('首周未含1日时首周标注起始月份', () => {
+    // 2025-01-06（周一）到 2025-01-20（周一），总共 3 周，均不含 1 日
+    const weekStarts = [new Date(2025, 0, 6), new Date(2025, 0, 13), new Date(2025, 0, 20)];
+    const labels = computeCalendarMonthLabels(weekStarts);
+    expect(labels).toEqual(['1月', '', '']);
+  });
+
+  it('相邻月份标签间隔过窄时跳过以防文字挤压重叠', () => {
+    // 假设 10 周数据
+    const weekStarts = Array.from({ length: 12 }, (_, i) => addDays(new Date(2025, 0, 6), i * 7));
+    const labels = computeCalendarMonthLabels(weekStarts);
+    // 检查所有非空标签之间的周数间隔均 >= CALENDAR_MIN_MONTH_LABEL_GAP_WEEKS (3)
+    let lastLabelCol = -1;
+    for (let i = 0; i < labels.length; i++) {
+      if (labels[i]) {
+        if (lastLabelCol !== -1) {
+          expect(i - lastLabelCol).toBeGreaterThanOrEqual(3);
+        }
+        lastLabelCol = i;
+      }
     }
   });
 });

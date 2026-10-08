@@ -36,6 +36,9 @@ const OVERVIEW_MIN_INTERVAL_MS = 1000;
 const OVERVIEW_STALE_MS = 15000;
 
 let statisticsEnabled = false;
+/** 两个相邻月份标签之间的最小周列间隔，避免文字在窄列或相邻月初时相互重叠。 */
+export const CALENDAR_MIN_MONTH_LABEL_GAP_WEEKS = 3;
+
 let lastOverview: StatsOverview | null = null;
 let lastOverviewSignature = '';
 let calendarWeeks = CALENDAR_MIN_WEEKS;
@@ -46,6 +49,7 @@ let statusTimer: number | null = null;
 let lastOverviewRequestAt = 0;
 let overviewPollTimer: number | null = null;
 const pendingRequests = new Map<string, StatsRequest['action']>();
+let calendarUserScrolled = false;
 
 // ------------------------------------------------------------------ 纯函数（单测覆盖）
 
@@ -173,6 +177,44 @@ export function calendarStart(today: Date, weeks: number): Date {
   return addDays(start, -((start.getDay() + 6) % 7));
 }
 
+/**
+ * 计算日历热力图各周列对应的月份标签文本。
+ * 首周标注起始月份，后续列在跨月（出现 1 日）时标注；与上一已标注列间隔小于 minGapWeeks 时略过，避免重叠。
+ */
+export function computeCalendarMonthLabels(
+  weekStarts: Date[],
+  minGapWeeks: number = CALENDAR_MIN_MONTH_LABEL_GAP_WEEKS
+): string[] {
+  const labels: string[] = [];
+  let lastLabeledIndex = -minGapWeeks;
+
+  for (let colIndex = 0; colIndex < weekStarts.length; colIndex++) {
+    const weekStart = weekStarts[colIndex];
+    let monthToLabel: number | null = null;
+
+    if (colIndex === 0) {
+      monthToLabel = weekStart.getMonth() + 1;
+    } else {
+      for (let i = 0; i < 7; i++) {
+        const date = addDays(weekStart, i);
+        if (date.getDate() === 1) {
+          monthToLabel = date.getMonth() + 1;
+          break;
+        }
+      }
+    }
+
+    if (monthToLabel !== null && colIndex - lastLabeledIndex >= minGapWeeks) {
+      labels.push(`${monthToLabel}月`);
+      lastLabeledIndex = colIndex;
+    } else {
+      labels.push('');
+    }
+  }
+
+  return labels;
+}
+
 /** 明细列表：取最近 days 天并按日期倒序（新的在上）。 */
 export function detailRows(daily: StatsDailyRow[], days: number): StatsDailyRow[] {
   return daily.slice(-days).reverse();
@@ -241,9 +283,11 @@ function renderOverview(overview: StatsOverview): void {
   if (!hasData) {
     return;
   }
-  // 重建热力图会把滚动位置打回 0，列数没变时原样放回去。
+  // 重建热力图会把滚动位置打回 0；未主动滚动的用户默认对齐到最右侧（今天）。
   const calendarBox = byId('statsCalendar');
-  const calendarScroll = calendarBox?.scrollLeft ?? 0;
+  const previousScroll = calendarBox?.scrollLeft ?? 0;
+  const previousMaxScroll = calendarBox ? Math.max(0, calendarBox.scrollWidth - calendarBox.clientWidth) : 0;
+  const wasAtEnd = previousMaxScroll > 0 && Math.abs(previousScroll - previousMaxScroll) <= 4;
   renderCards(overview);
   renderSpeed(overview);
   renderCalendar(overview);
@@ -251,7 +295,12 @@ function renderOverview(overview: StatsOverview): void {
   renderCategories(overview);
   renderDetails(overview);
   if (calendarBox) {
-    calendarBox.scrollLeft = calendarScroll;
+    const maxScroll = Math.max(0, calendarBox.scrollWidth - calendarBox.clientWidth);
+    if (!calendarUserScrolled || wasAtEnd) {
+      calendarBox.scrollLeft = maxScroll;
+    } else {
+      calendarBox.scrollLeft = Math.min(previousScroll, maxScroll);
+    }
   }
 }
 
@@ -320,21 +369,11 @@ function renderCalendar(overview: StatsOverview): void {
 
   // 固定窗口：不按首条记录收缩，区间外没有数据时格子自然显示为空。
   const today = dayKeyToDate(overview.todayDayKey);
-  const monthFragment = document.createDocumentFragment();
   const gridFragment = document.createDocumentFragment();
+  const weekStarts: Date[] = [];
   let weekStart = calendarStart(today, calendarWeeks);
   while (weekStart.getTime() <= today.getTime()) {
-    // 只在列内出现某月 1 日时标注月份，保证标签与该月的列对齐。
-    const label = el('span', 'stats-month-label');
-    for (let i = 0; i < 7; i++) {
-      const date = addDays(weekStart, i);
-      if (date.getDate() === 1) {
-        label.textContent = `${date.getMonth() + 1}月`;
-        break;
-      }
-    }
-    monthFragment.append(label);
-
+    weekStarts.push(weekStart);
     for (let i = 0; i < 7; i++) {
       const date = addDays(weekStart, i);
       const dayKey = dateToDayKey(date);
@@ -348,6 +387,16 @@ function renderCalendar(overview: StatsOverview): void {
       gridFragment.append(cell);
     }
     weekStart = addDays(weekStart, 7);
+  }
+
+  const monthLabels = computeCalendarMonthLabels(weekStarts);
+  const monthFragment = document.createDocumentFragment();
+  for (const labelText of monthLabels) {
+    const label = el('span', 'stats-month-label');
+    if (labelText) {
+      label.textContent = labelText;
+    }
+    monthFragment.append(label);
   }
 
   months.replaceChildren(monthFragment);
@@ -552,11 +601,28 @@ function setupCalendarResize(): void {
     if (!lastOverview) {
       return;
     }
-    // 新列在左侧追加，按宽度差平移滚动位置，保持用户正在看的日期不跳。
+    // 宽度调整后重新渲染。若用户未主动向左回溯（或本来就在最右侧），保持贴齐最右侧（今天）。
     const previousScroll = box.scrollLeft;
+    const previousMaxScroll = Math.max(0, box.scrollWidth - box.clientWidth);
+    const wasAtEnd = previousMaxScroll > 0 && Math.abs(previousScroll - previousMaxScroll) <= 4;
     renderCalendar(lastOverview);
-    box.scrollLeft = Math.max(0, previousScroll + (nextWeeks - previousWeeks) * CALENDAR_COLUMN_PX);
+    const maxScroll = Math.max(0, box.scrollWidth - box.clientWidth);
+    if (!calendarUserScrolled || wasAtEnd) {
+      box.scrollLeft = maxScroll;
+    } else {
+      box.scrollLeft = Math.max(0, Math.min(previousScroll + (nextWeeks - previousWeeks) * CALENDAR_COLUMN_PX, maxScroll));
+    }
   };
+  box.addEventListener(
+    'scroll',
+    () => {
+      const maxScroll = Math.max(0, box.scrollWidth - box.clientWidth);
+      if (maxScroll > 0 && maxScroll - box.scrollLeft > 10) {
+        calendarUserScrolled = true;
+      }
+    },
+    { passive: true }
+  );
   calendarObserver?.disconnect();
   calendarObserver = new ResizeObserver(applyMetrics);
   calendarObserver.observe(box);
