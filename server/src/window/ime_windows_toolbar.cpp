@@ -54,21 +54,10 @@ bool FloatingToolbarItemsEqual(const FloatingToolbarItemsConfig &left, const Flo
 
 namespace
 {
-// Set while the user is inside a caption drag (WM_ENTERSIZEMOVE ..
-// WM_EXITSIZEMOVE). WM_DPICHANGED arrives mid-drag when the pointer crosses
-// onto a screen with another scale factor, and must not move the HWND then:
-// the modal move loop owns the position.
-bool g_ftb_in_user_move_loop = false;
-
 void KeepFloatingToolbarInsideVisibleScreens(HWND hwnd)
 {
-    if (!hwnd)
-    {
-        return;
-    }
-
     RECT rect{};
-    if (!GetWindowRect(hwnd, &rect) || IsRectInsideVisibleMonitorWorkAreas(rect))
+    if (!hwnd || !GetWindowRect(hwnd, &rect))
     {
         return;
     }
@@ -79,7 +68,7 @@ void KeepFloatingToolbarInsideVisibleScreens(HWND hwnd)
     // primary) snap back to the screen it came from.
     const RECT before = rect;
     HMONITOR monitor = nullptr;
-    if (!ClampRectIntoNearestMonitorWorkArea(rect, &monitor))
+    if (!KeepRectOnVisibleScreens(rect, ScreenArea::WorkArea, &monitor))
     {
         return;
     }
@@ -88,15 +77,9 @@ void KeepFloatingToolbarInsideVisibleScreens(HWND hwnd)
     SyncHostWebViewBounds(::webviewControllerFtbWnd.Get(), hwnd);
 
     MONITORINFO info{sizeof(info)};
-    if (monitor && GetMonitorInfo(monitor, &info))
-    {
-        FTB_DIAG_LOGF(L"ftb drag clamped from ({},{}) to ({},{}) work=({},{})-({},{})", before.left, before.top,
-                      rect.left, rect.top, info.rcWork.left, info.rcWork.top, info.rcWork.right, info.rcWork.bottom);
-    }
-    else
-    {
-        FTB_DIAG_LOGF(L"ftb drag clamped from ({},{}) to ({},{})", before.left, before.top, rect.left, rect.top);
-    }
+    GetMonitorInfo(monitor, &info);
+    FTB_DIAG_LOGF(L"ftb drag clamped from ({},{}) to ({},{}) work=({},{})-({},{})", before.left, before.top, rect.left,
+                  rect.top, info.rcWork.left, info.rcWork.top, info.rcWork.right, info.rcWork.bottom);
 }
 
 // Recompute FTB outer HWND from design DIPs * current DPI. Placement used to be
@@ -110,13 +93,11 @@ void KeepFloatingToolbarInsideVisibleScreens(HWND hwnd)
 // scaleOverride>0: use that factor (WM_DPICHANGED's wParam) instead of
 // GetWindowScale, which can briefly lag the message's new DPI.
 //
-// suggestedRect: WM_DPICHANGED's recommended placement (lParam). Only used when
-// the user is not inside a caption drag; Windows computes it for the new DPI.
-// keep_position: a native move loop owns the HWND position. While it runs only
-// the size may change: moving (or clamping) here fights the loop and snaps the
-// toolbar back to the screen it came from.
+// suggestedRect: WM_DPICHANGED's recommended placement (lParam). Windows
+// computes it for the new DPI, keeping the toolbar under the cursor during a
+// caption drag without flipping back and forth across the seam.
 void LayoutFloatingToolbar(HWND hwnd, bool reset_to_default_corner, FLOAT scaleOverride = 0.0f,
-                           const RECT *suggestedRect = nullptr, bool keep_position = false)
+                           const RECT *suggestedRect = nullptr)
 {
     if (!hwnd)
     {
@@ -149,6 +130,11 @@ void LayoutFloatingToolbar(HWND hwnd, bool reset_to_default_corner, FLOAT scaleO
     HalfScreenDipLimits limits = QueryWebViewHalfScreenDipLimitsForHwnd(hwnd);
     if (scaleOverride > 0.0f)
     {
+        if (suggestedRect)
+        {
+            // The host is about to land on the suggested rect's monitor.
+            limits.monitor = QueryHalfScreenDipLimitsForPoint({suggestedRect->left, suggestedRect->top}).monitor;
+        }
         const double monitorWidthPx = static_cast<double>((std::max)(1, limits.monitor.right - limits.monitor.left));
         const double monitorHeightPx = static_cast<double>((std::max)(1, limits.monitor.bottom - limits.monitor.top));
         limits.scale = scale;
@@ -174,39 +160,12 @@ void LayoutFloatingToolbar(HWND hwnd, bool reset_to_default_corner, FLOAT scaleO
     }
     else
     {
-        RECT rc{};
-        GetWindowRect(hwnd, &rc);
-        posX = rc.left;
-        posY = rc.top;
-
-        if (keep_position || g_ftb_in_user_move_loop)
-        {
-            // A caption drag is inside its modal move loop right now. Windows
-            // sends WM_DPICHANGED mid-drag when the pointer crosses onto a
-            // screen with another scale factor; moving the HWND here (or
-            // clamping it against MonitorFromWindow's monitor) fights the loop
-            // and drags the toolbar back to the screen it came from.
-        }
-        else
-        {
-            if (suggestedRect)
-            {
-                posX = suggestedRect->left;
-                posY = suggestedRect->top;
-            }
-
-            // When optional buttons are added, the toolbar grows to the right
-            // from the existing top-left. Keep the resized host reachable, but
-            // only pull it back when it would leave every monitor's work area:
-            // clamping against the current monitor is what pinned the FTB to
-            // one screen on mixed-DPI setups.
-            RECT target{posX, posY, posX + width, posY + height};
-            if (!IsRectInsideVisibleMonitorWorkAreas(target) && ClampRectIntoNearestMonitorWorkArea(target))
-            {
-                posX = target.left;
-                posY = target.top;
-            }
-        }
+        // When optional buttons are added, the toolbar grows to the right from
+        // the existing top-left; keep the resized host reachable without
+        // pinning it to the monitor it currently sits on.
+        const POINT pos = PlaceResizedHost(hwnd, width, height, suggestedRect);
+        posX = pos.x;
+        posY = pos.y;
     }
     // Never touch Z-order here: HWND_TOP would cover an open tray menu. Topmost
     // for the toolbar is owned by EnsureSmallWindowsTopmost / lazy pin order.
@@ -642,6 +601,25 @@ void ApplyConfiguredFloatingToolbarSize()
     });
 }
 
+namespace
+{
+void RemeasureFloatingToolbarAfterDpiChange(HWND hwnd)
+{
+    if (FloatingToolbarPresenter::Instance().IsBound())
+    {
+        FloatingToolbarPresenter::Instance().RelayoutHost();
+    }
+    else if (::webviewFtbWnd)
+    {
+        ApplyConfiguredFloatingToolbarSize();
+    }
+    else
+    {
+        SetTimer(hwnd, TIMER_ID_FTB_DPI_REMEASURE, 100, nullptr);
+    }
+}
+} // namespace
+
 LRESULT CALLBACK WndProcFtbWindow(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam)
 {
     // The floating toolbar is persistent, so it cannot rely on being re-themed
@@ -692,30 +670,27 @@ LRESULT CALLBACK WndProcFtbWindow(HWND hwnd, UINT message, WPARAM wParam, LPARAM
                                                wParam != 0 ? L"1" : L"0");
         break;
 
-    case WM_ENTERSIZEMOVE:
-        // Caption drag started: from here until WM_EXITSIZEMOVE the modal move
-        // loop owns the window position.
-        g_ftb_in_user_move_loop = true;
-        break;
-
     case WM_EXITSIZEMOVE:
         // Native caption dragging runs a modal move loop. Clamp only after that
         // loop ends so movement remains smooth and crossing to another monitor
-        // is never blocked.
-        g_ftb_in_user_move_loop = false;
+        // is never blocked. A remeasure still pending from a mid-drag DPI change
+        // runs first, so the clamp sees the final size and the toolbar does not
+        // jump a second time when the timer fires.
+        if (KillTimer(hwnd, TIMER_ID_FTB_DPI_REMEASURE))
+        {
+            RemeasureFloatingToolbarAfterDpiChange(hwnd);
+        }
         KeepFloatingToolbarInsideVisibleScreens(hwnd);
         return 0;
 
     case WM_DPICHANGED: {
         const FLOAT scale = HIWORD(wParam) / 96.0f;
-        // Windows recommends a placement in lParam; it is only usable while no
-        // move loop is running, because a caption drag keeps positioning the
-        // HWND itself.
+        // Apply Windows' recommended placement, also mid-drag: it keeps the
+        // toolbar under the cursor so the DPI does not flip back and forth.
         const RECT *suggested = reinterpret_cast<const RECT *>(lParam);
-        const bool keep_position = g_ftb_in_user_move_loop;
         if (FloatingToolbarPresenter::Instance().IsBound())
         {
-            FloatingToolbarPresenter::Instance().RelayoutHost(scale, keep_position, suggested);
+            FloatingToolbarPresenter::Instance().RelayoutHost(scale, suggested);
             ScheduleFloatingToolbarDpiRemeasure(hwnd);
             return 0;
         }
@@ -724,7 +699,7 @@ LRESULT CALLBACK WndProcFtbWindow(HWND hwnd, UINT message, WPARAM wParam, LPARAM
         // fractional undersize cannot leave Chromium scrollbars over 中/简.
         ::FTB_CONTENT_WIDTH_DIP = 0.0;
         ::FTB_CONTENT_HEIGHT_DIP = 0.0;
-        LayoutFloatingToolbar(hwnd, false, scale > 0.0f ? scale : 0.0f, suggested, keep_position);
+        LayoutFloatingToolbar(hwnd, false, scale > 0.0f ? scale : 0.0f, suggested);
         ScheduleFloatingToolbarDpiRemeasure(hwnd);
         return 0;
     }
@@ -772,20 +747,7 @@ LRESULT CALLBACK WndProcFtbWindow(HWND hwnd, UINT message, WPARAM wParam, LPARAM
         if (wParam == TIMER_ID_FTB_DPI_REMEASURE)
         {
             KillTimer(hwnd, TIMER_ID_FTB_DPI_REMEASURE);
-            if (FloatingToolbarPresenter::Instance().IsBound())
-            {
-                // The remeasure that WM_DPICHANGED schedules can land while the
-                // user is still dragging: keep the HWND where the move loop put it.
-                FloatingToolbarPresenter::Instance().RelayoutHost(0.0f, g_ftb_in_user_move_loop);
-            }
-            else if (::webviewFtbWnd)
-            {
-                ApplyConfiguredFloatingToolbarSize();
-            }
-            else
-            {
-                SetTimer(hwnd, TIMER_ID_FTB_DPI_REMEASURE, 100, nullptr);
-            }
+            RemeasureFloatingToolbarAfterDpiChange(hwnd);
             break;
         }
         break;

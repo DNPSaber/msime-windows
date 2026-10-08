@@ -80,82 +80,86 @@ FLOAT ScaleFromMonitor(HMONITOR hMonitor)
 
 namespace
 {
-BOOL CALLBACK AddMonitorWorkAreaToRegion(HMONITOR monitor, HDC, LPRECT, LPARAM data)
+const RECT &ScreenAreaRect(const MONITORINFO &info, ScreenArea area)
 {
-    auto visibleRegion = reinterpret_cast<HRGN>(data);
-    if (!visibleRegion)
-    {
-        return FALSE;
-    }
+    return area == ScreenArea::WorkArea ? info.rcWork : info.rcMonitor;
+}
 
+struct VisibleRegionBuilder
+{
+    HRGN region = nullptr;
+    ScreenArea area = ScreenArea::WorkArea;
+};
+
+BOOL CALLBACK AddMonitorAreaToRegion(HMONITOR monitor, HDC, LPRECT, LPARAM data)
+{
+    auto *builder = reinterpret_cast<VisibleRegionBuilder *>(data);
     MONITORINFO info{sizeof(info)};
     if (!GetMonitorInfo(monitor, &info))
     {
         return TRUE;
     }
 
-    HRGN workAreaRegion = CreateRectRgnIndirect(&info.rcWork);
-    if (workAreaRegion)
+    HRGN areaRegion = CreateRectRgnIndirect(&ScreenAreaRect(info, builder->area));
+    if (areaRegion)
     {
-        CombineRgn(visibleRegion, visibleRegion, workAreaRegion, RGN_OR);
-        DeleteObject(workAreaRegion);
+        CombineRgn(builder->region, builder->region, areaRegion, RGN_OR);
+        DeleteObject(areaRegion);
     }
     return TRUE;
 }
 
-// Nearest monitor of the rect's center instead of MonitorFromRect: a host
-// straddling a seam must keep the side the user dropped it on, and a host
-// beyond every screen must come back towards where it was pushed.
-HMONITOR MonitorNearestToRectCenter(const RECT &rect)
-{
-    const POINT center{rect.left + (rect.right - rect.left) / 2, rect.top + (rect.bottom - rect.top) / 2};
-    return MonitorFromPoint(center, MONITOR_DEFAULTTONEAREST);
-}
-} // namespace
-
-bool IsRectInsideVisibleMonitorWorkAreas(const RECT &rect)
+bool IsRectInsideVisibleScreens(const RECT &rect, ScreenArea area)
 {
     HRGN visibleRegion = CreateRectRgn(0, 0, 0, 0);
     HRGN windowRegion = CreateRectRgnIndirect(&rect);
     HRGN outsideRegion = CreateRectRgn(0, 0, 0, 0);
-    if (!visibleRegion || !windowRegion || !outsideRegion)
+    bool inside = true;
+    if (visibleRegion && windowRegion && outsideRegion)
     {
-        if (visibleRegion)
-            DeleteObject(visibleRegion);
-        if (windowRegion)
-            DeleteObject(windowRegion);
-        if (outsideRegion)
-            DeleteObject(outsideRegion);
-        return true;
+        VisibleRegionBuilder builder{visibleRegion, area};
+        EnumDisplayMonitors(nullptr, nullptr, AddMonitorAreaToRegion, reinterpret_cast<LPARAM>(&builder));
+        inside = CombineRgn(outsideRegion, windowRegion, visibleRegion, RGN_DIFF) == NULLREGION;
     }
-
-    EnumDisplayMonitors(nullptr, nullptr, AddMonitorWorkAreaToRegion, reinterpret_cast<LPARAM>(visibleRegion));
-    const int outsideType = CombineRgn(outsideRegion, windowRegion, visibleRegion, RGN_DIFF);
-    DeleteObject(outsideRegion);
-    DeleteObject(windowRegion);
-    DeleteObject(visibleRegion);
-    return outsideType == NULLREGION;
+    if (visibleRegion)
+        DeleteObject(visibleRegion);
+    if (windowRegion)
+        DeleteObject(windowRegion);
+    if (outsideRegion)
+        DeleteObject(outsideRegion);
+    return inside;
 }
+} // namespace
 
-bool ClampRectIntoNearestMonitorWorkArea(RECT &rect, HMONITOR *monitor)
+bool KeepRectOnVisibleScreens(RECT &rect, ScreenArea area, HMONITOR *monitor)
 {
-    const HMONITOR target = MonitorNearestToRectCenter(rect);
-    if (monitor)
+    if (IsRectInsideVisibleScreens(rect, area))
     {
-        *monitor = target;
+        return false;
     }
+
+    // Nearest monitor of the rect's center instead of MonitorFromRect: a host
+    // straddling a seam must keep the side the user dropped it on, and a host
+    // beyond every screen must come back towards where it was pushed.
+    const POINT center{rect.left + (rect.right - rect.left) / 2, rect.top + (rect.bottom - rect.top) / 2};
+    const HMONITOR target = MonitorFromPoint(center, MONITOR_DEFAULTTONEAREST);
     MONITORINFO info{sizeof(info)};
     if (!target || !GetMonitorInfo(target, &info))
     {
         return false;
     }
+    if (monitor)
+    {
+        *monitor = target;
+    }
 
+    const RECT &bounds = ScreenAreaRect(info, area);
     const int width = rect.right - rect.left;
     const int height = rect.bottom - rect.top;
-    const int maxX = (std::max)(static_cast<int>(info.rcWork.left), static_cast<int>(info.rcWork.right) - width);
-    const int maxY = (std::max)(static_cast<int>(info.rcWork.top), static_cast<int>(info.rcWork.bottom) - height);
-    const int x = (std::max)(static_cast<int>(info.rcWork.left), (std::min)(static_cast<int>(rect.left), maxX));
-    const int y = (std::max)(static_cast<int>(info.rcWork.top), (std::min)(static_cast<int>(rect.top), maxY));
+    const int maxX = (std::max)(static_cast<int>(bounds.left), static_cast<int>(bounds.right) - width);
+    const int maxY = (std::max)(static_cast<int>(bounds.top), static_cast<int>(bounds.bottom) - height);
+    const int x = (std::max)(static_cast<int>(bounds.left), (std::min)(static_cast<int>(rect.left), maxX));
+    const int y = (std::max)(static_cast<int>(bounds.top), (std::min)(static_cast<int>(rect.top), maxY));
     if (x == rect.left && y == rect.top)
     {
         return false;
@@ -165,6 +169,40 @@ bool ClampRectIntoNearestMonitorWorkArea(RECT &rect, HMONITOR *monitor)
     rect.right = x + width;
     rect.bottom = y + height;
     return true;
+}
+
+bool IsWindowInMoveSizeLoop(HWND hwnd)
+{
+    // Ask USER32 instead of mirroring WM_ENTERSIZEMOVE/WM_EXITSIZEMOVE in a
+    // flag: a mirrored flag stays set forever if the HWND is torn down while
+    // the loop runs and never sees WM_EXITSIZEMOVE.
+    const DWORD thread = hwnd ? GetWindowThreadProcessId(hwnd, nullptr) : 0;
+    GUITHREADINFO info{sizeof(info)};
+    return thread != 0 && GetGUIThreadInfo(thread, &info) && (info.flags & GUI_INMOVESIZE) != 0 &&
+           info.hwndMoveSize == hwnd;
+}
+
+POINT PlaceResizedHost(HWND hwnd, int width, int height, const RECT *suggestedRect)
+{
+    RECT target{};
+    if (suggestedRect)
+    {
+        target = *suggestedRect;
+    }
+    else
+    {
+        GetWindowRect(hwnd, &target);
+    }
+    target.right = target.left + width;
+    target.bottom = target.top + height;
+    // A caption drag owns the position until it ends (WM_EXITSIZEMOVE clamps
+    // then). Clamping mid-drag fights the move loop and snaps the host back to
+    // the screen it came from.
+    if (!IsWindowInMoveSizeLoop(hwnd))
+    {
+        KeepRectOnVisibleScreens(target, ScreenArea::Monitor);
+    }
+    return {target.left, target.top};
 }
 
 FLOAT GetWindowScale(HWND hwnd)

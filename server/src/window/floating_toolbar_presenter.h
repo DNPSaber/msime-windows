@@ -13,9 +13,8 @@ class FloatingToolbarPresenter
     void Present();
     void ApplyTheme();
     void ApplyAppearance();
-    // keepPosition: a native caption drag owns the HWND position (see
-    // WM_DPICHANGED handling). suggestedRect: Windows' recommended placement.
-    void RelayoutHost(FLOAT scaleOverride = 0.0f, bool keepPosition = false, const RECT *suggestedRect = nullptr);
+    // suggestedRect: WM_DPICHANGED's recommended placement (lParam).
+    void RelayoutHost(FLOAT scaleOverride = 0.0f, const RECT *suggestedRect = nullptr);
     void SyncUi(int cnEn, int doubleSingleByte, int punctuation, int englishInputMode, int capsLock,
                 int japaneseInputMode);
     bool HitCaptionDrag(POINT clientPoint) const;

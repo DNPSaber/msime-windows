@@ -593,7 +593,7 @@ void FloatingToolbarPresenter::ApplyAppearance()
     RelayoutHost();
 }
 
-void FloatingToolbarPresenter::RelayoutHost(FLOAT scaleOverride, bool keepPosition, const RECT *suggestedRect)
+void FloatingToolbarPresenter::RelayoutHost(FLOAT scaleOverride, const RECT *suggestedRect)
 {
     if (!bound_ || !hwnd_ || !impl_ || !impl_->root)
     {
@@ -613,42 +613,25 @@ void FloatingToolbarPresenter::RelayoutHost(FLOAT scaleOverride, bool keepPositi
     {
         scale = 1.0f;
     }
-    RECT current{};
-    GetWindowRect(hwnd_, &current);
-    const HalfScreenDipLimits limits = QueryHalfScreenDipLimitsForPoint({current.left, current.top});
+    // Cap against the monitor the host is about to land on: after a DPI change
+    // that is the suggested rect's monitor, not the one it is leaving.
+    RECT anchor{};
+    if (suggestedRect)
+    {
+        anchor = *suggestedRect;
+    }
+    else
+    {
+        GetWindowRect(hwnd_, &anchor);
+    }
+    const HalfScreenDipLimits limits = QueryHalfScreenDipLimitsForPoint({anchor.left, anchor.top});
     const float widthDip = static_cast<float>(ClampWidthDipToHalfScreen(static_cast<double>(measured.width), limits));
     const float heightDip =
         static_cast<float>(ClampHeightDipToHalfScreen(static_cast<double>(measured.height), limits));
     const int widthPx = (std::max)(1, static_cast<int>(std::ceil(widthDip * scale)));
     const int heightPx = (std::max)(1, static_cast<int>(std::ceil(heightDip * scale)));
-    int posX = current.left;
-    int posY = current.top;
-    if (keepPosition)
-    {
-        // A caption drag is running its modal move loop while WM_DPICHANGED
-        // arrives for the new monitor's scale. Moving the HWND here (or
-        // clamping it against MonitorFromWindow's monitor) fights the loop and
-        // snaps the toolbar back to the screen it came from: resize only.
-    }
-    else
-    {
-        if (suggestedRect)
-        {
-            posX = suggestedRect->left;
-            posY = suggestedRect->top;
-        }
-
-        // Keep the resized host reachable without pinning it to the monitor it
-        // currently sits on: only pull it back when it would leave every
-        // monitor's work area.
-        RECT target{posX, posY, posX + widthPx, posY + heightPx};
-        if (!IsRectInsideVisibleMonitorWorkAreas(target) && ClampRectIntoNearestMonitorWorkArea(target))
-        {
-            posX = target.left;
-            posY = target.top;
-        }
-    }
-    SetWindowPos(hwnd_, nullptr, posX, posY, widthPx, heightPx, SWP_NOZORDER | SWP_NOACTIVATE);
+    const POINT pos = PlaceResizedHost(hwnd_, widthPx, heightPx, suggestedRect);
+    SetWindowPos(hwnd_, nullptr, pos.x, pos.y, widthPx, heightPx, SWP_NOZORDER | SWP_NOACTIVATE);
     impl_->resources.EnsureForComposition(hwnd_);
     if (impl_->card && impl_->dragLimit)
     {
