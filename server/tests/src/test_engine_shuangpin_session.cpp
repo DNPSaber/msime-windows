@@ -429,7 +429,7 @@ TEST_CASE(FixedEnglishCandidateKeepsItsMixedCandidatePosition)
     REQUIRE_EQ(items[2].word, std::string("GitHub"));
 }
 
-TEST_CASE(EmojiMixedCandidateFollowsEnglishAndShiftsWithCloudAndAi)
+TEST_CASE(EmojiMixedCandidatesStayAtTheEndWithCloudAndAi)
 {
     const auto local = [](std::string word) { return WordItem("ni", std::move(word), 100); };
     const auto english = [] { return WordItem("ni", "nice", 1, CandidateSource::EnglishDictionary); };
@@ -470,7 +470,7 @@ TEST_CASE(EmojiMixedCandidateFollowsEnglishAndShiftsWithCloudAndAi)
     REQUIRE_EQ(items[4].source, CandidateSource::Emoji);
 }
 
-TEST_CASE(KaomojiMixedCandidateSitsRightAfterEmoji)
+TEST_CASE(KaomojiMixedCandidatesFollowEmojiAtTheEnd)
 {
     const auto local = [](std::string word) { return WordItem("ni", std::move(word), 100); };
     const auto english = [] { return WordItem("ni", "nice", 1, CandidateSource::EnglishDictionary); };
