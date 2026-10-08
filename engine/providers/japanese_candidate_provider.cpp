@@ -121,18 +121,37 @@ std::vector<WordItem> JapaneseCandidateProvider::query(const QueryRequest &reque
             }
         }
         japanese::JapaneseMatrixSearch search(*sentence_decoder_);
-        for (const auto &sentence : search.SearchConverted(conversion, 12))
-        {
-            AppendUnique(candidates, seen, request.raw_input_with_cases, sentence.text, 900000 - sentence.cost,
-                         CandidateSource::Database);
-        }
+        const auto sentences = search.SearchConverted(conversion, 12);
+        size_t next_sentence = 0;
         // Once the reading is complete, convert what was typed before predicting
-        // longer words. Keep the prediction-first path above for pending romaji.
+        // longer words: the best whole-reading path and exact lemmas, then
+        // predictions, then the remaining sentence tail (other paths, kana
+        // fallbacks and lemmas covering only a prefix of the reading). Keep the
+        // prediction-first path above for pending romaji.
         if (conversion.pending.empty() && conversion.hiragana.size() >= 6)
         {
-            for (const auto &lemma : sentence_decoder_->PrefixLemmas(conversion.hiragana, 16))
-                AppendUnique(candidates, seen, request.raw_input_with_cases, lemma.surface, 980000 - lemma.word_cost,
+            std::int64_t weight_floor = 980000;
+            const auto append_exact = [&](const std::string &text, std::int64_t weight) {
+                const size_t before = candidates.size();
+                AppendUnique(candidates, seen, request.raw_input_with_cases, text, weight, CandidateSource::Database);
+                if (candidates.size() != before)
+                    weight_floor = (std::min)(weight_floor, weight);
+            };
+            if (!sentences.empty())
+                append_exact(sentences[next_sentence++].text, 900000 - sentences.front().cost);
+            for (const auto &lemma : sentence_decoder_->ExactLemmas(conversion.hiragana, 16))
+                append_exact(lemma.surface, 900000 - lemma.word_cost);
+            // Predictions must not outweigh the conversions above them, or a
+            // weight-based re-sort would undo this order.
+            for (const auto &lemma : sentence_decoder_->LongerPrefixLemmas(conversion.hiragana, 16))
+                AppendUnique(candidates, seen, request.raw_input_with_cases, lemma.surface,
+                             (std::min)(weight_floor, 980000 - static_cast<std::int64_t>(lemma.word_cost)),
                              CandidateSource::Database);
+        }
+        for (; next_sentence < sentences.size(); ++next_sentence)
+        {
+            AppendUnique(candidates, seen, request.raw_input_with_cases, sentences[next_sentence].text,
+                         900000 - sentences[next_sentence].cost, CandidateSource::Database);
         }
     }
 

@@ -5,9 +5,14 @@
 #include <sqlite3.h>
 #include <algorithm>
 #include <chrono>
+#include <cstdint>
 #include <cstdio>
+#include <filesystem>
 #include <fstream>
 #include <stdexcept>
+#include <string>
+#include <system_error>
+#include <vector>
 
 namespace
 {
@@ -112,6 +117,13 @@ void run_test(const std::filesystem::path &root)
     const auto sentence = query(provider, "watashiha");
     require(position(sentence, "私は") < position(sentence, "私は走る"),
             "Prediction displaced a complete reading spanning multiple lemmas.");
+    // Lemmas covering only a prefix of the reading (川, 蚊) are not conversions of
+    // what was typed, so they must not push the whole-word prediction down.
+    const auto kawai = query(provider, "kawai");
+    require(position(kawai, "可愛い") < position(kawai, "川"), "Prefix fragment 川 outranked a prediction.");
+    require(position(kawai, "可愛い") < position(kawai, "蚊"), "Prefix fragment 蚊 outranked a prediction.");
+    require(hashi[position(hashi, "走る")].weight <= hashi[position(hashi, "箸")].weight,
+            "A prediction outweighs the exact conversion ranked above it.");
 
     const auto pending = query(provider, "kaw");
     require(!pending.empty() && pending.front().word == "可愛い",
@@ -147,6 +159,7 @@ int main()
         std::fprintf(stderr, "%s\n", error.what());
         result = 1;
     }
-    std::filesystem::remove_all(root);
+    std::error_code ignored;
+    std::filesystem::remove_all(root, ignored);
     return result;
 }
