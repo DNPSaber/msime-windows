@@ -379,14 +379,16 @@ void ApplyMixedCandidates(MixedCandidates::Result result, const std::string &inp
     {
         auto emoji = ReplaceSourceAndDeduplicate(items, CandidateSource::Emoji, std::move(result.emoji));
         changed = changed || !emoji.empty();
-        InsertFirstAndAppendRest(items, std::move(emoji), 2);
+        for (auto &candidate : emoji)
+            items.push_back(std::move(candidate));
     }
 
     if (GetConfiguredKaomojiMixedInputEnabled())
     {
         auto kaomoji = ReplaceSourceAndDeduplicate(items, CandidateSource::Kaomoji, std::move(result.kaomoji));
         changed = changed || !kaomoji.empty();
-        InsertFirstAndAppendRest(items, std::move(kaomoji), 3);
+        for (auto &candidate : kaomoji)
+            items.push_back(std::move(candidate));
     }
 
     // 全被去重掉、列表也没少东西时，屏幕上的那页就是对的，不必重画。
