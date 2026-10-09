@@ -1,9 +1,10 @@
 # Metasequoia IME Installer
 
-本目录的脚本从 Windows 合仓目录收集产物、签名、用 Inno Setup 打成安装包。它服务两条流程：
+本目录的脚本从 Windows 合仓目录收集产物、签名、用 Inno Setup 打成安装包。它服务三条流程：
 
 - **正式发布**：由 `MSIME-Windows` 的 release workflow 驱动，用真实证书签名包内全部 EXE/DLL 和最终安装包；产物是挂在 Release 上的 `MetasequoiaIME_Setup_v<版本>.exe`，并携带与 Release 二进制匹配的 PDB 符号文件。见下面「CI 契约」
 - **本地测试**：手工跑，用本机自签名证书，用来在自己机器上验证安装流程。本文其余部分讲的是这条
+- **远程测试构建**：`.github/workflows/build-windows.yml` 在 GitHub 托管的 Windows runner 上构建并测试 x86/x64 TSF、Server 和设置页，再用锁定词库、模型制作完整的未签名安装包。推送到 `work` 分支会自动触发，也支持 `workflow_dispatch`。无需草稿 Release、签名证书或自托管 runner；成功后从该次 Actions 的 `windows-installer-unsigned-<运行序号>` artifact 下载安装包、SHA256 和源码提交信息，保留 14 天。未签名测试包不启用 `uiAccess`，因此无法覆盖管理员权限应用；此流程只上传构建产物，不发布 Release，也不调整产品版本。
 
 版本号不是固定的，由 `Prepare-PackageFiles.ps1` 的 `-TargetVersion` 决定，默认 `0.0.1`；正式发布时 CI 传入真实版本。
 
