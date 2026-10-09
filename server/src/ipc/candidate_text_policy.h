@@ -81,6 +81,17 @@ inline std::optional<std::string> ExtractHanCharacter(std::string_view text, Han
     return result;
 }
 
+// Only explicit selections in dedicated English mode add a word separator. Punctuation commits
+// read the highlighted page text directly and must not acquire this trailing space.
+inline std::wstring CandidateSelectionText(std::wstring text, bool dedicated_english_mode)
+{
+    if (dedicated_english_mode && !text.empty())
+    {
+        text.push_back(L' ');
+    }
+    return text;
+}
+
 inline std::wstring HighlightedCandidateText(const std::vector<std::wstring> &page_words, int selected_index_in_page)
 {
     if (selected_index_in_page < 0 || static_cast<size_t>(selected_index_in_page) >= page_words.size())

@@ -43,3 +43,27 @@ TEST_CASE(candidate_text_policy_uses_the_highlighted_candidate)
     REQUIRE(FanyImeIpc::HighlightedCandidateText(page_words, -1).empty());
     REQUIRE(FanyImeIpc::HighlightedCandidateText(page_words, 3).empty());
 }
+
+TEST_CASE(candidate_selection_in_dedicated_english_mode_adds_one_ascii_space)
+{
+    REQUIRE_EQ(FanyImeIpc::CandidateSelectionText(L"hello", true), std::wstring(L"hello "));
+    REQUIRE_EQ(FanyImeIpc::CandidateSelectionText(L"GitHub", true), std::wstring(L"GitHub "));
+}
+
+TEST_CASE(candidate_selection_outside_dedicated_english_mode_keeps_original_text)
+{
+    REQUIRE_EQ(FanyImeIpc::CandidateSelectionText(L"\u4F60\u597D", false), std::wstring(L"\u4F60\u597D"));
+    // Mixed English candidates and temporary Y-mode candidates do not enable dedicated mode.
+    REQUIRE_EQ(FanyImeIpc::CandidateSelectionText(L"hello", false), std::wstring(L"hello"));
+    REQUIRE(FanyImeIpc::CandidateSelectionText(L"", true).empty());
+}
+
+TEST_CASE(english_candidate_selection_leaves_page_and_punctuation_commit_text_unchanged)
+{
+    const std::vector<std::wstring> page_words = {L"hello", L"Help"};
+    REQUIRE_EQ(FanyImeIpc::CandidateSelectionText(FanyImeIpc::HighlightedCandidateText(page_words, 1), true),
+               std::wstring(L"Help "));
+    // The punctuation path reads the displayed word, then appends the punctuation at the TSF client.
+    REQUIRE_EQ(FanyImeIpc::HighlightedCandidateText(page_words, 1) + L",", std::wstring(L"Help,"));
+    REQUIRE_EQ(page_words[1], std::wstring(L"Help"));
+}
